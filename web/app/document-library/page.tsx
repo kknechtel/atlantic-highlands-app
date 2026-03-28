@@ -1,20 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getProjects,
   getDocuments,
   createProject,
   deleteDocument,
+  getDocumentViewUrl,
   searchDocuments,
   getSearchFacets,
   type Project,
   type Document,
 } from "@/lib/api";
 import UploadModal from "@/components/UploadModal";
-import DocumentDetailsModal from "@/components/DocumentDetailsModal";
-import DocumentViewer from "@/components/DocumentViewer";
 import DocumentChatModal from "@/components/DocumentChatModal";
 import {
   FolderPlusIcon,
@@ -23,8 +22,15 @@ import {
   EyeIcon,
   MagnifyingGlassIcon,
   ChatBubbleLeftRightIcon,
-  InformationCircleIcon,
-  FunnelIcon,
+  DocumentTextIcon,
+  SparklesIcon,
+  TagIcon,
+  XMarkIcon,
+  ArrowTopRightOnSquareIcon,
+  ArrowDownTrayIcon,
+  FolderIcon,
+  CalendarIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
 export default function DocumentLibraryPage() {
@@ -37,12 +43,8 @@ export default function DocumentLibraryPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("");
-
-  // Modal states
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [viewerDoc, setViewerDoc] = useState<Document | null>(null);
-  const [showViewer, setShowViewer] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [chatDoc, setChatDoc] = useState<Document | null>(null);
   const [showChat, setShowChat] = useState(false);
 
@@ -62,7 +64,6 @@ export default function DocumentLibraryPage() {
     queryFn: () => getSearchFacets(selectedProject || undefined),
   });
 
-  // Search results (when searching)
   const { data: searchResults } = useQuery({
     queryKey: ["search", search, selectedProject, categoryFilter, docTypeFilter],
     queryFn: () =>
@@ -88,252 +89,310 @@ export default function DocumentLibraryPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      if (selectedDoc) setSelectedDoc(null);
     },
   });
 
-  const handleView = (doc: Document) => {
-    setViewerDoc(doc);
-    setShowViewer(true);
-  };
-
-  const handleDetails = (doc: Document) => {
+  const handleSelectDoc = async (doc: Document) => {
     setSelectedDoc(doc);
-    setShowDetails(true);
+    try {
+      const { url } = await getDocumentViewUrl(doc.id);
+      setViewerUrl(url);
+    } catch {
+      setViewerUrl(null);
+    }
   };
 
-  const handleChat = (doc: Document) => {
-    setChatDoc(doc);
-    setShowChat(true);
-  };
+  const displayDocs = useMemo(() => {
+    if (search.length > 1 && searchResults) {
+      const ids = new Set(searchResults.map((r) => r.id));
+      return (documents || []).filter((d) => ids.has(d.id));
+    }
+    return documents || [];
+  }, [documents, search, searchResults]);
 
-  // Use search results when searching, otherwise use document list
-  const displayDocs = search.length > 1
-    ? (searchResults || []).map((sr) => documents?.find((d) => d.id === sr.id)).filter(Boolean) as Document[]
-    : documents?.filter(
-        (d) =>
-          !search ||
-          d.filename.toLowerCase().includes(search.toLowerCase())
-      ) || [];
+  const docTypeColor = (type: string | null) => {
+    const colors: Record<string, string> = {
+      budget: "bg-green-100 text-green-700",
+      audit: "bg-blue-100 text-blue-700",
+      financial_statement: "bg-purple-100 text-purple-700",
+      minutes: "bg-yellow-100 text-yellow-700",
+      agenda: "bg-orange-100 text-orange-700",
+      ordinance: "bg-red-100 text-red-700",
+      resolution: "bg-indigo-100 text-indigo-700",
+      legal: "bg-pink-100 text-pink-700",
+    };
+    return colors[type || ""] || "bg-gray-100 text-gray-600";
+  };
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Document Library</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {documents?.length || 0} documents
-            {selectedProject && projects
-              ? ` in ${projects.find((p) => p.id === selectedProject)?.name || "project"}`
-              : ""}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowNewProject(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            <FolderPlusIcon className="w-4 h-4" /> New Project
-          </button>
-          {selectedProject && (
-            <button
-              onClick={() => setShowUpload(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+    <div className="flex h-full">
+      {/* Left: Document list (scrollable) */}
+      <div className={`${selectedDoc ? "w-[400px]" : "flex-1"} flex flex-col border-r bg-white transition-all`}>
+        {/* Header */}
+        <div className="px-4 py-3 border-b bg-gray-50">
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="text-lg font-bold text-gray-900">Documents</h1>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowNewProject(true)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200"
+                title="New Project"
+              >
+                <FolderPlusIcon className="w-4 h-4" />
+              </button>
+              {selectedProject && (
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="p-1.5 text-green-600 hover:text-green-700 rounded hover:bg-green-50"
+                  title="Upload"
+                >
+                  <ArrowUpTrayIcon className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="relative mb-2">
+            <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search document content..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            />
+          </div>
+
+          {/* Filters */}
+          <div className="flex gap-2 text-xs">
+            <select
+              value={selectedProject || ""}
+              onChange={(e) => setSelectedProject(e.target.value || null)}
+              className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs"
             >
-              <ArrowUpTrayIcon className="w-4 h-4" /> Upload
+              <option value="">All Projects</option>
+              {projects?.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded text-xs"
+            >
+              <option value="">Category</option>
+              <option value="town">Town</option>
+              <option value="school">School</option>
+            </select>
+            <select
+              value={docTypeFilter}
+              onChange={(e) => setDocTypeFilter(e.target.value)}
+              className="px-2 py-1.5 border border-gray-300 rounded text-xs"
+            >
+              <option value="">Type</option>
+              {facets && Object.keys(facets.doc_types).map((k) => (
+                <option key={k} value={k === "unclassified" ? "" : k}>{k}</option>
+              ))}
+            </select>
+          </div>
+          <div className="text-xs text-gray-400 mt-1">{displayDocs.length} documents</div>
+        </div>
+
+        {/* Document list */}
+        <div className="flex-1 overflow-y-auto">
+          {displayDocs.map((doc) => (
+            <button
+              key={doc.id}
+              onClick={() => handleSelectDoc(doc)}
+              className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 transition-colors ${
+                selectedDoc?.id === doc.id ? "bg-green-50 border-l-4 border-l-green-500" : ""
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <DocumentTextIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {doc.doc_type && (
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${docTypeColor(doc.doc_type)}`}>
+                        {doc.doc_type}
+                      </span>
+                    )}
+                    {doc.category && (
+                      <span className="text-[10px] text-gray-400 capitalize">{doc.category}</span>
+                    )}
+                    {doc.fiscal_year && (
+                      <span className="text-[10px] text-gray-400">FY{doc.fiscal_year}</span>
+                    )}
+                  </div>
+                  {doc.notes && (
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{doc.notes}</p>
+                  )}
+                </div>
+                <ChevronRightIcon className="w-3 h-3 text-gray-300 mt-1 flex-shrink-0" />
+              </div>
             </button>
+          ))}
+          {displayDocs.length === 0 && (
+            <div className="px-4 py-12 text-center text-gray-400 text-sm">
+              {search ? "No documents match your search." : "No documents found."}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-4">
-        <div className="flex-1 relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search documents..."
-            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-          />
-        </div>
-        <select
-          value={selectedProject || ""}
-          onChange={(e) => setSelectedProject(e.target.value || null)}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg"
-        >
-          <option value="">All Projects</option>
-          {projects?.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({p.document_count})
-            </option>
-          ))}
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg"
-        >
-          <option value="">All Categories</option>
-          {facets &&
-            Object.entries(facets.categories).map(([k, v]) => (
-              <option key={k} value={k === "uncategorized" ? "" : k}>
-                {k} ({v})
-              </option>
-            ))}
-        </select>
-        <select
-          value={docTypeFilter}
-          onChange={(e) => setDocTypeFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg"
-        >
-          <option value="">All Types</option>
-          {facets &&
-            Object.entries(facets.doc_types).map(([k, v]) => (
-              <option key={k} value={k === "unclassified" ? "" : k}>
-                {k} ({v})
-              </option>
-            ))}
-        </select>
-      </div>
-
-      {/* Document table */}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Filename</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Category</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">FY</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Size</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {displayDocs.map((doc) => (
-              <tr
-                key={doc.id}
-                className="hover:bg-gray-50 cursor-pointer"
-                onClick={() => handleDetails(doc)}
+      {/* Right: Selected document detail + viewer */}
+      {selectedDoc ? (
+        <div className="flex-1 flex flex-col bg-gray-100">
+          {/* Doc info bar */}
+          <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
+            <div className="flex items-center gap-2 min-w-0">
+              <DocumentTextIcon className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <span className="text-sm font-medium text-gray-900 truncate">{selectedDoc.filename}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setChatDoc(selectedDoc); setShowChat(true); }}
+                className="p-1.5 text-gray-400 hover:text-purple-600 rounded hover:bg-gray-100"
+                title="Chat about this document"
               >
-                <td className="px-4 py-3 font-medium text-gray-900 max-w-[300px] truncate">
-                  {doc.filename}
-                </td>
-                <td className="px-4 py-3 text-gray-500 capitalize">{doc.doc_type || "-"}</td>
-                <td className="px-4 py-3 text-gray-500 capitalize">{doc.category || "-"}</td>
-                <td className="px-4 py-3 text-gray-500">{doc.fiscal_year || "-"}</td>
-                <td className="px-4 py-3 text-gray-500">{formatBytes(doc.file_size)}</td>
-                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-end gap-1">
-                    <button
-                      onClick={() => handleView(doc)}
-                      className="p-1.5 text-gray-400 hover:text-primary-600 rounded hover:bg-gray-100"
-                      title="View"
-                    >
-                      <EyeIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleChat(doc)}
-                      className="p-1.5 text-gray-400 hover:text-purple-600 rounded hover:bg-gray-100"
-                      title="Chat"
-                    >
-                      <ChatBubbleLeftRightIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDetails(doc)}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100"
-                      title="Details"
-                    >
-                      <InformationCircleIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm("Delete?")) deleteMutation.mutate(doc.id);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
-                      title="Delete"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
+                <ChatBubbleLeftRightIcon className="w-4 h-4" />
+              </button>
+              {viewerUrl && (
+                <a href={viewerUrl} target="_blank" rel="noopener noreferrer"
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100" title="Open">
+                  <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                </a>
+              )}
+              {viewerUrl && (
+                <a href={viewerUrl} download={selectedDoc.filename}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100" title="Download">
+                  <ArrowDownTrayIcon className="w-4 h-4" />
+                </a>
+              )}
+              <button
+                onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(selectedDoc.id); }}
+                className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
+                title="Delete"
+              >
+                <TrashIcon className="w-4 h-4" />
+              </button>
+              <button onClick={() => { setSelectedDoc(null); setViewerUrl(null); }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100">
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Split: AI summary on top, document viewer below */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* AI Summary panel */}
+            {selectedDoc.notes && (
+              <div className="bg-white border-b px-5 py-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <SparklesIcon className="w-4 h-4 text-green-600" />
+                  <h3 className="text-xs font-bold text-green-700 uppercase tracking-wider">AI Summary</h3>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">{selectedDoc.notes}</p>
+
+                {/* Metadata badges */}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {selectedDoc.doc_type && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docTypeColor(selectedDoc.doc_type)}`}>
+                      {selectedDoc.doc_type}
+                    </span>
+                  )}
+                  {selectedDoc.category && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 capitalize">
+                      {selectedDoc.category}
+                    </span>
+                  )}
+                  {selectedDoc.fiscal_year && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                      <CalendarIcon className="w-3 h-3 inline mr-0.5" />FY {selectedDoc.fiscal_year}
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                    {formatBytes(selectedDoc.file_size)}
+                  </span>
+                </div>
+
+                {/* AI Tags */}
+                {(selectedDoc as any).metadata_?.ai_tags && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {((selectedDoc as any).metadata_.ai_tags as string[]).map((tag, i) => (
+                      <span key={i} className="px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded text-[10px] border">
+                        {tag}
+                      </span>
+                    ))}
                   </div>
-                </td>
-              </tr>
-            ))}
-            {displayDocs.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
-                  {search ? "No documents match your search." : "No documents found."}
-                </td>
-              </tr>
+                )}
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+
+            {/* Document viewer */}
+            <div className="flex-1 bg-gray-900 overflow-hidden">
+              {viewerUrl ? (
+                selectedDoc.filename.toLowerCase().endsWith(".pdf") ? (
+                  <iframe src={viewerUrl} className="w-full h-full border-0" title={selectedDoc.filename} />
+                ) : /\.(png|jpg|jpeg|gif|webp)$/i.test(selectedDoc.filename) ? (
+                  <div className="w-full h-full flex items-center justify-center p-8">
+                    <img src={viewerUrl} alt={selectedDoc.filename} className="max-w-full max-h-full object-contain" />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="text-green-400 hover:underline">
+                      Open file in new tab
+                    </a>
+                  </div>
+                )
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* No doc selected - show overview */
+        !selectedDoc && documents && documents.length > 0 && (
+          <div className="flex-1 flex items-center justify-center bg-gray-50">
+            <div className="text-center text-gray-400">
+              <DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-lg font-medium text-gray-500">Select a document</p>
+              <p className="text-sm">Click any document on the left to view details and AI summary</p>
+            </div>
+          </div>
+        )
+      )}
 
       {/* Modals */}
       {showUpload && selectedProject && (
         <UploadModal projectId={selectedProject} onClose={() => setShowUpload(false)} />
       )}
 
-      <DocumentDetailsModal
-        document={selectedDoc}
-        isOpen={showDetails}
-        onClose={() => setShowDetails(false)}
-        onChat={handleChat}
-      />
+      {showChat && chatDoc && (
+        <DocumentChatModal document={chatDoc} isOpen={showChat} onClose={() => setShowChat(false)} />
+      )}
 
-      <DocumentViewer
-        document={viewerDoc}
-        isOpen={showViewer}
-        onClose={() => setShowViewer(false)}
-      />
-
-      <DocumentChatModal
-        document={chatDoc}
-        isOpen={showChat}
-        onClose={() => setShowChat(false)}
-      />
-
-      {/* New project modal */}
       {showNewProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-lg font-semibold mb-4">Create Project</h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="e.g. FY2025 Town Budget"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Entity Type</label>
-                <select
-                  value={newProjectType}
-                  onChange={(e) => setNewProjectType(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">General</option>
-                  <option value="town">Town</option>
-                  <option value="school">School District</option>
-                </select>
-              </div>
+              <input type="text" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Project name" />
+              <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">General</option>
+                <option value="town">Town</option>
+                <option value="school">School District</option>
+              </select>
               <div className="flex justify-end gap-3">
-                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm text-gray-600">
-                  Cancel
-                </button>
-                <button
-                  onClick={() => createProjectMutation.mutate()}
-                  disabled={!newProjectName || createProjectMutation.isPending}
-                  className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-                >
-                  Create
-                </button>
+                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm text-gray-600">Cancel</button>
+                <button onClick={() => createProjectMutation.mutate()} disabled={!newProjectName}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">Create</button>
               </div>
             </div>
           </div>

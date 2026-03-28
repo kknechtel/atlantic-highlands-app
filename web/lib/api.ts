@@ -224,6 +224,45 @@ export async function getScraperStatus(): Promise<ScraperStatus> {
   return request<ScraperStatus>("/api/scraper/status");
 }
 
+// ─── Web Search ───────────────────────────────────────────────────────
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export async function webSearch(query: string, maxResults: number = 5) {
+  return request<{ results: WebSearchResult[]; query: string }>("/api/websearch/", {
+    method: "POST",
+    body: JSON.stringify({ query, max_results: maxResults }),
+  });
+}
+
+// ─── Chat History ─────────────────────────────────────────────────────
+
+export async function getChatHistory(sessionId: string) {
+  return request<{ session_id: string; messages: { role: string; content: string; timestamp: string }[] }>(
+    `/api/chat/history?session_id=${sessionId}`
+  );
+}
+
+export async function getChatSessions() {
+  return request<{ session_id: string; scope_type: string; message_count: number; last_activity: string; last_query: string }[]>(
+    "/api/chat/sessions"
+  );
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────
+
+export async function generateReport(reportType: string, entityType?: string, customPrompt?: string) {
+  return fetch(`${API_BASE}/api/reports/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report_type: reportType, entity_type: entityType, custom_prompt: customPrompt }),
+  });
+}
+
 // ─── Admin ────────────────────────────────────────────────────────────
 
 export interface AdminStats {

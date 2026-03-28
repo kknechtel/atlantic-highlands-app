@@ -36,6 +36,8 @@ from routes.chat import router as chat_router
 from routes.search import router as search_router
 from routes.processing import router as processing_router
 from routes.export import router as export_router
+from routes.websearch import router as websearch_router
+from routes.reports import router as reports_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -47,6 +49,8 @@ app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(search_router, prefix="/api/search", tags=["search"])
 app.include_router(processing_router, prefix="/api/processing", tags=["processing"])
 app.include_router(export_router, prefix="/api/export", tags=["export"])
+app.include_router(websearch_router, prefix="/api/websearch", tags=["websearch"])
+app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
 
 
 @app.on_event("startup")

@@ -94,38 +94,59 @@ def _build_financial_context(db: Session) -> str:
     return "\n".join(lines)
 
 
-def _build_document_context(db: Session, document_id: str = None) -> str:
-    """Build context from a specific document or document inventory."""
+def _build_document_context(db: Session, document_id: str = None, query: str = "") -> str:
+    """Build context from specific document, or search for relevant docs."""
+    from sqlalchemy import text as sql_text
+
     if document_id:
         doc = db.query(Document).filter(Document.id == document_id).first()
-        if doc:
+        if doc and doc.extracted_text:
+            return f"=== DOCUMENT: {doc.filename} (FY: {doc.fiscal_year or 'unknown'}) ===\n{doc.extracted_text[:50000]}"
+        elif doc:
+            # Fallback to S3 extraction
             s3 = S3Service()
             try:
                 content = s3.download_file(doc.s3_key)
                 import pymupdf
                 pdf = pymupdf.open(stream=content, filetype="pdf")
-                pages = []
-                for i in range(min(30, pdf.page_count)):
-                    t = pdf[i].get_text()
-                    if t.strip():
-                        pages.append(t)
+                pages = [pdf[i].get_text() for i in range(min(30, pdf.page_count)) if pdf[i].get_text().strip()]
                 pdf.close()
-                text = "\n\n".join(pages)
-                return f"=== DOCUMENT: {doc.filename} (FY: {doc.fiscal_year or 'unknown'}) ===\n{text[:50000]}"
+                return f"=== DOCUMENT: {doc.filename} ===\n" + "\n\n".join(pages)[:50000]
             except Exception as e:
-                logger.warning(f"Could not load document: {e}")
-                return f"Document: {doc.filename} (could not extract text)"
+                return f"Document: {doc.filename} (could not extract text: {e})"
 
-    # No specific doc - include document inventory
+    # Search for relevant documents using FTS
+    if query:
+        terms = query.split()[:5]
+        tsquery = " | ".join(terms)  # OR search for broader results
+        try:
+            results = db.execute(sql_text("""
+                SELECT id, filename, fiscal_year, doc_type, category,
+                       substring(extracted_text from 1 for 5000) as text_preview,
+                       ts_rank(search_vector, to_tsquery('english', :q)) as score
+                FROM documents
+                WHERE search_vector @@ to_tsquery('english', :q)
+                ORDER BY score DESC LIMIT 3
+            """), {"q": tsquery}).fetchall()
+
+            if results:
+                context = ["=== RELEVANT DOCUMENTS (from search) ==="]
+                for r in results:
+                    context.append(f"\n--- {r.filename} [{r.category}, {r.doc_type}, FY {r.fiscal_year}] ---")
+                    context.append(r.text_preview or "")
+                return "\n".join(context)[:40000]
+        except Exception as e:
+            logger.warning(f"FTS search failed: {e}")
+
+    # Fallback: document inventory
     docs = db.query(Document).filter(
         Document.doc_type.in_(["budget", "audit", "financial_statement"])
-    ).order_by(Document.fiscal_year.desc()).all()
+    ).order_by(Document.fiscal_year.desc()).limit(50).all()
 
     inventory = ["=== AVAILABLE FINANCIAL DOCUMENTS ==="]
     for d in docs:
         inventory.append(f"- {d.filename} [{d.category}, {d.doc_type}, FY {d.fiscal_year or '?'}]")
-
-    return "\n".join(inventory[:100])
+    return "\n".join(inventory)
 
 
 @router.post("/stream")
@@ -138,7 +159,7 @@ async def chat_stream(
 
     # Build rich context
     financial_context = _build_financial_context(db)
-    document_context = _build_document_context(db, req.document_id)
+    document_context = _build_document_context(db, req.document_id, req.query)
 
     system_prompt = f"""You are a financial analyst AI for Atlantic Highlands, New Jersey.
 You have access to REAL financial data extracted from official municipal and school district documents.
@@ -151,8 +172,10 @@ If asked about spending per student, use expenditure data and note that enrollme
 
 {document_context}
 
-When referencing documents, mention them by name so the user can look them up.
-Be specific with numbers. Show calculations. Provide insights and analysis."""
+When referencing documents, use this format: [source: exact_filename.pdf]
+The frontend will turn these into clickable links.
+Be specific with numbers. Show calculations. Provide insights and analysis.
+Always cite which document or fiscal year your data comes from."""
 
     if req.model == "gemini" and GEMINI_API_KEY:
         return StreamingResponse(

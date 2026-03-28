@@ -48,6 +48,8 @@ class Document(Base):
     status = Column(String, default="uploaded")  # uploaded, processing, processed, failed
     metadata_ = Column("metadata", JSONB, default={})
     notes = Column(Text, nullable=True)
+    extracted_text = Column(Text, nullable=True)
+    page_count = Column(Integer, nullable=True)
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

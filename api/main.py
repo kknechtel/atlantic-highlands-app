@@ -35,6 +35,7 @@ from routes.scraper import router as scraper_router
 from routes.chat import router as chat_router
 from routes.search import router as search_router
 from routes.processing import router as processing_router
+from routes.export import router as export_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -45,6 +46,7 @@ app.include_router(scraper_router, prefix="/api/scraper", tags=["scraper"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(search_router, prefix="/api/search", tags=["search"])
 app.include_router(processing_router, prefix="/api/processing", tags=["processing"])
+app.include_router(export_router, prefix="/api/export", tags=["export"])
 
 
 @app.on_event("startup")

@@ -23,6 +23,7 @@ const navItems = [
     href: "/financial-analysis",
     icon: DocumentTextIcon,
     children: [
+      { name: "Statements", href: "/financial-analysis/statements", icon: DocumentTextIcon },
       { name: "Narrative", href: "/financial-analysis/narrative", icon: DocumentTextIcon },
       { name: "Town", href: "/financial-analysis?entity=town", icon: BuildingOfficeIcon },
       { name: "School District", href: "/financial-analysis?entity=school", icon: AcademicCapIcon },

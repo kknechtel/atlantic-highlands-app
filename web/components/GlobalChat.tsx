@@ -230,7 +230,7 @@ export default function GlobalChat() {
                       : "bg-gray-100 text-gray-800 rounded-bl-md"
                   }`}
                 >
-                  {msg.content}
+                  <MessageContent content={msg.content} onCiteClick={handleViewDoc} />
                   {msg.isStreaming && (
                     <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-gray-400 animate-pulse rounded" />
                   )}
@@ -337,5 +337,40 @@ export default function GlobalChat() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Renders message content with [source: filename.pdf] as clickable citation links */
+function MessageContent({
+  content,
+  onCiteClick,
+}: {
+  content: string;
+  onCiteClick: (docId: string, filename: string) => void;
+}) {
+  // Parse [source: filename] patterns
+  const parts = content.split(/(\[source:\s*[^\]]+\])/g);
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/\[source:\s*([^\]]+)\]/);
+        if (match) {
+          const filename = match[1].trim();
+          return (
+            <button
+              key={i}
+              onClick={() => onCiteClick("", filename)}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 font-medium"
+              title={`View: ${filename}`}
+            >
+              <DocumentTextIcon className="w-3 h-3" />
+              {filename.length > 30 ? filename.slice(0, 28) + "..." : filename}
+            </button>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
   );
 }

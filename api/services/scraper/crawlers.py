@@ -5,6 +5,7 @@ Each crawler finds documents and uploads them to S3 via the provided callback.
 import logging
 import time
 from urllib.parse import urljoin, urlparse
+from bs4 import BeautifulSoup
 
 from .scraper import BasicScraper, SeleniumScraper
 from .utils import categorize_url
@@ -21,6 +22,31 @@ def _deduplicate_docs(docs: list[dict]) -> list[dict]:
             seen.add(doc["url"])
             unique.append(doc)
     return unique
+
+
+def _get_stealth_driver():
+    """Create a Selenium driver with anti-detection flags for Cloudflare sites."""
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+
+        options = Options()
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument('--window-size=1920,1080')
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
+        })
+        driver.set_page_load_timeout(30)
+        return driver
+    except Exception as e:
+        logger.error(f"Failed to create stealth driver: {e}")
+        return None
 
 
 class AHNJCrawler:
@@ -43,7 +69,6 @@ class AHNJCrawler:
         return self.selenium if self.selenium else self.basic
 
     def find_documents(self) -> list[dict]:
-        """Crawl and return list of found documents (no downloading)."""
         all_docs = []
         scraper = self._get_scraper()
         visited = set()
@@ -60,7 +85,8 @@ class AHNJCrawler:
 
             docs = self.basic.find_document_links(soup, url)
             all_docs.extend(docs)
-            logger.info(f"  Found {len(docs)} documents on {page_path}")
+            if docs:
+                logger.info(f"  Found {len(docs)} documents on {page_path}")
 
             subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
             for subpage in subpages[:20]:
@@ -83,55 +109,104 @@ class AHNJCrawler:
 
 
 class ECode360Crawler:
-    """Crawler for ecode360.com (Atlantic Highlands document archive)."""
+    """
+    Crawler for ecode360.com (Atlantic Highlands document archive).
+    Requires visible Chrome to bypass Cloudflare Turnstile.
+    """
 
     def __init__(self):
         self.source_name = "ecode360"
         self.config = SOURCES["ecode360"]
-        self.basic = BasicScraper()
-        self.selenium = None
+        self.base_url = "https://ecode360.com"
+        self.driver = None
 
-    def _get_scraper(self):
-        if self.selenium is None:
-            try:
-                self.selenium = SeleniumScraper()
-                self.selenium._ensure_driver()
-            except Exception:
-                logger.warning("Selenium not available for ecode360 — using basic scraper")
-                self.selenium = False
-        return self.selenium if self.selenium else self.basic
+    # Document categories on ecode360
+    CATEGORIES = [
+        "/AT0153/documents/Agendas",
+        "/AT0153/documents/Budgets",
+        "/AT0153/documents/Comprehensive_Plans",
+        "/AT0153/documents/Legislation",
+        "/AT0153/documents/Minutes",
+        "/AT0153/documents/Misc._Documents",
+        "/AT0153/documents/Resolutions",
+    ]
 
     def find_documents(self) -> list[dict]:
         all_docs = []
-        scraper = self._get_scraper()
+        self.driver = _get_stealth_driver()
+        if not self.driver:
+            logger.error("Cannot crawl ecode360 without Chrome - Cloudflare protection")
+            return []
 
-        for page_path in self.config["pages_to_crawl"]:
-            url = self.config["base_url"] + page_path
-            soup = scraper.fetch_page(url)
-            if not soup:
-                continue
+        try:
+            for cat_path in self.CATEGORIES:
+                url = self.base_url + cat_path
+                cat_name = cat_path.split("/")[-1].replace("_", " ")
+                logger.info(f"  Crawling ecode360: {cat_name}")
 
-            docs = self.basic.find_document_links(soup, url)
-            all_docs.extend(docs)
-            logger.info(f"  Found {len(docs)} documents on {page_path}")
+                self.driver.get(url)
+                time.sleep(8)
 
-            page_links = soup.find_all("a", href=True)
-            for link in page_links:
-                href = link["href"]
-                text = link.get_text(strip=True).lower()
-                if any(kw in text for kw in ["next", "more", "page 2", "page 3"]):
-                    next_url = urljoin(url, href)
-                    next_soup = scraper.fetch_page(next_url)
-                    if next_soup:
-                        more_docs = self.basic.find_document_links(next_soup, next_url)
-                        all_docs.extend(more_docs)
+                title = self.driver.title
+                if "moment" in title.lower():
+                    logger.warning(f"  Cloudflare blocking {cat_name}, waiting...")
+                    time.sleep(15)
 
-        self._cleanup()
-        return _deduplicate_docs(all_docs)
+                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                links = soup.find_all("a", href=True)
+
+                for link in links:
+                    href = link["href"]
+                    if ".pdf" in href.lower():
+                        full_url = urljoin(self.base_url, href)
+                        link_text = link.get_text(strip=True) or ""
+                        all_docs.append({
+                            "url": full_url,
+                            "title": link_text,
+                            "source_page": url,
+                            "category": cat_name,
+                        })
+
+                found = len([l for l in links if ".pdf" in l["href"].lower()])
+                if found:
+                    logger.info(f"  Found {found} PDFs in {cat_name}")
+
+                # Check for subcategory links
+                for link in links:
+                    href = link["href"]
+                    if "category=" in href or "subCategory=" in href:
+                        sub_url = urljoin(self.base_url, href)
+                        sub_name = link.get_text(strip=True)
+                        logger.info(f"  Following subcategory: {sub_name}")
+                        self.driver.get(sub_url)
+                        time.sleep(5)
+                        sub_soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                        for sub_link in sub_soup.find_all("a", href=True):
+                            if ".pdf" in sub_link["href"].lower():
+                                full_url = urljoin(self.base_url, sub_link["href"])
+                                all_docs.append({
+                                    "url": full_url,
+                                    "title": sub_link.get_text(strip=True) or "",
+                                    "source_page": sub_url,
+                                    "category": cat_name,
+                                })
+
+        except Exception as e:
+            logger.error(f"ECode360 crawl error: {e}", exc_info=True)
+        finally:
+            self._cleanup()
+
+        result = _deduplicate_docs(all_docs)
+        logger.info(f"  ECode360 total: {len(result)} unique documents")
+        return result
 
     def _cleanup(self):
-        if self.selenium and self.selenium is not False:
-            self.selenium.close()
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
 
 
 class TriDistrictCrawler:

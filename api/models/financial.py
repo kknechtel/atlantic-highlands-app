@@ -13,7 +13,7 @@ class FinancialStatement(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
-    entity_name = Column(String, nullable=False)  # "Borough of Atlantic Highlands", "Atlantic Highlands School District"
+    entity_name = Column(String, nullable=True)  # "Borough of Atlantic Highlands", "Atlantic Highlands School District"
     entity_type = Column(String, nullable=False)  # "town", "school"
     statement_type = Column(String, nullable=False)  # "budget", "audit", "cafr", "annual_report"
     fiscal_year = Column(String, nullable=False)

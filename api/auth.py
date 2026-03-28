@@ -33,31 +33,30 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-) -> User:
-    token = credentials.credentials
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None or not user.is_active:
-        raise credentials_exception
+def _get_or_create_default_user(db: Session) -> User:
+    """Get or create a default admin user (auth disabled)."""
+    user = db.query(User).filter(User.username == "admin").first()
+    if not user:
+        user = User(
+            email="admin@atlantichighlands.local",
+            username="admin",
+            hashed_password="$2b$12$disabled",  # placeholder, auth is off
+            full_name="Admin",
+            is_active=True,
+            is_admin=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user
 
 
+def get_current_user(
+    db: Session = Depends(get_db),
+) -> User:
+    """Auth disabled - returns default admin user."""
+    return _get_or_create_default_user(db)
+
+
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
     return current_user

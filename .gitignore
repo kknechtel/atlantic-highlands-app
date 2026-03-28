@@ -33,3 +33,6 @@ logs/
 
 # Docker
 pgdata/
+
+# Local storage (document refs)
+api/storage/

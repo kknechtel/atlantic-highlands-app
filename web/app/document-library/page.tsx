@@ -8,17 +8,24 @@ import {
   createProject,
   deleteDocument,
   getDocumentViewUrl,
+  searchDocuments,
+  getSearchFacets,
   type Project,
   type Document,
 } from "@/lib/api";
 import UploadModal from "@/components/UploadModal";
+import DocumentDetailsModal from "@/components/DocumentDetailsModal";
+import DocumentViewer from "@/components/DocumentViewer";
+import DocumentChatModal from "@/components/DocumentChatModal";
 import {
   FolderPlusIcon,
   ArrowUpTrayIcon,
   TrashIcon,
   EyeIcon,
-  FunnelIcon,
   MagnifyingGlassIcon,
+  ChatBubbleLeftRightIcon,
+  InformationCircleIcon,
+  FunnelIcon,
 } from "@heroicons/react/24/outline";
 
 export default function DocumentLibraryPage() {
@@ -30,15 +37,43 @@ export default function DocumentLibraryPage() {
   const [newProjectType, setNewProjectType] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [docTypeFilter, setDocTypeFilter] = useState("");
+
+  // Modal states
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [viewerDoc, setViewerDoc] = useState<Document | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [showViewer, setShowViewer] = useState(false);
+  const [chatDoc, setChatDoc] = useState<Document | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: getProjects });
   const { data: documents } = useQuery({
-    queryKey: ["documents", selectedProject, categoryFilter],
+    queryKey: ["documents", selectedProject, categoryFilter, docTypeFilter],
     queryFn: () =>
       getDocuments({
         project_id: selectedProject || undefined,
         category: categoryFilter || undefined,
+        doc_type: docTypeFilter || undefined,
       }),
+  });
+
+  const { data: facets } = useQuery({
+    queryKey: ["facets", selectedProject],
+    queryFn: () => getSearchFacets(selectedProject || undefined),
+  });
+
+  // Search results (when searching)
+  const { data: searchResults } = useQuery({
+    queryKey: ["search", search, selectedProject, categoryFilter, docTypeFilter],
+    queryFn: () =>
+      searchDocuments(search, {
+        project_id: selectedProject || undefined,
+        category: categoryFilter || undefined,
+        doc_type: docTypeFilter || undefined,
+      }),
+    enabled: search.length > 1,
   });
 
   const createProjectMutation = useMutation({
@@ -47,7 +82,6 @@ export default function DocumentLibraryPage() {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       setShowNewProject(false);
       setNewProjectName("");
-      setNewProjectType("");
     },
   });
 
@@ -61,20 +95,42 @@ export default function DocumentLibraryPage() {
 
   const handleView = async (doc: Document) => {
     const { url } = await getDocumentViewUrl(doc.id);
-    window.open(url, "_blank");
+    setViewerDoc(doc);
+    setViewerUrl(url);
+    setShowViewer(true);
   };
 
-  const filtered = documents?.filter(
-    (d) =>
-      !search ||
-      d.filename.toLowerCase().includes(search.toLowerCase()) ||
-      d.notes?.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleDetails = (doc: Document) => {
+    setSelectedDoc(doc);
+    setShowDetails(true);
+  };
+
+  const handleChat = (doc: Document) => {
+    setChatDoc(doc);
+    setShowChat(true);
+  };
+
+  // Use search results when searching, otherwise use document list
+  const displayDocs = search.length > 1
+    ? (searchResults || []).map((sr) => documents?.find((d) => d.id === sr.id)).filter(Boolean) as Document[]
+    : documents?.filter(
+        (d) =>
+          !search ||
+          d.filename.toLowerCase().includes(search.toLowerCase())
+      ) || [];
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Document Library</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Document Library</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {documents?.length || 0} documents
+            {selectedProject && projects
+              ? ` in ${projects.find((p) => p.id === selectedProject)?.name || "project"}`
+              : ""}
+          </p>
+        </div>
         <div className="flex gap-3">
           <button
             onClick={() => setShowNewProject(true)}
@@ -94,7 +150,7 @@ export default function DocumentLibraryPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4 mb-6">
+      <div className="flex gap-3 mb-4">
         <div className="flex-1 relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -123,61 +179,83 @@ export default function DocumentLibraryPage() {
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg"
         >
           <option value="">All Categories</option>
-          <option value="town">Town</option>
-          <option value="school">School District</option>
-          <option value="general">General</option>
+          {facets &&
+            Object.entries(facets.categories).map(([k, v]) => (
+              <option key={k} value={k === "uncategorized" ? "" : k}>
+                {k} ({v})
+              </option>
+            ))}
+        </select>
+        <select
+          value={docTypeFilter}
+          onChange={(e) => setDocTypeFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg"
+        >
+          <option value="">All Types</option>
+          {facets &&
+            Object.entries(facets.doc_types).map(([k, v]) => (
+              <option key={k} value={k === "unclassified" ? "" : k}>
+                {k} ({v})
+              </option>
+            ))}
         </select>
       </div>
 
-      {/* Documents table */}
+      {/* Document table */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Filename</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Type</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Category</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Fiscal Year</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Status</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Size</th>
-              <th className="text-right px-6 py-3 font-medium text-gray-500">Actions</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">Filename</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">Type</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">Category</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">FY</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500">Size</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered?.map((doc) => (
-              <tr key={doc.id} className="hover:bg-gray-50">
-                <td className="px-6 py-3 font-medium text-gray-900">{doc.filename}</td>
-                <td className="px-6 py-3 text-gray-500">{doc.doc_type || "-"}</td>
-                <td className="px-6 py-3 text-gray-500 capitalize">{doc.category || "-"}</td>
-                <td className="px-6 py-3 text-gray-500">{doc.fiscal_year || "-"}</td>
-                <td className="px-6 py-3">
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs ${
-                      doc.status === "processed"
-                        ? "bg-green-100 text-green-700"
-                        : doc.status === "processing"
-                        ? "bg-yellow-100 text-yellow-700"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {doc.status}
-                  </span>
+            {displayDocs.map((doc) => (
+              <tr
+                key={doc.id}
+                className="hover:bg-gray-50 cursor-pointer"
+                onClick={() => handleDetails(doc)}
+              >
+                <td className="px-4 py-3 font-medium text-gray-900 max-w-[300px] truncate">
+                  {doc.filename}
                 </td>
-                <td className="px-6 py-3 text-gray-500">{formatBytes(doc.file_size)}</td>
-                <td className="px-6 py-3 text-right">
-                  <div className="flex justify-end gap-2">
+                <td className="px-4 py-3 text-gray-500 capitalize">{doc.doc_type || "-"}</td>
+                <td className="px-4 py-3 text-gray-500 capitalize">{doc.category || "-"}</td>
+                <td className="px-4 py-3 text-gray-500">{doc.fiscal_year || "-"}</td>
+                <td className="px-4 py-3 text-gray-500">{formatBytes(doc.file_size)}</td>
+                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-1">
                     <button
                       onClick={() => handleView(doc)}
-                      className="text-gray-400 hover:text-primary-600"
+                      className="p-1.5 text-gray-400 hover:text-primary-600 rounded hover:bg-gray-100"
                       title="View"
                     >
                       <EyeIcon className="w-4 h-4" />
                     </button>
                     <button
+                      onClick={() => handleChat(doc)}
+                      className="p-1.5 text-gray-400 hover:text-purple-600 rounded hover:bg-gray-100"
+                      title="Chat"
+                    >
+                      <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDetails(doc)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100"
+                      title="Details"
+                    >
+                      <InformationCircleIcon className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => {
-                        if (confirm("Delete this document?")) deleteMutation.mutate(doc.id);
+                        if (confirm("Delete?")) deleteMutation.mutate(doc.id);
                       }}
-                      className="text-gray-400 hover:text-red-500"
+                      className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
                       title="Delete"
                     >
                       <TrashIcon className="w-4 h-4" />
@@ -186,10 +264,10 @@ export default function DocumentLibraryPage() {
                 </td>
               </tr>
             ))}
-            {filtered?.length === 0 && (
+            {displayDocs.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
-                  No documents found. {selectedProject ? "Upload some files to get started." : "Select a project or upload files."}
+                <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                  {search ? "No documents match your search." : "No documents found."}
                 </td>
               </tr>
             )}
@@ -202,6 +280,27 @@ export default function DocumentLibraryPage() {
         <UploadModal projectId={selectedProject} onClose={() => setShowUpload(false)} />
       )}
 
+      <DocumentDetailsModal
+        document={selectedDoc}
+        isOpen={showDetails}
+        onClose={() => setShowDetails(false)}
+        onChat={handleChat}
+      />
+
+      <DocumentViewer
+        url={viewerUrl}
+        filename={viewerDoc?.filename || ""}
+        isOpen={showViewer}
+        onClose={() => setShowViewer(false)}
+      />
+
+      <DocumentChatModal
+        document={chatDoc}
+        isOpen={showChat}
+        onClose={() => setShowChat(false)}
+      />
+
+      {/* New project modal */}
       {showNewProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
@@ -230,10 +329,7 @@ export default function DocumentLibraryPage() {
                 </select>
               </div>
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowNewProject(false)}
-                  className="px-4 py-2 text-sm text-gray-600"
-                >
+                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm text-gray-600">
                   Cancel
                 </button>
                 <button

@@ -1,8 +1,11 @@
 """Document management routes - upload, list, search, view, delete."""
 import logging
+import os
 import uuid
+import mimetypes
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,7 +13,7 @@ from database import get_db
 from models.document import Document, Project
 from models.user import User
 from auth import get_current_user
-from services.s3_service import S3Service
+from services.s3_service import S3Service, LOCAL_STORAGE_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -181,6 +184,163 @@ async def upload_multiple_documents(
 
     db.commit()
     return {"uploaded": len(results), "files": results}
+
+
+@router.get("/serve/{key:path}")
+def serve_local_file(key: str):
+    """Serve a locally stored file (used when S3 is not configured)."""
+    ref_path = os.path.join(LOCAL_STORAGE_DIR, key + ".ref")
+    if os.path.exists(ref_path):
+        with open(ref_path, "r") as f:
+            real_path = f.read().strip()
+        if os.path.exists(real_path):
+            return FileResponse(real_path)
+
+    filepath = os.path.join(LOCAL_STORAGE_DIR, key)
+    if os.path.exists(filepath):
+        return FileResponse(filepath)
+
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+class BulkImportRequest(BaseModel):
+    directory: str
+    project_id: str | None = None
+
+
+@router.post("/bulk-import")
+def bulk_import(
+    req: BulkImportRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Import all files from a local directory into the document library."""
+    directory = req.directory
+    if not os.path.isdir(directory):
+        raise HTTPException(status_code=400, detail=f"Directory not found: {directory}")
+
+    s3_svc = S3Service()
+
+    if req.project_id:
+        project = db.query(Project).filter(Project.id == req.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+    else:
+        project = db.query(Project).filter(Project.name == "Knechtel Documents").first()
+        if not project:
+            project = Project(
+                name="Knechtel Documents",
+                description="Bulk imported from local Box folder",
+                entity_type="general",
+                created_by=user.id,
+            )
+            db.add(project)
+            db.commit()
+            db.refresh(project)
+
+    existing = set()
+    for (fn,) in db.query(Document.filename).filter(Document.project_id == project.id).all():
+        existing.add(fn.lower())
+
+    imported = []
+    skipped = []
+
+    for root, dirs, files in os.walk(directory):
+        for fname in files:
+            if fname.startswith(".") or fname.startswith("_"):
+                continue
+            if fname.lower() in existing:
+                skipped.append(fname)
+                continue
+
+            full_path = os.path.join(root, fname)
+            rel_path = os.path.relpath(full_path, directory).replace("\\", "/")
+            file_size = os.path.getsize(full_path)
+            content_type = mimetypes.guess_type(fname)[0] or "application/octet-stream"
+
+            category = _categorize_file(fname, rel_path)
+            doc_type = _detect_doc_type(fname, rel_path)
+            fiscal_year = _detect_fiscal_year(fname)
+
+            s3_key = f"imported/{str(project.id)}/{rel_path}"
+            s3_svc.register_local_file(full_path, s3_key)
+
+            doc = Document(
+                project_id=project.id,
+                filename=fname,
+                original_filename=fname,
+                s3_key=s3_key,
+                s3_bucket="local",
+                file_size=file_size,
+                content_type=content_type,
+                doc_type=doc_type,
+                category=category,
+                fiscal_year=fiscal_year,
+                uploaded_by=user.id,
+                status="uploaded",
+            )
+            db.add(doc)
+            existing.add(fname.lower())
+            imported.append(fname)
+
+    db.commit()
+    logger.info(f"Bulk import: {len(imported)} imported, {len(skipped)} skipped from {directory}")
+
+    return {
+        "project_id": str(project.id),
+        "project_name": project.name,
+        "imported": len(imported),
+        "skipped": len(skipped),
+        "total_files": len(imported) + len(skipped),
+    }
+
+
+def _categorize_file(filename: str, rel_path: str) -> str:
+    lower = (filename + " " + rel_path).lower()
+    school_keywords = ["ahes", "hhrs", "hhrpk", "boe", "tridistrict", "tri-district",
+                       "school", "board of education", "budget presentation"]
+    if any(kw in lower for kw in school_keywords):
+        return "school"
+    town_keywords = ["atlantic highlands", "borough", "adopted budget", "audit report", "ads"]
+    if any(kw in lower for kw in town_keywords):
+        return "town"
+    return "general"
+
+
+def _detect_doc_type(filename: str, rel_path: str) -> str:
+    lower = filename.lower()
+    if "agenda" in lower:
+        return "agenda"
+    if "minute" in lower:
+        return "minutes"
+    if "budget" in lower:
+        return "budget"
+    if "audit" in lower or "amr" in lower:
+        return "audit"
+    if "financial" in lower or "fs" in lower or "cafr" in lower or "comprehensive" in lower:
+        return "financial_statement"
+    if "resolution" in lower:
+        return "resolution"
+    if "performance report" in lower:
+        return "performance_report"
+    if "civilcase" in lower or "olszewski" in lower or "reply brief" in lower:
+        return "legal"
+    if "opra" in lower or "ferpa" in lower:
+        return "records_request"
+    if "presentation" in lower or ".pptx" in lower:
+        return "presentation"
+    return "general"
+
+
+def _detect_fiscal_year(filename: str) -> str | None:
+    import re
+    m = re.search(r'(20\d{2})[-/](20\d{2}|\d{2})', filename)
+    if m:
+        return m.group(0)
+    m = re.search(r'(20\d{2})', filename)
+    if m:
+        return m.group(1)
+    return None
 
 
 @router.get("/{document_id}/view-url")

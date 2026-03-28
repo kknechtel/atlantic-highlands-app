@@ -13,39 +13,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+// Default user returned when auth is disabled
+const DEFAULT_USER: User = {
+  id: "default",
+  email: "admin@atlantichighlands.local",
+  username: "admin",
+  full_name: "Admin",
+  is_admin: true,
+};
 
-  useEffect(() => {
-    const token = localStorage.getItem("ah_token");
-    if (token) {
-      getMe()
-        .then(setUser)
-        .catch(() => {
-          localStorage.removeItem("ah_token");
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }, []);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(DEFAULT_USER);
+  const [loading, setLoading] = useState(false);
 
   const login = async (email: string, password: string) => {
-    await apiLogin(email, password);
-    const me = await getMe();
-    setUser(me);
+    setUser(DEFAULT_USER);
   };
 
   const register = async (email: string, username: string, password: string, fullName?: string) => {
-    await apiRegister(email, username, password, fullName);
-    const me = await getMe();
-    setUser(me);
+    setUser(DEFAULT_USER);
   };
 
   const logout = () => {
-    apiLogout();
-    setUser(null);
+    setUser(DEFAULT_USER);
   };
 
   return (

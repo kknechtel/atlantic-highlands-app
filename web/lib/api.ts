@@ -288,6 +288,38 @@ export async function toggleUserActive(userId: string) {
   return request(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" });
 }
 
+// ─── Search ───────────────────────────────────────────────────────────
+
+export interface SearchResult {
+  id: string;
+  filename: string;
+  doc_type: string | null;
+  category: string | null;
+  fiscal_year: string | null;
+  status: string;
+  score: number;
+  snippet: string | null;
+}
+
+export async function searchDocuments(
+  query: string,
+  params?: { project_id?: string; category?: string; doc_type?: string }
+): Promise<SearchResult[]> {
+  return request<SearchResult[]>("/api/search/", {
+    method: "POST",
+    body: JSON.stringify({ query, ...params }),
+  });
+}
+
+export async function getSearchFacets(projectId?: string) {
+  const qs = projectId ? `?project_id=${projectId}` : "";
+  return request<{
+    doc_types: Record<string, number>;
+    categories: Record<string, number>;
+    fiscal_years: Record<string, number>;
+  }>(`/api/search/facets${qs}`);
+}
+
 // ─── Scraper ──────────────────────────────────────────────────────────
 
 export interface ScraperStatus {

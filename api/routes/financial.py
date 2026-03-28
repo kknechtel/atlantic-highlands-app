@@ -131,6 +131,14 @@ def get_statement(statement_id: UUID, db: Session = Depends(get_db), user: User 
     )
 
 
+@router.get("/statements/{statement_id}/raw")
+def get_raw_extraction(statement_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    return stmt.raw_extraction or {}
+
+
 @router.get("/statements/{statement_id}/line-items", response_model=List[LineItemResponse])
 def get_line_items(statement_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     items = (

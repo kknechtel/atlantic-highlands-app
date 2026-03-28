@@ -1,14 +1,15 @@
-"""AI Chat routes - chat with documents using Claude/Gemini."""
+"""AI Chat routes - context-aware chat that pulls from documents and financial data."""
 import logging
 import json
 import asyncio
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models.document import Document
+from models.financial import FinancialStatement, FinancialLineItem
 from models.user import User
 from auth import get_current_user
 from services.s3_service import S3Service
@@ -22,7 +23,109 @@ class ChatRequest(BaseModel):
     query: str
     document_id: str | None = None
     project_id: str | None = None
-    model: str = "claude"  # "claude" or "gemini"
+    model: str = "gemini"
+
+
+def _build_financial_context(db: Session) -> str:
+    """Build a rich context string from all extracted financial data."""
+    statements = db.query(FinancialStatement).order_by(
+        FinancialStatement.entity_type, FinancialStatement.fiscal_year
+    ).all()
+
+    if not statements:
+        return ""
+
+    lines = ["=== EXTRACTED FINANCIAL DATA ===\n"]
+
+    for entity in ["town", "school"]:
+        entity_stmts = [s for s in statements if s.entity_type == entity]
+        if not entity_stmts:
+            continue
+
+        name = "Borough of Atlantic Highlands" if entity == "town" else "Atlantic Highlands School District (AHES)"
+        lines.append(f"\n--- {name} ---")
+
+        for s in sorted(entity_stmts, key=lambda x: x.fiscal_year):
+            rev = f"${s.total_revenue:,.0f}" if s.total_revenue else "N/A"
+            exp = f"${s.total_expenditures:,.0f}" if s.total_expenditures else "N/A"
+            fb = f"${s.fund_balance:,.0f}" if s.fund_balance else "N/A"
+            debt = f"${s.total_debt:,.0f}" if s.total_debt else "N/A"
+            surplus = ""
+            if s.total_revenue and s.total_expenditures:
+                diff = s.total_revenue - s.total_expenditures
+                surplus = f", Surplus/Deficit: ${diff:,.0f}"
+
+            lines.append(f"FY {s.fiscal_year}: Revenue={rev}, Expenditures={exp}, Fund Balance={fb}, Debt={debt}{surplus}")
+
+            # Include detailed line items from raw extraction
+            if s.raw_extraction:
+                raw = s.raw_extraction if isinstance(s.raw_extraction, dict) else {}
+                inc = raw.get("income_statement", {})
+                bs_data = raw.get("balance_sheet", {})
+                tax = raw.get("tax_info", {})
+                budget = raw.get("budget_comparison", {})
+
+                details = []
+                for key, label in [
+                    ("property_tax_revenue", "Property Tax"),
+                    ("state_aid", "State Aid"),
+                    ("salaries_wages", "Salaries & Wages"),
+                    ("debt_service", "Debt Service"),
+                    ("county_taxes", "County Taxes"),
+                    ("school_taxes", "School Taxes"),
+                ]:
+                    val = inc.get(key)
+                    if val:
+                        details.append(f"{label}: ${val:,.0f}")
+
+                if tax.get("tax_rate_per_100"):
+                    details.append(f"Tax Rate: ${tax['tax_rate_per_100']}/100")
+                if tax.get("assessed_valuation"):
+                    details.append(f"Assessed Value: ${tax['assessed_valuation']:,.0f}")
+                if bs_data.get("cash_and_investments"):
+                    details.append(f"Cash: ${bs_data['cash_and_investments']:,.0f}")
+                if budget.get("budgeted_expenditures") and budget.get("actual_expenditures"):
+                    var = budget["actual_expenditures"] - budget["budgeted_expenditures"]
+                    details.append(f"Budget Variance: ${var:,.0f}")
+
+                if details:
+                    lines.append(f"  Details: {', '.join(details)}")
+
+    return "\n".join(lines)
+
+
+def _build_document_context(db: Session, document_id: str = None) -> str:
+    """Build context from a specific document or document inventory."""
+    if document_id:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            s3 = S3Service()
+            try:
+                content = s3.download_file(doc.s3_key)
+                import pymupdf
+                pdf = pymupdf.open(stream=content, filetype="pdf")
+                pages = []
+                for i in range(min(30, pdf.page_count)):
+                    t = pdf[i].get_text()
+                    if t.strip():
+                        pages.append(t)
+                pdf.close()
+                text = "\n\n".join(pages)
+                return f"=== DOCUMENT: {doc.filename} (FY: {doc.fiscal_year or 'unknown'}) ===\n{text[:50000]}"
+            except Exception as e:
+                logger.warning(f"Could not load document: {e}")
+                return f"Document: {doc.filename} (could not extract text)"
+
+    # No specific doc - include document inventory
+    docs = db.query(Document).filter(
+        Document.doc_type.in_(["budget", "audit", "financial_statement"])
+    ).order_by(Document.fiscal_year.desc()).all()
+
+    inventory = ["=== AVAILABLE FINANCIAL DOCUMENTS ==="]
+    for d in docs:
+        inventory.append(f"- {d.filename} [{d.category}, {d.doc_type}, FY {d.fiscal_year or '?'}]")
+
+    return "\n".join(inventory[:100])
 
 
 @router.post("/stream")
@@ -31,41 +134,25 @@ async def chat_stream(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Stream a chat response about a document or project."""
+    """Stream a chat response with full financial context."""
 
-    # Build context from document(s)
-    context = ""
-    doc_name = "documents"
+    # Build rich context
+    financial_context = _build_financial_context(db)
+    document_context = _build_document_context(db, req.document_id)
 
-    if req.document_id:
-        doc = db.query(Document).filter(Document.id == req.document_id).first()
-        if doc:
-            doc_name = doc.filename
-            s3 = S3Service()
-            try:
-                content = s3.download_file(doc.s3_key)
-                # Extract text from PDF
-                from services.financial_extractor import pdf_to_markdown
-                text = await pdf_to_markdown(content)
-                if text:
-                    context = f"Document: {doc.filename}\n\n{text[:50000]}"
-            except Exception as e:
-                logger.warning(f"Could not load document content: {e}")
-                context = f"Document: {doc.filename} (content could not be loaded)"
+    system_prompt = f"""You are a financial analyst AI for Atlantic Highlands, New Jersey.
+You have access to REAL financial data extracted from official municipal and school district documents.
+ALWAYS use the actual data provided below to answer questions. NEVER say you don't have data if it's in the context below.
+Cite specific figures with dollar amounts. Reference the fiscal year and source document.
+When comparing years, calculate actual differences and percentages.
+If asked about spending per student, use expenditure data and note that enrollment data may need to be sourced separately.
 
-    elif req.project_id:
-        docs = db.query(Document).filter(Document.project_id == req.project_id).limit(20).all()
-        doc_name = f"{len(docs)} documents"
-        # Include filenames as context
-        doc_list = "\n".join(f"- {d.filename} ({d.doc_type or 'unknown'}, {d.category or 'uncategorized'})" for d in docs)
-        context = f"Project documents:\n{doc_list}"
+{financial_context}
 
-    system_prompt = f"""You are an AI assistant for Atlantic Highlands document analysis.
-You help analyze municipal and school district documents including budgets, audits, agendas, minutes, and financial statements.
-Be specific, cite data from the documents when available, and provide actionable insights.
+{document_context}
 
-Context from {doc_name}:
-{context if context else 'No specific document loaded. Answer based on general knowledge of municipal finance and governance.'}"""
+When referencing documents, mention them by name so the user can look them up.
+Be specific with numbers. Show calculations. Provide insights and analysis."""
 
     if req.model == "gemini" and GEMINI_API_KEY:
         return StreamingResponse(
@@ -78,92 +165,53 @@ Context from {doc_name}:
             media_type="text/event-stream",
         )
     else:
-        # No API keys configured - return a helpful message
-        async def no_key_stream():
-            msg = "AI chat requires an API key. Set ANTHROPIC_API_KEY or GEMINI_API_KEY in your .env file."
-            yield f"data: {json.dumps({'type': 'delta', 'content': msg})}\n\n"
+        async def no_key():
+            yield f"data: {json.dumps({'type': 'delta', 'content': 'Configure ANTHROPIC_API_KEY or GEMINI_API_KEY in .env'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
-        return StreamingResponse(no_key_stream(), media_type="text/event-stream")
+        return StreamingResponse(no_key(), media_type="text/event-stream")
 
 
 async def _stream_claude(system_prompt: str, query: str):
-    """Stream response from Claude."""
     import anthropic
-
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
     try:
         with client.messages.stream(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": query}],
+            model="claude-sonnet-4-20250514", max_tokens=4096,
+            system=system_prompt, messages=[{"role": "user", "content": query}],
         ) as stream:
             for text in stream.text_stream:
                 yield f"data: {json.dumps({'type': 'delta', 'content': text})}\n\n"
-
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
     except Exception as e:
-        logger.error(f"Claude streaming error: {e}")
+        logger.error(f"Claude error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
 
 async def _stream_gemini(system_prompt: str, query: str):
-    """Stream response from Gemini."""
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(api_key=GEMINI_API_KEY)
-
         full_prompt = f"{system_prompt}\n\nUser question: {query}"
+        config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=8192)
 
-        config = types.GenerateContentConfig(
-            temperature=0.3,
-            max_output_tokens=4096,
-        )
-
-        # Gemini streaming
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None,
             lambda: client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=full_prompt,
-                config=config,
+                model="gemini-2.5-flash", contents=full_prompt, config=config,
             ),
         )
 
         if response and response.text:
-            # Send in chunks to simulate streaming
             text = response.text
-            chunk_size = 20
+            chunk_size = 30
             for i in range(0, len(text), chunk_size):
-                chunk = text[i : i + chunk_size]
-                yield f"data: {json.dumps({'type': 'delta', 'content': chunk})}\n\n"
-                await asyncio.sleep(0.02)
+                yield f"data: {json.dumps({'type': 'delta', 'content': text[i:i+chunk_size]})}\n\n"
+                await asyncio.sleep(0.01)
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
     except Exception as e:
-        logger.error(f"Gemini streaming error: {e}")
+        logger.error(f"Gemini error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
-
-
-@router.post("/ask")
-async def chat_ask(
-    req: ChatRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Non-streaming chat endpoint (returns full response)."""
-    # Reuse streaming logic but collect all text
-    context = ""
-    if req.document_id:
-        doc = db.query(Document).filter(Document.id == req.document_id).first()
-        if doc:
-            context = f"Document: {doc.filename}"
-
-    # Simple non-streaming response
-    return {"response": "Configure ANTHROPIC_API_KEY or GEMINI_API_KEY for AI chat."}

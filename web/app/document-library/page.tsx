@@ -7,7 +7,6 @@ import {
   getDocuments,
   createProject,
   deleteDocument,
-  getDocumentViewUrl,
   searchDocuments,
   getSearchFacets,
   type Project,
@@ -43,7 +42,6 @@ export default function DocumentLibraryPage() {
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [viewerDoc, setViewerDoc] = useState<Document | null>(null);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [chatDoc, setChatDoc] = useState<Document | null>(null);
   const [showChat, setShowChat] = useState(false);
@@ -93,10 +91,8 @@ export default function DocumentLibraryPage() {
     },
   });
 
-  const handleView = async (doc: Document) => {
-    const { url } = await getDocumentViewUrl(doc.id);
+  const handleView = (doc: Document) => {
     setViewerDoc(doc);
-    setViewerUrl(url);
     setShowViewer(true);
   };
 
@@ -288,8 +284,7 @@ export default function DocumentLibraryPage() {
       />
 
       <DocumentViewer
-        url={viewerUrl}
-        filename={viewerDoc?.filename || ""}
+        document={viewerDoc}
         isOpen={showViewer}
         onClose={() => setShowViewer(false)}
       />

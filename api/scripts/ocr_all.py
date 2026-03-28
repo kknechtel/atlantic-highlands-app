@@ -53,6 +53,8 @@ for i, doc in enumerate(docs):
         pdf.close()
 
         if markdown and len(markdown.strip()) > 50:
+            # Strip NUL bytes that break PostgreSQL
+            markdown = markdown.replace("\x00", "")
             doc.extracted_text = markdown
             doc.page_count = page_count
             doc.status = "processed"

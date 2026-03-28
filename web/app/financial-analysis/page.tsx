@@ -2,88 +2,89 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
-import { getStatements, getAnalyses, type FinancialStatement } from "@/lib/api";
-import StatementsList from "@/components/financial/StatementsList";
-import AnalysisPanel from "@/components/financial/AnalysisPanel";
+import { getDocuments, getStatements, type Document, type FinancialStatement } from "@/lib/api";
+import FinancialDashboard from "@/components/financial/FinancialDashboard";
+import DocumentChatModal from "@/components/DocumentChatModal";
+import FinancialChatPanel from "@/components/financial/FinancialChatPanel";
 import ExtractModal from "@/components/financial/ExtractModal";
-import { PlusIcon, ChartBarSquareIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline";
 
 export default function FinancialAnalysisPage() {
-  const searchParams = useSearchParams();
-  const entityFilter = searchParams.get("entity") || "";
-  const [activeTab, setActiveTab] = useState<"statements" | "analysis">("statements");
   const [showExtract, setShowExtract] = useState(false);
-  const [selectedStatements, setSelectedStatements] = useState<string[]>([]);
+  const [showChat, setShowChat] = useState(true);
 
   const { data: statements } = useQuery({
-    queryKey: ["statements", entityFilter],
-    queryFn: () => getStatements({ entity_type: entityFilter || undefined }),
+    queryKey: ["statements"],
+    queryFn: () => getStatements(),
   });
 
-  const { data: analyses } = useQuery({
-    queryKey: ["analyses", entityFilter],
-    queryFn: () => getAnalyses(entityFilter || undefined),
+  const { data: financialDocs } = useQuery({
+    queryKey: ["financial-docs"],
+    queryFn: () => getDocuments({ doc_type: "budget" }),
   });
 
-  const entityLabel = entityFilter === "town" ? "Town" : entityFilter === "school" ? "School District" : "All Entities";
+  const { data: allFinDocs } = useQuery({
+    queryKey: ["all-financial-docs"],
+    queryFn: async () => {
+      const [budgets, audits, fs] = await Promise.all([
+        getDocuments({ doc_type: "budget" }),
+        getDocuments({ doc_type: "audit" }),
+        getDocuments({ doc_type: "financial_statement" }),
+      ]);
+      return [...budgets, ...audits, ...fs];
+    },
+  });
+
+  // Group docs by entity and year for the dashboard
+  const townDocs = allFinDocs?.filter((d) => d.category === "town") || [];
+  const schoolDocs = allFinDocs?.filter((d) => d.category === "school") || [];
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Financial Analysis</h1>
-          <p className="text-gray-500 mt-1">{entityLabel}</p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowExtract(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-          >
-            <PlusIcon className="w-4 h-4" /> Extract Statement
-          </button>
+    <div className="flex h-full">
+      {/* Main content */}
+      <div className={`flex-1 overflow-auto ${showChat ? "" : ""}`}>
+        <div className="p-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Financial Analysis</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Town & School District - Year over Year Comparison
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowChat(!showChat)}
+                className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg ${
+                  showChat
+                    ? "bg-purple-50 border-purple-300 text-purple-700"
+                    : "border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                {showChat ? "Hide Chat" : "AI Chat"}
+              </button>
+              <button
+                onClick={() => setShowExtract(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+              >
+                <PlusIcon className="w-4 h-4" /> Extract Statement
+              </button>
+            </div>
+          </div>
+
+          <FinancialDashboard
+            townDocs={townDocs}
+            schoolDocs={schoolDocs}
+            statements={statements || []}
+          />
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b mb-6">
-        <button
-          onClick={() => setActiveTab("statements")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "statements"
-              ? "border-primary-600 text-primary-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Statements ({statements?.length || 0})
-        </button>
-        <button
-          onClick={() => setActiveTab("analysis")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "analysis"
-              ? "border-primary-600 text-primary-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Analyses ({analyses?.length || 0})
-        </button>
-      </div>
-
-      {activeTab === "statements" && (
-        <StatementsList
-          statements={statements || []}
-          selectedIds={selectedStatements}
-          onSelectionChange={setSelectedStatements}
-          onAnalyze={() => setActiveTab("analysis")}
-        />
-      )}
-
-      {activeTab === "analysis" && (
-        <AnalysisPanel
-          analyses={analyses || []}
-          statements={statements || []}
-          preSelectedIds={selectedStatements}
-        />
+      {/* Chat panel */}
+      {showChat && (
+        <div className="w-[400px] border-l bg-white flex flex-col h-full">
+          <FinancialChatPanel documents={allFinDocs || []} />
+        </div>
       )}
 
       {showExtract && <ExtractModal onClose={() => setShowExtract(false)} />}

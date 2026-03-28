@@ -288,6 +288,32 @@ export async function toggleUserActive(userId: string) {
   return request(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" });
 }
 
+// ─── Processing ───────────────────────────────────────────────────────
+
+export interface ProcessingStats {
+  total: number;
+  processed: number;
+  processing: number;
+  uploaded: number;
+  errors: number;
+}
+
+export async function processDocuments(params?: { document_ids?: string[]; project_id?: string }) {
+  return request<{ detail: string; count: number }>("/api/processing/run", {
+    method: "POST",
+    body: JSON.stringify(params || {}),
+  });
+}
+
+export async function processSingleDocument(documentId: string) {
+  return request<{ detail: string }>(`/api/processing/single/${documentId}`, { method: "POST" });
+}
+
+export async function getProcessingStats(projectId?: string): Promise<ProcessingStats> {
+  const qs = projectId ? `?project_id=${projectId}` : "";
+  return request<ProcessingStats>(`/api/processing/stats${qs}`);
+}
+
 // ─── Search ───────────────────────────────────────────────────────────
 
 export interface SearchResult {

@@ -10,7 +10,7 @@ from typing import Optional
 
 from .crawlers import AHNJCrawler, ECode360Crawler, TriDistrictCrawler
 from .scraper import BasicScraper
-from .utils import categorize_url, url_to_filename, source_to_entity_type
+from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, detect_doc_type_from_name, detect_fiscal_year
 
 logger = logging.getLogger("ah_scraper")
 
@@ -122,10 +122,17 @@ async def run_scraper(
                 # Download and upload each document
                 for doc_info in docs:
                     try:
-                        filename = url_to_filename(doc_info["url"])
+                        # Use descriptive name from URL tree
+                        descriptive_name = url_to_descriptive_name(
+                            doc_info["url"],
+                            source_page=doc_info.get("source_page", ""),
+                            title=doc_info.get("title", ""),
+                        )
+                        raw_filename = url_to_filename(doc_info["url"])
 
-                        # Skip if already in DB
-                        if filename.lower() in existing_filenames:
+                        # Skip if already in DB (check both names)
+                        if (descriptive_name.lower() in existing_filenames
+                                or raw_filename.lower() in existing_filenames):
                             _scraper_status["documents_skipped"] += 1
                             continue
 
@@ -134,31 +141,35 @@ async def run_scraper(
                         if not content:
                             continue
 
-                        # Determine S3 key
+                        # Categorize from URL and descriptive name
                         category = categorize_url(doc_info["url"])
                         entity_type = source_to_entity_type(crawler.source_name)
-                        s3_key = f"scraped/{crawler.source_name}/{category}/{filename}"
+                        doc_type = detect_doc_type_from_name(descriptive_name)
+                        fiscal_year = detect_fiscal_year(descriptive_name)
+                        s3_key = f"scraped/{crawler.source_name}/{category}/{descriptive_name}"
 
                         if s3_key in existing_keys:
                             _scraper_status["documents_skipped"] += 1
                             continue
 
                         # Upload to S3
-                        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+                        content_type = mimetypes.guess_type(raw_filename)[0] or "application/octet-stream"
                         s3.upload_file(content, s3_key, content_type)
 
-                        # Create database record
+                        # Create database record with rich metadata
                         doc_record = Document(
                             project_id=project.id,
-                            filename=filename,
-                            original_filename=filename,
+                            filename=descriptive_name,
+                            original_filename=raw_filename,
                             s3_key=s3_key,
                             s3_bucket=s3.bucket,
                             file_size=len(content),
                             content_type=content_type,
-                            doc_type=category,
+                            doc_type=doc_type,
                             category=entity_type,
+                            fiscal_year=fiscal_year,
                             uploaded_by=user_id or project.created_by,
+                            status="uploaded",
                             metadata_={
                                 "source_url": doc_info["url"],
                                 "source_page": doc_info.get("source_page"),
@@ -168,13 +179,15 @@ async def run_scraper(
                             },
                         )
                         db.add(doc_record)
-                        existing_filenames.add(filename.lower())
+                        existing_filenames.add(descriptive_name.lower())
+                        existing_filenames.add(raw_filename.lower())
                         existing_keys.add(s3_key)
                         _scraper_status["documents_uploaded"] += 1
                         all_uploaded.append({
-                            "filename": filename,
+                            "filename": descriptive_name,
                             "source": crawler.source_name,
                             "category": category,
+                            "doc_type": doc_type,
                             "url": doc_info["url"],
                         })
 

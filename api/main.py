@@ -31,12 +31,14 @@ from routes.documents import router as documents_router
 from routes.projects import router as projects_router
 from routes.financial import router as financial_router
 from routes.admin import router as admin_router
+from routes.scraper import router as scraper_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(financial_router, prefix="/api/financial", tags=["financial-analysis"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+app.include_router(scraper_router, prefix="/api/scraper", tags=["scraper"])
 
 
 @app.on_event("startup")

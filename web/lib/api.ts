@@ -287,3 +287,27 @@ export async function getAdminUsers() {
 export async function toggleUserActive(userId: string) {
   return request(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" });
 }
+
+// ─── Scraper ──────────────────────────────────────────────────────────
+
+export interface ScraperStatus {
+  running: boolean;
+  current_site: string | null;
+  documents_found: number;
+  documents_uploaded: number;
+  documents_skipped: number;
+  errors: string[];
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export async function startScraper(sites?: string[], projectId?: string, dryRun?: boolean) {
+  return request<{ detail: string }>("/api/scraper/run", {
+    method: "POST",
+    body: JSON.stringify({ sites, project_id: projectId, dry_run: dryRun }),
+  });
+}
+
+export async function getScraperStatus(): Promise<ScraperStatus> {
+  return request<ScraperStatus>("/api/scraper/status");
+}

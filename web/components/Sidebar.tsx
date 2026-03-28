@@ -12,6 +12,7 @@ import {
   DocumentTextIcon,
   BuildingOfficeIcon,
   AcademicCapIcon,
+  GlobeAltIcon,
 } from "@heroicons/react/24/outline";
 
 const navItems = [
@@ -26,6 +27,7 @@ const navItems = [
       { name: "School District", href: "/financial-analysis?entity=school", icon: AcademicCapIcon },
     ],
   },
+  { name: "Scraper", href: "/scraper", icon: GlobeAltIcon },
   { name: "Admin", href: "/admin", icon: Cog6ToothIcon, adminOnly: true },
 ];
 

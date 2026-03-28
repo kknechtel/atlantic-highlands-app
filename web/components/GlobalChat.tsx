@@ -40,11 +40,12 @@ export default function GlobalChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [sessionId, setSessionId] = useState<string>(() => `session_${Date.now()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
       role: "assistant",
-      content: "I'm the Atlantic Highlands AI Analyst. I have access to 728 indexed documents including budgets, audits, financial statements, agendas, minutes, and ordinances.\n\nAsk me anything about the town or school district finances, governance, or operations.",
+      content: "I'm the Atlantic Highlands Expert. I've indexed 728 documents covering budgets, audits, financial statements, council minutes, school board agendas, ordinances, and resolutions from 2004 to present.\n\nI know this town's finances, governance, and school district operations. Ask me anything specific.",
       timestamp: new Date(),
     },
   ]);
@@ -130,7 +131,7 @@ export default function GlobalChat() {
     setIsStreaming(true);
 
     try {
-      const body: any = { query: text, model: "gemini" };
+      const body: any = { query: text, model: "gemini", session_id: sessionId };
       if (selectedDoc) body.document_id = selectedDoc.id;
 
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
@@ -236,7 +237,7 @@ export default function GlobalChat() {
           <div className="flex items-center gap-2">
             <SparklesIcon className="w-5 h-5" />
             <div>
-              <span className="font-semibold text-sm">AI Forensic Analyst</span>
+              <span className="font-semibold text-sm">Atlantic Highlands Expert</span>
               <span className="text-purple-200 text-xs ml-2">728 docs indexed</span>
             </div>
           </div>

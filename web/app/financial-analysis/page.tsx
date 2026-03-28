@@ -5,13 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { getDocuments, getStatements, type Document, type FinancialStatement } from "@/lib/api";
 import FinancialDashboard from "@/components/financial/FinancialDashboard";
 import DocumentChatModal from "@/components/DocumentChatModal";
-import FinancialChatPanel from "@/components/financial/FinancialChatPanel";
+// Chat is now global via GlobalChat component
 import ExtractModal from "@/components/financial/ExtractModal";
 import { PlusIcon, ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline";
 
 export default function FinancialAnalysisPage() {
   const [showExtract, setShowExtract] = useState(false);
-  const [showChat, setShowChat] = useState(true);
+  const [showChat, setShowChat] = useState(false);
 
   const { data: statements } = useQuery({
     queryKey: ["statements"],
@@ -79,13 +79,6 @@ export default function FinancialAnalysisPage() {
           />
         </div>
       </div>
-
-      {/* Chat panel */}
-      {showChat && (
-        <div className="w-[400px] border-l bg-white flex flex-col h-full">
-          <FinancialChatPanel documents={allFinDocs || []} />
-        </div>
-      )}
 
       {showExtract && <ExtractModal onClose={() => setShowExtract(false)} />}
     </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/app/contexts/AuthContext";
 import Sidebar from "@/components/Sidebar";
+import GlobalChat from "@/components/GlobalChat";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -15,6 +16,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <Sidebar />
           <main className="flex-1 overflow-auto">{children}</main>
         </div>
+        <GlobalChat />
       </AuthProvider>
     </QueryClientProvider>
   );

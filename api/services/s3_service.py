@@ -17,21 +17,32 @@ LOCAL_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "st
 class S3Service:
     def __init__(self):
         self.bucket = S3_BUCKET
-        self.use_local = not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY
+        # Try boto3 default credential chain first (IAM role, env vars, config file)
+        # Fall back to local storage only if boto3 can't connect
+        self.use_local = False
+        self.client = None
+        self.local_dir = LOCAL_STORAGE_DIR
 
-        if self.use_local:
-            os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
-            logger.info(f"S3Service using LOCAL storage: {LOCAL_STORAGE_DIR}")
-            self.client = None
-        else:
+        try:
             import boto3
-            self.client = boto3.client(
-                "s3",
-                region_name=AWS_REGION,
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            )
+            if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+                self.client = boto3.client(
+                    "s3",
+                    region_name=AWS_REGION,
+                    aws_access_key_id=AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                )
+            else:
+                # Use default credential chain (IAM role, ~/.aws/credentials, etc.)
+                self.client = boto3.client("s3", region_name=AWS_REGION)
+            # Test connection
+            self.client.head_bucket(Bucket=self.bucket)
             logger.info(f"S3Service initialized: bucket={self.bucket}, region={AWS_REGION}")
+        except Exception as e:
+            logger.info(f"S3 not available ({e}), using LOCAL storage: {LOCAL_STORAGE_DIR}")
+            self.use_local = True
+            self.client = None
+            os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
 
     def upload_file(self, content: bytes, key: str, content_type: str = None) -> str:
         if self.use_local:

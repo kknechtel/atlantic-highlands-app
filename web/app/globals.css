@@ -6,7 +6,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* Green scrollbar theme */
+/* Brand teal scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -14,11 +14,11 @@ body {
   background: #f1f5f9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #10b981;
+  background: #5aa39c;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #059669;
+  background: #385854;
 }
 
 /* Mobile-friendly adjustments */
@@ -26,6 +26,78 @@ body {
   .prose {
     font-size: 14px;
   }
+}
+
+/* Prose inside chat bubbles - tighter spacing */
+.enhanced-markdown.prose {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.enhanced-markdown.prose h1,
+.enhanced-markdown.prose h2,
+.enhanced-markdown.prose h3,
+.enhanced-markdown.prose h4 {
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+  color: #385854;
+}
+.enhanced-markdown.prose h1 { font-size: 1.25rem; }
+.enhanced-markdown.prose h2 { font-size: 1.1rem; }
+.enhanced-markdown.prose h3 { font-size: 1rem; }
+.enhanced-markdown.prose p {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+.enhanced-markdown.prose ul,
+.enhanced-markdown.prose ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+  padding-left: 1.2em;
+}
+.enhanced-markdown.prose li {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+.enhanced-markdown.prose table {
+  font-size: 0.8rem;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.enhanced-markdown.prose th,
+.enhanced-markdown.prose td {
+  padding: 0.3em 0.6em;
+  border: 1px solid #e5e7eb;
+}
+.enhanced-markdown.prose th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.enhanced-markdown.prose strong {
+  color: #1f2937;
+}
+.enhanced-markdown.prose a {
+  color: #385854;
+  text-decoration: underline;
+}
+.enhanced-markdown.prose code {
+  font-size: 0.8em;
+  background: #f1f5f9;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+.enhanced-markdown.prose pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 0.75em 1em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+.enhanced-markdown.prose blockquote {
+  border-left: 3px solid #385854;
+  padding-left: 0.75em;
+  color: #6b7280;
+  margin: 0.5em 0;
 }
 
 /* Line clamp utility */

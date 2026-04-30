@@ -20,6 +20,7 @@ const DEFAULT_USER: User = {
   username: "admin",
   full_name: "Admin",
   is_admin: true,
+  is_active: true,
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {

@@ -25,7 +25,7 @@ export default function Dashboard() {
           value={projects?.length || 0}
         />
         <StatCard
-          icon={<DocumentTextIcon className="w-8 h-8 text-green-500" />}
+          icon={<DocumentTextIcon className="w-8 h-8 text-primary-500" />}
           label="Documents"
           value={totalDocs}
         />

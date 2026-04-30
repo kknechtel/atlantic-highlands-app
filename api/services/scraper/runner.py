@@ -8,7 +8,7 @@ import mimetypes
 from datetime import datetime
 from typing import Optional
 
-from .crawlers import AHNJCrawler, ECode360Crawler, TriDistrictCrawler
+from .crawlers import AHNJCrawler, ECode360Crawler, TriDistrictCrawler, NJStateCrawler, OPRACrawler, PoliceCrawler, FireCrawler, CountyCrawler, CensusCrawler
 from .scraper import BasicScraper
 from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, detect_doc_type_from_name, detect_fiscal_year
 
@@ -91,7 +91,7 @@ async def run_scraper(
         for (fn,) in existing_fn_docs:
             existing_filenames.add(fn.lower())
 
-        all_sites = sites or ["ahnj", "ecode", "tri"]
+        all_sites = sites or ["ahnj", "ecode", "tri", "nj_state", "opra", "police", "fire", "county", "census"]
         all_uploaded = []
 
         # ── Crawl each site ───────────────────────────────────────
@@ -99,6 +99,12 @@ async def run_scraper(
             "ahnj": ("ahnj.com", AHNJCrawler),
             "ecode": ("ecode360.com", ECode360Crawler),
             "tri": ("tridistrict.org", TriDistrictCrawler),
+            "nj_state": ("NJ State / Courts", NJStateCrawler),
+            "opra": ("OPRAmachine", OPRACrawler),
+            "police": ("Police/Crime Data", PoliceCrawler),
+            "fire": ("Fire/EMS Data", FireCrawler),
+            "county": ("Monmouth County", CountyCrawler),
+            "census": ("Census ACS Data", CensusCrawler),
         }
 
         for site_key in all_sites:

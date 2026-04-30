@@ -48,7 +48,7 @@ export default function DocumentViewer({ document: doc, isOpen, onClose }: Docum
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full capitalize">{doc.category}</span>
             )}
             {doc.doc_type && (
-              <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full">{doc.doc_type}</span>
+              <span className="px-2 py-0.5 bg-primary-50 text-primary-600 rounded-full">{doc.doc_type}</span>
             )}
             {doc.fiscal_year && (
               <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">FY {doc.fiscal_year}</span>

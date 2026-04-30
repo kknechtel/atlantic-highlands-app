@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 
 from .config import (
     DOWNLOAD_EXTENSIONS,
+    SKIP_EXTENSIONS,
     REQUEST_DELAY,
     REQUEST_TIMEOUT,
     MAX_RETRIES,
@@ -35,6 +36,11 @@ class BasicScraper:
 
     def fetch_page(self, url: str) -> BeautifulSoup | None:
         """Fetch a page and return parsed HTML."""
+        # Skip media files that aren't HTML pages
+        url_lower = url.lower()
+        if any(url_lower.endswith(ext) for ext in SKIP_EXTENSIONS):
+            logger.debug(f"Skipping media file: {url}")
+            return None
         for attempt in range(MAX_RETRIES):
             try:
                 logger.info(f"Fetching: {url}")
@@ -64,10 +70,16 @@ class BasicScraper:
             parsed = urlparse(full_url)
             path_lower = parsed.path.lower()
 
+            # Skip audio/video/image files
+            if any(path_lower.endswith(ext) for ext in SKIP_EXTENSIONS):
+                continue
+
             is_document = any(path_lower.endswith(ext) for ext in DOWNLOAD_EXTENSIONS)
             if not is_document:
                 if "download" in href.lower() or "document" in href.lower():
-                    is_document = True
+                    # But still skip if it's a media file
+                    if not any(path_lower.endswith(ext) for ext in SKIP_EXTENSIONS):
+                        is_document = True
 
             if is_document:
                 link_text = link.get_text(strip=True) or url_to_filename(full_url)

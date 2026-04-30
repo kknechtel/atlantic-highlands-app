@@ -12,13 +12,19 @@ import {
 } from "@heroicons/react/24/outline";
 
 const SITES = [
-  { key: "ahnj", name: "ahnj.com", desc: "Borough of Atlantic Highlands" },
-  { key: "ecode", name: "ecode360.com", desc: "Document Archive (Agendas, Minutes, Codes)" },
-  { key: "tri", name: "tridistrict.org", desc: "Henry Hudson Regional School District" },
+  { key: "ahnj", name: "ahnj.com", desc: "Borough website — Planning Board, Council Archives, Budgets, Ordinances" },
+  { key: "ecode", name: "ecode360.com", desc: "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets" },
+  { key: "tri", name: "tridistrict.org", desc: "School district — BOE Minutes, Archives, District Reports" },
+  { key: "nj_state", name: "NJ State / Courts", desc: "ACFR school finance, Sea Bright court opinions, Master Plan, Housing Plan" },
+  { key: "opra", name: "OPRAmachine", desc: "Crowdsourced OPRA public records requests for Atlantic Highlands" },
+  { key: "police", name: "Police / Crime", desc: "SpotCrime, CrimeMapping, Nixle alerts, AHPD blotter" },
+  { key: "fire", name: "Fire / EMS", desc: "PulsePoint, Monmouth County OEM, Fire Dept reports" },
+  { key: "county", name: "Monmouth County", desc: "County clerk archives, property records, tax data" },
+  { key: "census", name: "Census ACS", desc: "Demographics, income, housing, poverty data via Census API" },
 ];
 
 export default function ScraperPage() {
-  const [selectedSites, setSelectedSites] = useState<string[]>(["ahnj", "ecode", "tri"]);
+  const [selectedSites, setSelectedSites] = useState<string[]>(["ahnj", "ecode", "tri", "nj_state"]);
   const [polling, setPolling] = useState(false);
 
   const { data: status, refetch } = useQuery({

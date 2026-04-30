@@ -128,7 +128,7 @@ export default function DocumentDetailsModal({ document: doc, isOpen, onClose, o
               <button
                 onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
               >
                 <CheckIcon className="w-4 h-4" /> Save
               </button>
@@ -227,8 +227,7 @@ export default function DocumentDetailsModal({ document: doc, isOpen, onClose, o
 
       {/* Document viewer */}
       <DocumentViewer
-        url={viewerUrl}
-        filename={doc.filename}
+        document={doc}
         isOpen={showViewer}
         onClose={() => setShowViewer(false)}
       />

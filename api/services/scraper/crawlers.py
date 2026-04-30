@@ -209,6 +209,241 @@ class ECode360Crawler:
             self.driver = None
 
 
+class OPRACrawler:
+    """Crawler for OPRAmachine.com - crowdsourced OPRA requests for Atlantic Highlands.
+    Requires Selenium due to Cloudflare protection."""
+
+    def __init__(self):
+        self.source_name = "opra"
+        self.config = SOURCES.get("opra", {})
+        self.driver = None
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        self.driver = _get_stealth_driver()
+        if not self.driver:
+            logger.warning("Cannot crawl OPRAmachine without Chrome — Cloudflare protection")
+            return []
+
+        try:
+            # Try multiple possible slugs
+            for slug in ["atlantic_highlands", "borough_of_atlantic_highlands"]:
+                url = f"https://opramachine.com/body/{slug}"
+                logger.info(f"  Trying OPRAmachine: {url}")
+                self.driver.get(url)
+                time.sleep(8)
+
+                title = self.driver.title
+                if "Attention Required" in title or "moment" in title.lower():
+                    logger.warning(f"  Cloudflare blocking, waiting longer...")
+                    time.sleep(15)
+
+                if "Not Found" in self.driver.page_source or "404" in self.driver.title:
+                    continue
+
+                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+
+                # Find OPRA request links
+                for link in soup.find_all("a", href=True):
+                    href = link["href"]
+                    if "/request/" in href:
+                        full_url = urljoin("https://opramachine.com", href)
+                        link_text = link.get_text(strip=True) or "OPRA Request"
+                        all_docs.append({
+                            "url": full_url,
+                            "title": f"OPRA: {link_text}",
+                            "source_page": url,
+                            "category": "opra",
+                        })
+
+                # Also grab any PDF attachments
+                for link in soup.find_all("a", href=True):
+                    if ".pdf" in link["href"].lower():
+                        full_url = urljoin("https://opramachine.com", link["href"])
+                        all_docs.append({
+                            "url": full_url,
+                            "title": link.get_text(strip=True) or "OPRA Attachment",
+                            "source_page": url,
+                            "category": "opra",
+                        })
+
+                if all_docs:
+                    logger.info(f"  OPRAmachine: found {len(all_docs)} items from {slug}")
+                    break
+
+        except Exception as e:
+            logger.error(f"OPRAmachine crawl error: {e}", exc_info=True)
+        finally:
+            self._cleanup()
+
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
+
+
+class PoliceCrawler:
+    """Crawler for police/crime data sources."""
+
+    def __init__(self):
+        self.source_name = "police"
+        self.config = SOURCES.get("police", {})
+        self.basic = BasicScraper()
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        for url in self.config.get("pages_to_crawl", []):
+            try:
+                soup = self.basic.fetch_page(url)
+                if soup:
+                    docs = self.basic.find_document_links(soup, url)
+                    all_docs.extend(docs)
+                    if docs:
+                        logger.info(f"  Police: found {len(docs)} documents on {url}")
+            except Exception as e:
+                logger.warning(f"Police scrape failed for {url}: {e}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
+class FireCrawler:
+    """Crawler for fire/EMS data sources."""
+
+    def __init__(self):
+        self.source_name = "fire"
+        self.config = SOURCES.get("fire", {})
+        self.basic = BasicScraper()
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        for url in self.config.get("pages_to_crawl", []):
+            try:
+                soup = self.basic.fetch_page(url)
+                if soup:
+                    docs = self.basic.find_document_links(soup, url)
+                    all_docs.extend(docs)
+                    if docs:
+                        logger.info(f"  Fire/EMS: found {len(docs)} documents on {url}")
+            except Exception as e:
+                logger.warning(f"Fire scrape failed for {url}: {e}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
+class CountyCrawler:
+    """Crawler for Monmouth County records."""
+
+    def __init__(self):
+        self.source_name = "county"
+        self.config = SOURCES.get("county", {})
+        self.basic = BasicScraper()
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        for url in self.config.get("pages_to_crawl", []):
+            try:
+                soup = self.basic.fetch_page(url)
+                if soup:
+                    docs = self.basic.find_document_links(soup, url)
+                    all_docs.extend(docs)
+                    # Also follow subpages
+                    subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
+                    for sub in subpages[:15]:
+                        sub_soup = self.basic.fetch_page(sub)
+                        if sub_soup:
+                            sub_docs = self.basic.find_document_links(sub_soup, sub)
+                            all_docs.extend(sub_docs)
+                    if docs:
+                        logger.info(f"  County: found {len(docs)} documents on {url}")
+            except Exception as e:
+                logger.warning(f"County scrape failed for {url}: {e}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
+class CensusCrawler:
+    """Fetches Census ACS data via API and saves as a JSON document."""
+
+    def __init__(self):
+        self.source_name = "census"
+        self.config = SOURCES.get("census", {})
+
+    def find_documents(self) -> list[dict]:
+        api_config = self.config.get("api_config", {})
+        if not api_config:
+            return []
+
+        variables = api_config.get("variables", [])
+        state = api_config.get("state_fips", "34")
+        place = api_config.get("place_fips", "01960")
+
+        try:
+            import requests, json
+            var_str = ",".join(["NAME"] + variables)
+            url = f"https://api.census.gov/data/2022/acs/acs5?get={var_str}&for=place:{place}&in=state:{state}"
+            resp = requests.get(url, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Save as a synthetic document
+                from pathlib import Path
+                out_dir = Path(__file__).parent.parent.parent / "storage" / "census"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                out_file = out_dir / "atlantic_highlands_acs_2022.json"
+                with open(out_file, "w") as f:
+                    json.dump({"source": "Census ACS 5-Year 2022", "raw": data, "variables": variables}, f, indent=2)
+                logger.info(f"  Census: saved ACS data to {out_file}")
+                return [{
+                    "url": str(out_file),
+                    "title": "Atlantic Highlands Census ACS 2022 Demographics",
+                    "source_page": url,
+                    "category": "census",
+                }]
+        except Exception as e:
+            logger.warning(f"Census API failed: {e}")
+        return []
+
+    def _cleanup(self):
+        pass
+
+
+class NJStateCrawler:
+    """Downloads direct PDF links from NJ state sources, court opinions, and key documents."""
+
+    def __init__(self):
+        self.source_name = "nj_state"
+        self.config = SOURCES["nj_state"]
+        self.basic = BasicScraper()
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        for url in self.config.get("direct_downloads", []):
+            filename = url.split("/")[-1]
+            if not filename or "." not in filename:
+                filename = url.split("/")[-2] + ".pdf"
+            all_docs.append({
+                "url": url,
+                "title": filename,
+                "source_page": url,
+                "category": "nj_state",
+            })
+            logger.info(f"  Queued direct download: {filename}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
 class TriDistrictCrawler:
     """Crawler for tridistrict.org (School District)."""
 

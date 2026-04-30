@@ -38,6 +38,7 @@ from routes.processing import router as processing_router
 from routes.export import router as export_router
 from routes.websearch import router as websearch_router
 from routes.reports import router as reports_router
+from routes.calendar import router as calendar_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -51,6 +52,7 @@ app.include_router(processing_router, prefix="/api/processing", tags=["processin
 app.include_router(export_router, prefix="/api/export", tags=["export"])
 app.include_router(websearch_router, prefix="/api/websearch", tags=["websearch"])
 app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
+app.include_router(calendar_router, prefix="/api/calendar", tags=["calendar"])
 
 
 @app.on_event("startup")

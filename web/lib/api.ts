@@ -33,6 +33,7 @@ export interface User {
   username: string;
   full_name: string | null;
   is_admin: boolean;
+  is_active: boolean;
 }
 
 export async function login(email: string, password: string) {
@@ -103,7 +104,12 @@ export async function uploadMultipleDocuments(files: File[], projectId: string, 
 }
 
 export async function getDocumentViewUrl(documentId: string): Promise<{ url: string }> {
-  return request<{ url: string }>(`/api/documents/${documentId}/view-url`);
+  const result = await request<{ url: string }>(`/api/documents/${documentId}/view-url`);
+  // If URL is relative (local storage), prepend the API base
+  if (result.url && result.url.startsWith("/")) {
+    result.url = `${API_BASE}${result.url}`;
+  }
+  return result;
 }
 
 export async function updateDocument(documentId: string, update: Partial<Document>) {
@@ -132,7 +138,7 @@ export interface LineItem {
 
 export interface FinancialAnalysisResult {
   id: string; name: string; entity_type: string; analysis_type: string;
-  fiscal_years: string[]; results: Record<string, unknown>;
+  fiscal_years: string[]; results: Record<string, any>;
   summary: string | null; created_at: string;
 }
 
@@ -261,6 +267,21 @@ export async function generateReport(reportType: string, entityType?: string, cu
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ report_type: reportType, entity_type: entityType, custom_prompt: customPrompt }),
   });
+}
+
+// ─── Calendar Events ──────────────────────────────────────────────────
+
+export interface CalendarEvent {
+  id: string; date: string; title: string; time: string | null;
+  location: string | null; description: string | null; source: string;
+}
+
+export async function getCalendarEvents(year?: number, month?: number): Promise<CalendarEvent[]> {
+  const params = new URLSearchParams();
+  if (year) params.set("year", String(year));
+  if (month) params.set("month", String(month));
+  const qs = params.toString();
+  return request<CalendarEvent[]>(`/api/calendar/events${qs ? `?${qs}` : ""}`);
 }
 
 // ─── Admin ────────────────────────────────────────────────────────────

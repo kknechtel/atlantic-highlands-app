@@ -32,6 +32,7 @@ class ChatRequest(BaseModel):
     scope_type: str = "all"  # all, document, project, category
     scope_id: str | None = None
     model: str = "gemini"
+    web_search: bool = False
 
 
 class ChatHistoryResponse(BaseModel):
@@ -45,28 +46,40 @@ def _build_system_prompt(db: Session, document_id: str = None, query: str = "") 
     """Build a comprehensive system prompt with all AH knowledge."""
 
     # 1. Core identity and background knowledge
-    background = """You are the Atlantic Highlands AI Expert - a deeply knowledgeable analyst specializing in the Borough of Atlantic Highlands, NJ and its school district.
+    background = """You are the Atlantic Highlands AI Expert - a deeply knowledgeable municipal analyst specializing in the Borough of Atlantic Highlands, NJ and its school districts.
 
-BACKGROUND:
-- Atlantic Highlands is a borough in Monmouth County, NJ (pop ~4,400)
-- Governed by a Mayor-Council form of government
-- School district: Atlantic Highlands Elementary School (AHES), pre-K through 8th grade
-- Part of the Henry Hudson Regional School District (Tri-District) with Highlands Borough
-- Henry Hudson Regional High School (HHRS) serves both communities
+BOROUGH FACTS:
+- Atlantic Highlands is a borough in Monmouth County, NJ (pop ~4,318, 2025 est)
+- Governed by a Borough form (weak mayor / strong council) under New Jersey's Faulkner Act
+- Mayor: Lori Hohenleitner (D, term ends Dec 2027). 6-member council, staggered 3-year terms
+- Borough Hall: 100 First Avenue. ZIP: 07716. Bayshore Region on Raritan Bay
+- Notable: Mount Mitchill (highest point on eastern seaboard south of Maine), SeaStreak ferry to Manhattan
+- Municipal harbor: 715 watercraft capacity, largest on East Coast
+- Key boards: Planning Board, Zoning Board, Environmental Commission, Historic Preservation Commission, Harbor Commission
+- Volunteer Fire Department: Hook & Ladder Co. No. 1, AH Hose Co. No. 1, Robert B. Mantell Hose Co. No. 2
 
-You have access to a comprehensive document library of 728+ indexed documents including:
-- Municipal budgets (2004-2026)
-- Annual audit reports
-- Annual financial statements
-- Borough council meeting minutes and agendas
-- Ordinances and resolutions
-- School board meeting minutes and agendas
-- School district budgets, audits, and comprehensive financial reports
-- Legal documents, OPRA requests, and more
+SCHOOL DISTRICT (major restructuring 2022-2024):
+- Pre-July 2024: "Tri-District" — Atlantic Highlands School District (AHES, PreK-6), Highlands School District (PreK-6), Henry Hudson Regional High School (7-12). Shared superintendent since June 2021.
+- January 2022: Governor Murphy signed S-3488 providing regionalization incentives. Kean University feasibility study estimated $270K one-time savings.
+- September 2023: Voters in both AH and Highlands approved referendum to consolidate all three into single PK-12 district.
+- July 1, 2024: New **Henry Hudson Regional School District** became operational.
+- Current schools: AHES (PreK-6, 282 students), Highlands Elementary (PreK-6, 153), HHRS (7-12, 278). Total ~725 students, 8.4:1 ratio.
+- Superintendent: Dr. Tara Beams. Business Administrator: Janet Sherlock. Board: 9 members (5 Highlands, 4 AH).
+- Sea Bright dispute (2024-present): Sea Bright seeking to leave Oceanport/Shore Regional and join Henry Hudson. NJ Supreme Court ruled Sea Bright has standing. Litigation ongoing.
+
+KEY HISTORICAL EVENTS IN DOCUMENTS:
+- 2012-2018: Superstorm Sandy — AH received $17.2M in federal aid (largest of any NJ municipality). FEMA STEP program, RREM grants.
+- 2022-2024: School regionalization — S-3488 legislation, Kean study, voter referendum, district consolidation.
+- 2024 election: Allegations of $500K financial wrongdoing investigated and found unfounded (Two River Times).
+- Waterfront development: Brant Point project (16 upscale homes, starting $2.8M).
+- 2024 tax rate: 1.665 general rate. Municipal rate decreased 2020-2024 while property values rose.
+
+DOCUMENT LIBRARY:
+You have access to 860+ indexed documents (2004-present) including budgets, audits, financial statements, council meeting minutes/agendas, ordinances, resolutions, school board minutes, CAFRs, legal documents, and more.
 
 ALWAYS cite specific documents and figures. Use [source: filename] format for citations.
-When discussing finances, show actual dollar amounts and year-over-year changes.
-Be specific, authoritative, and analytical. You ARE the expert on this town."""
+When discussing finances, show actual dollar amounts, percentages, and year-over-year changes.
+Be specific, authoritative, and analytical. Present information in well-structured markdown with headers, bullet points, and tables where appropriate. You ARE the expert on this town."""
 
     # 2. Financial data summary
     financial_context = _build_financial_summary(db)
@@ -309,6 +322,12 @@ async def chat_stream(
     # Build system prompt with full context
     system_prompt = _build_system_prompt(db, req.document_id, req.query)
 
+    # When web search is enabled, add explicit instruction
+    if req.web_search:
+        system_prompt += """
+
+WEB SEARCH ENABLED: The user has enabled web search. You MUST use the web_search tool for EVERY query to supplement your document knowledge with current information from the internet. Always search first, then combine web results with your document knowledge to give the most complete answer. Do not skip web search — the user explicitly requested it."""
+
     # Load chat history for this session
     history = []
     if req.session_id:
@@ -321,7 +340,7 @@ async def chat_stream(
     # Save user message
     _save_message(db, session_id, "user", req.query, req.scope_type, req.scope_id)
 
-    if req.model == "gemini" and GEMINI_API_KEY:
+    if req.model == "gemini" and GEMINI_API_KEY and not req.web_search:
         return StreamingResponse(
             _stream_gemini(system_prompt, req.query, history, db, session_id, req.scope_type, req.scope_id),
             media_type="text/event-stream",
@@ -329,7 +348,7 @@ async def chat_stream(
         )
     elif ANTHROPIC_API_KEY:
         return StreamingResponse(
-            _stream_claude(system_prompt, req.query, history, db, session_id, req.scope_type, req.scope_id),
+            _stream_claude(system_prompt, req.query, history, db, session_id, req.scope_type, req.scope_id, req.web_search),
             media_type="text/event-stream",
             headers={"X-Session-Id": session_id},
         )
@@ -342,22 +361,115 @@ async def chat_stream(
         return StreamingResponse(no_key(), media_type="text/event-stream", headers={"X-Session-Id": session_id})
 
 
-async def _stream_claude(system_prompt, query, history, db, session_id, scope_type, scope_id):
+def _web_search(query: str, max_results: int = 5) -> str:
+    """Execute a web search using DuckDuckGo and return formatted results."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+        if not results:
+            return "No web results found."
+        lines = []
+        for r in results:
+            lines.append(f"**{r.get('title', '')}**")
+            lines.append(f"{r.get('body', '')}")
+            lines.append(f"Source: {r.get('href', '')}")
+            lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Web search failed: {e}")
+        return f"Web search failed: {e}"
+
+
+WEB_SEARCH_TOOL = {
+    "name": "web_search",
+    "description": "Search the web for current information about Atlantic Highlands, NJ municipal affairs, school district news, property taxes, government decisions, or any topic the user asks about that may need up-to-date information beyond the indexed documents. Use this when the user asks about recent events, current officials, news, or anything that may have changed after the documents were indexed.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The search query to find relevant web information"
+            }
+        },
+        "required": ["query"]
+    }
+}
+
+
+async def _stream_claude(system_prompt, query, history, db, session_id, scope_type, scope_id, web_search=False):
     import anthropic
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    messages = history[-10:]  # Last 10 messages for context
+    messages = history[-10:]
     messages.append({"role": "user", "content": query})
+
+    tools = [WEB_SEARCH_TOOL] if web_search else []
 
     full_response = ""
     try:
-        with client.messages.stream(
+        # First call - may request tool use if web_search enabled
+        create_kwargs = dict(
             model="claude-sonnet-4-20250514", max_tokens=4096,
             system=system_prompt, messages=messages,
-        ) as stream:
-            for text in stream.text_stream:
-                full_response += text
-                yield f"data: {json.dumps({'type': 'delta', 'content': text, 'session_id': session_id})}\n\n"
+        )
+        if tools:
+            create_kwargs["tools"] = tools
+            create_kwargs["tool_choice"] = {"type": "any"}  # Force tool use on first call when web search enabled
+        logger.info(f"Claude call: web_search={web_search}, tools={len(tools)}, stop_reason will follow...")
+        response = client.messages.create(**create_kwargs)
+        logger.info(f"Claude response: stop_reason={response.stop_reason}, content_types={[b.type for b in response.content]}")
+
+        # Handle tool use loop
+        while response.stop_reason == "tool_use":
+            # Find the tool use block
+            tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+            if not tool_use_block:
+                break
+
+            # Stream any text before tool use
+            for block in response.content:
+                if block.type == "text" and block.text:
+                    full_response += block.text
+                    yield f"data: {json.dumps({'type': 'delta', 'content': block.text, 'session_id': session_id})}\n\n"
+
+            # Signal searching
+            search_msg = "\n\n*Searching the web...*\n\n"
+            yield f"data: {json.dumps({'type': 'delta', 'content': search_msg, 'session_id': session_id})}\n\n"
+            full_response += search_msg
+
+            # Execute web search
+            search_query = tool_use_block.input.get("query", query)
+            logger.info(f"Claude requesting web search: {search_query}")
+
+            loop = asyncio.get_event_loop()
+            search_results = await loop.run_in_executor(None, lambda: _web_search(search_query))
+
+            # Send tool result back to Claude
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_block.id,
+                    "content": search_results,
+                }],
+            })
+
+            # Get next response - switch to auto so Claude can give final text answer
+            follow_kwargs = {**create_kwargs, "messages": messages, "tool_choice": {"type": "auto"}}
+            response = client.messages.create(**follow_kwargs)
+
+        # Stream the final text response
+        for block in response.content:
+            if block.type == "text" and block.text:
+                chunk_size = 30
+                text = block.text
+                for i in range(0, len(text), chunk_size):
+                    chunk = text[i:i + chunk_size]
+                    full_response += chunk
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk, 'session_id': session_id})}\n\n"
+                    await asyncio.sleep(0.01)
 
         _save_message(db, session_id, "assistant", full_response, scope_type, scope_id)
         yield f"data: {json.dumps({'type': 'done', 'session_id': session_id})}\n\n"

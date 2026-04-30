@@ -22,7 +22,7 @@ import {
 } from "recharts";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-const COLORS = ["#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
+const COLORS = ["#2563eb", "#385854", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
 const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "-";
 const fmtShort = (n: number) => {
   if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
@@ -101,7 +101,7 @@ export default function StatementsPage() {
         <div className="flex gap-3">
           <a
             href={`${API_BASE}/api/export/financial-statements`}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
             <ArrowDownTrayIcon className="w-4 h-4" /> Download Excel
           </a>
@@ -139,9 +139,9 @@ export default function StatementsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip formatter={(v) => fmt(v as number)} />
                 <Legend />
-                <Bar dataKey="Revenue" fill="#10b981" />
+                <Bar dataKey="Revenue" fill="#385854" />
                 <Bar dataKey="Expenditures" fill="#ef4444" />
               </BarChart>
             </ResponsiveContainer>
@@ -156,7 +156,7 @@ export default function StatementsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => fmt(v)} />
+                  <Tooltip formatter={(v) => fmt(v as number)} />
                   <Line type="monotone" dataKey="Fund Balance" stroke="#2563eb" strokeWidth={3} dot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -172,7 +172,7 @@ export default function StatementsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => fmt(v)} />
+                  <Tooltip formatter={(v) => fmt(v as number)} />
                   <Line type="monotone" dataKey="Debt" stroke="#ef4444" strokeWidth={3} dot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -221,9 +221,9 @@ export default function StatementsPage() {
       <div className="bg-white rounded-xl shadow overflow-hidden mb-6">
         <button
           onClick={() => toggleSection("revenue")}
-          className="w-full flex items-center justify-between px-6 py-4 bg-green-50 border-b hover:bg-green-100"
+          className="w-full flex items-center justify-between px-6 py-4 bg-primary-50 border-b hover:bg-primary-100"
         >
-          <h3 className="font-semibold text-green-800">Income Statement - Revenue</h3>
+          <h3 className="font-semibold text-primary-700">Income Statement - Revenue</h3>
           {expandedSections.has("revenue") ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
         </button>
         {expandedSections.has("revenue") && (

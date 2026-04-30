@@ -3,14 +3,12 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  getProjects,
   getDocuments,
   createProject,
   deleteDocument,
   getDocumentViewUrl,
   searchDocuments,
   getSearchFacets,
-  type Project,
   type Document,
 } from "@/lib/api";
 import UploadModal from "@/components/UploadModal";
@@ -19,23 +17,32 @@ import {
   FolderPlusIcon,
   ArrowUpTrayIcon,
   TrashIcon,
-  EyeIcon,
   MagnifyingGlassIcon,
   ChatBubbleLeftRightIcon,
   DocumentTextIcon,
   SparklesIcon,
-  TagIcon,
+  CalendarIcon,
   XMarkIcon,
   ArrowTopRightOnSquareIcon,
   ArrowDownTrayIcon,
-  FolderIcon,
-  CalendarIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
+  BuildingOfficeIcon,
+  AcademicCapIcon,
+  FolderIcon,
 } from "@heroicons/react/24/outline";
+
+const brandColor = "#385854";
+
+interface GroupNode {
+  label: string;
+  icon?: any;
+  docs: Document[];
+  children: Map<string, GroupNode>;
+}
 
 export default function DocumentLibraryPage() {
   const queryClient = useQueryClient();
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
@@ -43,32 +50,32 @@ export default function DocumentLibraryPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [chatDoc, setChatDoc] = useState<Document | null>(null);
   const [showChat, setShowChat] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: getProjects });
   const { data: documents } = useQuery({
-    queryKey: ["documents", selectedProject, categoryFilter, docTypeFilter],
+    queryKey: ["documents", categoryFilter, docTypeFilter],
     queryFn: () =>
       getDocuments({
-        project_id: selectedProject || undefined,
         category: categoryFilter || undefined,
         doc_type: docTypeFilter || undefined,
       }),
   });
 
   const { data: facets } = useQuery({
-    queryKey: ["facets", selectedProject],
-    queryFn: () => getSearchFacets(selectedProject || undefined),
+    queryKey: ["facets"],
+    queryFn: () => getSearchFacets(),
   });
 
   const { data: searchResults } = useQuery({
-    queryKey: ["search", search, selectedProject, categoryFilter, docTypeFilter],
+    queryKey: ["search", search, categoryFilter, docTypeFilter],
     queryFn: () =>
       searchDocuments(search, {
-        project_id: selectedProject || undefined,
         category: categoryFilter || undefined,
         doc_type: docTypeFilter || undefined,
       }),
@@ -103,138 +110,252 @@ export default function DocumentLibraryPage() {
     }
   };
 
+  // Filter documents
   const displayDocs = useMemo(() => {
+    let docs = documents || [];
     if (search.length > 1 && searchResults) {
       const ids = new Set(searchResults.map((r) => r.id));
-      return (documents || []).filter((d) => ids.has(d.id));
+      docs = docs.filter((d) => ids.has(d.id));
     }
-    return documents || [];
-  }, [documents, search, searchResults]);
+    if (yearFilter) {
+      docs = docs.filter((d) => d.fiscal_year === yearFilter);
+    }
+    if (deptFilter) {
+      docs = docs.filter((d) => d.department === deptFilter);
+    }
+    return docs;
+  }, [documents, search, searchResults, yearFilter, deptFilter]);
+
+  // Get unique fiscal years for filter
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    (documents || []).forEach((d) => { if (d.fiscal_year) years.add(d.fiscal_year); });
+    return Array.from(years).sort().reverse();
+  }, [documents]);
+
+  // Get unique departments for filter
+  const availableDepts = useMemo(() => {
+    const depts = new Set<string>();
+    (documents || []).forEach((d) => { if (d.department) depts.add(d.department); });
+    return Array.from(depts).sort();
+  }, [documents]);
+
+  // Build hierarchy: Entity (town/school/other) > Doc Type > Documents
+  const hierarchy = useMemo(() => {
+    const root = new Map<string, GroupNode>();
+
+    const entityOrder = ["town", "school", "general"];
+    const entityLabels: Record<string, string> = {
+      town: "Borough of Atlantic Highlands",
+      school: "School District",
+      general: "General / Uncategorized",
+    };
+    const entityIcons: Record<string, any> = {
+      town: BuildingOfficeIcon,
+      school: AcademicCapIcon,
+      general: FolderIcon,
+    };
+
+    for (const doc of displayDocs) {
+      const entity = doc.category || "general";
+      const docType = doc.doc_type || "other";
+
+      if (!root.has(entity)) {
+        root.set(entity, {
+          label: entityLabels[entity] || entity,
+          icon: entityIcons[entity] || FolderIcon,
+          docs: [],
+          children: new Map(),
+        });
+      }
+      const entityNode = root.get(entity)!;
+
+      if (!entityNode.children.has(docType)) {
+        entityNode.children.set(docType, {
+          label: formatDocType(docType),
+          docs: [],
+          children: new Map(),
+        });
+      }
+      entityNode.children.get(docType)!.docs.push(doc);
+    }
+
+    // Sort docs within each group by fiscal year desc, then filename
+    root.forEach((entityNode) => {
+      entityNode.children.forEach((typeNode) => {
+        typeNode.docs.sort((a, b) => {
+          const ya = a.fiscal_year || "";
+          const yb = b.fiscal_year || "";
+          if (ya !== yb) return yb.localeCompare(ya);
+          return a.filename.localeCompare(b.filename);
+        });
+      });
+    });
+
+    // Return in entity order
+    const sorted = new Map<string, GroupNode>();
+    for (const key of entityOrder) {
+      if (root.has(key)) sorted.set(key, root.get(key)!);
+    }
+    // Add any remaining
+    root.forEach((v, k) => { if (!sorted.has(k)) sorted.set(k, v); });
+    return sorted;
+  }, [displayDocs]);
+
+  const toggleCollapse = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const collapseAll = () => {
+    const allKeys = new Set<string>();
+    hierarchy.forEach((entityNode, entityKey) => {
+      allKeys.add(entityKey);
+      entityNode.children.forEach((_, typeKey) => {
+        allKeys.add(`${entityKey}:${typeKey}`);
+      });
+    });
+    setCollapsed(allKeys);
+  };
+
+  const expandAll = () => {
+    setCollapsed(new Set());
+  };
 
   const docTypeColor = (type: string | null) => {
     const colors: Record<string, string> = {
-      budget: "bg-green-100 text-green-700",
-      audit: "bg-blue-100 text-blue-700",
-      financial_statement: "bg-purple-100 text-purple-700",
-      minutes: "bg-yellow-100 text-yellow-700",
-      agenda: "bg-orange-100 text-orange-700",
-      ordinance: "bg-red-100 text-red-700",
-      resolution: "bg-indigo-100 text-indigo-700",
-      legal: "bg-pink-100 text-pink-700",
+      budget: "bg-emerald-50 text-emerald-700",
+      audit: "bg-blue-50 text-blue-700",
+      financial_statement: "bg-purple-50 text-purple-700",
+      minutes: "bg-amber-50 text-amber-700",
+      agenda: "bg-orange-50 text-orange-700",
+      ordinance: "bg-red-50 text-red-700",
+      resolution: "bg-indigo-50 text-indigo-700",
+      legal: "bg-pink-50 text-pink-700",
     };
     return colors[type || ""] || "bg-gray-100 text-gray-600";
   };
 
+  const isSearching = search.length > 1;
+
   return (
     <div className="flex h-full">
-      {/* Left: Document list (scrollable) */}
-      <div className={`${selectedDoc ? "w-[400px]" : "flex-1"} flex flex-col border-r bg-white transition-all`}>
+      {/* Left: Document list */}
+      <div className={`${selectedDoc ? "w-[420px]" : "flex-1"} flex flex-col border-r border-gray-200 bg-white transition-all min-w-0`}>
         {/* Header */}
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-bold text-gray-900">Documents</h1>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowNewProject(true)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200"
-                title="New Project"
-              >
-                <FolderPlusIcon className="w-4 h-4" />
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-lg font-semibold text-gray-900">Documents</h1>
+            <div className="flex gap-1">
+              <button onClick={collapseAll}
+                className="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200" title="Collapse all">
+                Collapse
               </button>
-              {selectedProject && (
-                <button
-                  onClick={() => setShowUpload(true)}
-                  className="p-1.5 text-green-600 hover:text-green-700 rounded hover:bg-green-50"
-                  title="Upload"
-                >
-                  <ArrowUpTrayIcon className="w-4 h-4" />
-                </button>
-              )}
+              <button onClick={expandAll}
+                className="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200" title="Expand all">
+                Expand
+              </button>
+              <button onClick={() => setShowUpload(true)}
+                className="p-1.5 rounded-md hover:opacity-80 text-white" style={{ backgroundColor: brandColor }} title="Upload">
+                <ArrowUpTrayIcon className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
           {/* Search */}
           <div className="relative mb-2">
             <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search document content..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-            />
+              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent bg-white"
+              style={{ "--tw-ring-color": brandColor } as React.CSSProperties} />
           </div>
 
           {/* Filters */}
-          <div className="flex gap-2 text-xs">
-            <select
-              value={selectedProject || ""}
-              onChange={(e) => setSelectedProject(e.target.value || null)}
-              className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs"
-            >
-              <option value="">All Projects</option>
-              {projects?.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-2 py-1.5 border border-gray-300 rounded text-xs"
-            >
-              <option value="">Category</option>
+          <div className="grid grid-cols-2 gap-1.5 mb-1">
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
+              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All Entities</option>
               <option value="town">Town</option>
               <option value="school">School</option>
             </select>
-            <select
-              value={docTypeFilter}
-              onChange={(e) => setDocTypeFilter(e.target.value)}
-              className="px-2 py-1.5 border border-gray-300 rounded text-xs"
-            >
-              <option value="">Type</option>
-              {facets && Object.keys(facets.doc_types).map((k) => (
+            <select value={docTypeFilter} onChange={(e) => setDocTypeFilter(e.target.value)}
+              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All Types</option>
+              {facets && Object.keys(facets.doc_types).sort().map((k) => (
                 <option key={k} value={k === "unclassified" ? "" : k}>{k}</option>
               ))}
             </select>
           </div>
-          <div className="text-xs text-gray-400 mt-1">{displayDocs.length} documents</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}
+              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All Years</option>
+              {availableYears.map((y) => <option key={y} value={y}>FY {y}</option>)}
+            </select>
+            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}
+              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All Departments</option>
+              {availableDepts.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="text-[11px] text-gray-400 mt-1">{displayDocs.length} documents</div>
         </div>
 
-        {/* Document list */}
+        {/* Document hierarchy */}
         <div className="flex-1 overflow-y-auto">
-          {displayDocs.map((doc) => (
-            <button
-              key={doc.id}
-              onClick={() => handleSelectDoc(doc)}
-              className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 transition-colors ${
-                selectedDoc?.id === doc.id ? "bg-green-50 border-l-4 border-l-green-500" : ""
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <DocumentTextIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    {doc.doc_type && (
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${docTypeColor(doc.doc_type)}`}>
-                        {doc.doc_type}
-                      </span>
-                    )}
-                    {doc.category && (
-                      <span className="text-[10px] text-gray-400 capitalize">{doc.category}</span>
-                    )}
-                    {doc.fiscal_year && (
-                      <span className="text-[10px] text-gray-400">FY{doc.fiscal_year}</span>
-                    )}
-                  </div>
-                  {doc.notes && (
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{doc.notes}</p>
-                  )}
+          {isSearching ? (
+            // Flat list for search results
+            displayDocs.map((doc) => (
+              <DocRow key={doc.id} doc={doc} isSelected={selectedDoc?.id === doc.id}
+                onClick={() => handleSelectDoc(doc)} docTypeColor={docTypeColor} />
+            ))
+          ) : (
+            // Hierarchical view
+            Array.from(hierarchy.entries()).map(([entityKey, entityNode]) => {
+              const entityCollapsed = collapsed.has(entityKey);
+              const entityDocCount = Array.from(entityNode.children.values()).reduce((s, n) => s + n.docs.length, 0);
+              const EntityIcon = entityNode.icon || FolderIcon;
+
+              return (
+                <div key={entityKey}>
+                  {/* Entity header */}
+                  <button onClick={() => toggleCollapse(entityKey)}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-200 hover:bg-gray-100 transition-colors">
+                    {entityCollapsed ? <ChevronRightIcon className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDownIcon className="w-3.5 h-3.5 text-gray-400" />}
+                    <EntityIcon className="w-4 h-4" style={{ color: brandColor }} />
+                    <span className="text-sm font-semibold text-gray-900 flex-1 text-left">{entityNode.label}</span>
+                    <span className="text-[11px] text-gray-400">{entityDocCount}</span>
+                  </button>
+
+                  {!entityCollapsed && Array.from(entityNode.children.entries()).map(([typeKey, typeNode]) => {
+                    const typeCollapsedKey = `${entityKey}:${typeKey}`;
+                    const typeCollapsed = collapsed.has(typeCollapsedKey);
+
+                    return (
+                      <div key={typeKey}>
+                        {/* Doc type header */}
+                        <button onClick={() => toggleCollapse(typeCollapsedKey)}
+                          className="w-full flex items-center gap-2 pl-8 pr-4 py-2 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          {typeCollapsed ? <ChevronRightIcon className="w-3 h-3 text-gray-400" /> : <ChevronDownIcon className="w-3 h-3 text-gray-400" />}
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${docTypeColor(typeKey)}`}>{typeNode.label}</span>
+                          <span className="text-[11px] text-gray-400 ml-auto">{typeNode.docs.length}</span>
+                        </button>
+
+                        {!typeCollapsed && typeNode.docs.map((doc) => (
+                          <DocRow key={doc.id} doc={doc} isSelected={selectedDoc?.id === doc.id}
+                            onClick={() => handleSelectDoc(doc)} docTypeColor={docTypeColor} indent />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
-                <ChevronRightIcon className="w-3 h-3 text-gray-300 mt-1 flex-shrink-0" />
-              </div>
-            </button>
-          ))}
+              );
+            })
+          )}
           {displayDocs.length === 0 && (
             <div className="px-4 py-12 text-center text-gray-400 text-sm">
               {search ? "No documents match your search." : "No documents found."}
@@ -245,59 +366,50 @@ export default function DocumentLibraryPage() {
 
       {/* Right: Selected document detail + viewer */}
       {selectedDoc ? (
-        <div className="flex-1 flex flex-col bg-gray-100">
+        <div className="flex-1 flex flex-col bg-gray-50">
           {/* Doc info bar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
+          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
             <div className="flex items-center gap-2 min-w-0">
-              <DocumentTextIcon className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <DocumentTextIcon className="w-4 h-4 flex-shrink-0" style={{ color: brandColor }} />
               <span className="text-sm font-medium text-gray-900 truncate">{selectedDoc.filename}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => { setChatDoc(selectedDoc); setShowChat(true); }}
-                className="p-1.5 text-gray-400 hover:text-purple-600 rounded hover:bg-gray-100"
-                title="Chat about this document"
-              >
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={() => { setChatDoc(selectedDoc); setShowChat(true); }}
+                className="p-1.5 text-gray-400 hover:text-purple-600 rounded-md hover:bg-gray-100" title="Chat">
                 <ChatBubbleLeftRightIcon className="w-4 h-4" />
               </button>
               {viewerUrl && (
                 <a href={viewerUrl} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100" title="Open">
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" title="Open">
                   <ArrowTopRightOnSquareIcon className="w-4 h-4" />
                 </a>
               )}
               {viewerUrl && (
                 <a href={viewerUrl} download={selectedDoc.filename}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100" title="Download">
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" title="Download">
                   <ArrowDownTrayIcon className="w-4 h-4" />
                 </a>
               )}
-              <button
-                onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(selectedDoc.id); }}
-                className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
-                title="Delete"
-              >
+              <button onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(selectedDoc.id); }}
+                className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-gray-100" title="Delete">
                 <TrashIcon className="w-4 h-4" />
               </button>
               <button onClick={() => { setSelectedDoc(null); setViewerUrl(null); }}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100">
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100">
                 <XMarkIcon className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Split: AI summary on top, document viewer below */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* AI Summary panel */}
+            {/* AI Summary */}
             {selectedDoc.notes && (
-              <div className="bg-white border-b px-5 py-4">
+              <div className="bg-white border-b border-gray-200 px-5 py-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <SparklesIcon className="w-4 h-4 text-green-600" />
-                  <h3 className="text-xs font-bold text-green-700 uppercase tracking-wider">AI Summary</h3>
+                  <SparklesIcon className="w-4 h-4" style={{ color: brandColor }} />
+                  <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: brandColor }}>AI Summary</h3>
                 </div>
                 <p className="text-sm text-gray-700 leading-relaxed">{selectedDoc.notes}</p>
-
-                {/* Metadata badges */}
                 <div className="flex flex-wrap gap-2 mt-3">
                   {selectedDoc.doc_type && (
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docTypeColor(selectedDoc.doc_type)}`}>
@@ -305,7 +417,7 @@ export default function DocumentLibraryPage() {
                     </span>
                   )}
                   {selectedDoc.category && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 capitalize">
+                    <span className="px-2 py-0.5 rounded-full text-xs capitalize" style={{ backgroundColor: `${brandColor}10`, color: brandColor }}>
                       {selectedDoc.category}
                     </span>
                   )}
@@ -317,18 +429,12 @@ export default function DocumentLibraryPage() {
                   <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
                     {formatBytes(selectedDoc.file_size)}
                   </span>
+                  {selectedDoc.department && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                      {selectedDoc.department}
+                    </span>
+                  )}
                 </div>
-
-                {/* AI Tags */}
-                {(selectedDoc as any).metadata_?.ai_tags && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {((selectedDoc as any).metadata_.ai_tags as string[]).map((tag, i) => (
-                      <span key={i} className="px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded text-[10px] border">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
@@ -343,7 +449,7 @@ export default function DocumentLibraryPage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-400">
-                    <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="text-green-400 hover:underline">
+                    <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: `${brandColor}cc` }}>
                       Open file in new tab
                     </a>
                   </div>
@@ -355,8 +461,7 @@ export default function DocumentLibraryPage() {
           </div>
         </div>
       ) : (
-        /* No doc selected - show overview */
-        !selectedDoc && documents && documents.length > 0 && (
+        documents && documents.length > 0 && (
           <div className="flex-1 flex items-center justify-center bg-gray-50">
             <div className="text-center text-gray-400">
               <DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
@@ -368,14 +473,12 @@ export default function DocumentLibraryPage() {
       )}
 
       {/* Modals */}
-      {showUpload && selectedProject && (
-        <UploadModal projectId={selectedProject} onClose={() => setShowUpload(false)} />
+      {showUpload && (
+        <UploadModal projectId="default" onClose={() => setShowUpload(false)} />
       )}
-
       {showChat && chatDoc && (
         <DocumentChatModal document={chatDoc} isOpen={showChat} onClose={() => setShowChat(false)} />
       )}
-
       {showNewProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
@@ -390,9 +493,10 @@ export default function DocumentLibraryPage() {
                 <option value="school">School District</option>
               </select>
               <div className="flex justify-end gap-3">
-                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm text-gray-600">Cancel</button>
+                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
                 <button onClick={() => createProjectMutation.mutate()} disabled={!newProjectName}
-                  className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">Create</button>
+                  className="px-4 py-2 text-sm text-white rounded-lg hover:opacity-90 disabled:opacity-50"
+                  style={{ backgroundColor: brandColor }}>Create</button>
               </div>
             </div>
           </div>
@@ -400,6 +504,46 @@ export default function DocumentLibraryPage() {
       )}
     </div>
   );
+}
+
+function DocRow({ doc, isSelected, onClick, docTypeColor, indent }: {
+  doc: Document; isSelected: boolean; onClick: () => void;
+  docTypeColor: (t: string | null) => string; indent?: boolean;
+}) {
+  return (
+    <button onClick={onClick}
+      className={`w-full text-left ${indent ? "pl-12" : "pl-4"} pr-4 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+        isSelected ? "border-l-4 bg-gray-50" : ""
+      }`}
+      style={isSelected ? { borderLeftColor: brandColor, backgroundColor: `${brandColor}08` } : {}}>
+      <div className="flex items-center gap-2 min-w-0">
+        <DocumentTextIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-gray-900 truncate">{doc.filename}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {doc.fiscal_year && <span className="text-[10px] text-gray-400">FY {doc.fiscal_year}</span>}
+            {doc.department && <span className="text-[10px] text-gray-400">{doc.department}</span>}
+          </div>
+        </div>
+        <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+      </div>
+    </button>
+  );
+}
+
+function formatDocType(type: string): string {
+  const labels: Record<string, string> = {
+    budget: "Budgets",
+    audit: "Audit Reports",
+    financial_statement: "Financial Statements",
+    minutes: "Meeting Minutes",
+    agenda: "Agendas",
+    ordinance: "Ordinances",
+    resolution: "Resolutions",
+    legal: "Legal Documents",
+    other: "Other Documents",
+  };
+  return labels[type] || type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ");
 }
 
 function formatBytes(bytes: number): string {

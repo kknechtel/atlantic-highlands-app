@@ -1,6 +1,8 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import Providers from "@/components/Providers";
+import dynamic from "next/dynamic";
+
+const Providers = dynamic(() => import("@/components/Providers"), { ssr: false });
 
 export const metadata: Metadata = {
   title: "Atlantic Highlands",

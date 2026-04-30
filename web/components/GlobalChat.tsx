@@ -12,7 +12,8 @@ import {
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+// Use relative URLs in browser so Next.js rewrite proxy handles it (avoids HTTPS/HTTP mixed content)
+const API_BASE = "";
 
 export default function GlobalChat() {
   const [isOpen, setIsOpen] = useState(false);

@@ -153,7 +153,7 @@ export default function CalendarPage() {
                   : [];
                 // Document-derived titles as fallback
                 const docTitles = hasDocEvents && !hasBoroughEvents
-                  ? [...new Set(dateDocs!.map(d => extractMeetingTitle(d.filename, d.doc_type)))]
+                  ? Array.from(new Set(dateDocs!.map(d => extractMeetingTitle(d.filename, d.doc_type))))
                   : [];
                 const titles = boroughTitles.length > 0 ? boroughTitles : docTitles;
 

@@ -80,7 +80,7 @@ export interface Document {
 
 export async function getDocuments(params?: { project_id?: string; category?: string; doc_type?: string }): Promise<Document[]> {
   // Fetch all pages — paginated to fit Amplify Lambda response limits
-  const PAGE_SIZE = 500;
+  const PAGE_SIZE = 200;
   const baseQuery = new URLSearchParams();
   if (params?.project_id) baseQuery.set("project_id", params.project_id);
   if (params?.category) baseQuery.set("category", params.category);

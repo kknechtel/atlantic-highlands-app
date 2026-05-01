@@ -229,12 +229,14 @@ def confirm_upload(
         filename=req.filename,
         original_filename=req.filename,
         s3_key=req.s3_key,
+        s3_bucket=s3.bucket,
         file_size=req.file_size,
         content_type=req.content_type,
         doc_type=req.doc_type,
         category=req.category,
         fiscal_year=req.fiscal_year,
         status="uploaded",
+        uploaded_by=user.id,
     )
     db.add(doc)
     db.commit()

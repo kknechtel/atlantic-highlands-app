@@ -27,6 +27,7 @@ import {
   ArrowDownTrayIcon,
   ChevronRightIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   BuildingOfficeIcon,
   AcademicCapIcon,
   FolderIcon,
@@ -243,8 +244,8 @@ export default function DocumentLibraryPage() {
 
   return (
     <div className="flex h-full">
-      {/* Left: Document list */}
-      <div className={`${selectedDoc ? "w-[420px]" : "flex-1"} flex flex-col border-r border-gray-200 bg-white transition-all min-w-0`}>
+      {/* Left: Document list (hidden on mobile when doc selected) */}
+      <div className={`${selectedDoc ? "hidden md:flex w-[420px]" : "flex-1"} flex flex-col border-r border-gray-200 bg-white transition-all min-w-0`}>
         {/* Header */}
         <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
@@ -275,7 +276,7 @@ export default function DocumentLibraryPage() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-2 gap-1.5 mb-1">
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-1.5 mb-1">
             <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
               className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
               <option value="">All Entities</option>
@@ -368,8 +369,13 @@ export default function DocumentLibraryPage() {
       {selectedDoc ? (
         <div className="flex-1 flex flex-col bg-gray-50">
           {/* Doc info bar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
+          <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-white border-b border-gray-200">
             <div className="flex items-center gap-2 min-w-0">
+              {/* Mobile back button */}
+              <button onClick={() => { setSelectedDoc(null); setViewerUrl(null); }}
+                className="md:hidden p-1 text-gray-400 hover:text-gray-600 rounded-md">
+                <ChevronLeftIcon className="w-5 h-5" />
+              </button>
               <DocumentTextIcon className="w-4 h-4 flex-shrink-0" style={{ color: brandColor }} />
               <span className="text-sm font-medium text-gray-900 truncate">{selectedDoc.filename}</span>
             </div>

@@ -13,12 +13,12 @@ export default function Dashboard() {
   const schoolStatements = statements?.filter((s) => s.entity_type === "school") || [];
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p className="text-gray-500 mt-1">Atlantic Highlands Document Library & Financial Analysis</p>
+    <div className="p-4 md:p-8">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h1>
+      <p className="text-gray-500 mt-1 text-sm md:text-base">Atlantic Highlands Document Library & Financial Analysis</p>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mt-6 md:mt-8">
         <StatCard
           icon={<FolderIcon className="w-8 h-8 text-blue-500" />}
           label="Projects"

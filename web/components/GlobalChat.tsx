@@ -127,18 +127,18 @@ export default function GlobalChat() {
     } finally { setIsStreaming(false); setSelectedDoc(null); }
   };
 
-  // Closed state - FAB button
+  // Closed state - FAB button (higher on mobile to avoid bottom nav)
   if (!isOpen) return (
     <button onClick={() => setIsOpen(true)}
-      className="fixed bottom-6 right-6 z-50 text-white p-4 rounded-full shadow-xl hover:shadow-2xl transition-all hover:scale-105 group"
+      className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white p-3.5 md:p-4 rounded-full shadow-xl hover:shadow-2xl transition-all hover:scale-105 group"
       style={{ backgroundColor: brandColor }}>
-      <SparklesIcon className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+      <SparklesIcon className="w-5 h-5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform" />
     </button>
   );
 
   // Minimized state
   if (isMinimized) return (
-    <div className="fixed bottom-6 right-6 z-50 text-white rounded-full shadow-xl flex items-center gap-2 px-5 py-3 cursor-pointer hover:shadow-2xl"
+    <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white rounded-full shadow-xl flex items-center gap-2 px-4 py-2.5 md:px-5 md:py-3 cursor-pointer hover:shadow-2xl"
       style={{ backgroundColor: brandColor }} onClick={() => setIsMinimized(false)}>
       <SparklesIcon className="w-4 h-4" /><span className="text-sm font-medium">AH Expert</span>
       {isStreaming && <span className="w-2 h-2 bg-white rounded-full animate-pulse" />}
@@ -149,7 +149,12 @@ export default function GlobalChat() {
   const w = isExpanded ? (splitDoc ? "w-[1200px]" : "w-[600px]") : splitDoc ? "w-[900px]" : "w-[440px]";
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 ${w} ${isExpanded ? "h-[85vh]" : "h-[650px]"} flex rounded-2xl shadow-2xl border border-gray-200 overflow-hidden transition-all duration-200`}>
+    <div className={`fixed z-50
+      /* Mobile: full screen */
+      inset-0 md:inset-auto
+      /* Desktop: positioned bottom-right */
+      md:bottom-6 md:right-6 md:${w} ${isExpanded ? "md:h-[85vh]" : "md:h-[650px]"}
+      flex md:rounded-2xl shadow-2xl md:border md:border-gray-200 overflow-hidden transition-all duration-200`}>
       <div className={`${splitDoc ? "w-1/2" : "w-full"} bg-gray-50 flex flex-col`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>

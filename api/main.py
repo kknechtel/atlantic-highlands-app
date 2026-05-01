@@ -5,7 +5,6 @@ Document library + financial analysis for town and school district.
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 
 from config import APP_NAME, ALLOWED_ORIGINS, DEBUG
 from database import init_db
@@ -17,8 +16,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=APP_NAME, version="0.1.0")
-
-app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,

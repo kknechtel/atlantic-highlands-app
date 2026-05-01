@@ -88,9 +88,14 @@ class S3Service:
             # Return a local API endpoint for serving the file
             return f"/api/documents/serve/{key}"
         else:
+            # Include response content-type so browser renders PDF inline
+            params = {"Bucket": self.bucket, "Key": key}
+            if key.lower().endswith(".pdf"):
+                params["ResponseContentType"] = "application/pdf"
+                params["ResponseContentDisposition"] = "inline"
             return self.client.generate_presigned_url(
                 "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
+                Params=params,
                 ExpiresIn=expires_in,
             )
 

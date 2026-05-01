@@ -31,6 +31,7 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 
+@router.get("", response_model=List[ProjectResponse], include_in_schema=False)
 @router.get("/", response_model=List[ProjectResponse])
 def list_projects(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     projects = db.query(Project).all()

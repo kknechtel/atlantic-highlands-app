@@ -64,6 +64,7 @@ class DocumentUpdate(BaseModel):
     notes: str | None = None
 
 
+@router.get("", response_model=List[DocumentListItem], include_in_schema=False)
 @router.get("/", response_model=List[DocumentListItem])
 def list_documents(
     project_id: Optional[str] = Query(None),

@@ -58,6 +58,9 @@ def search_documents(
                    'MaxWords=30, MinWords=10, MaxFragments=2') as snippet
         FROM documents
         WHERE search_vector @@ to_tsquery('english', :query)
+          AND lower(filename) NOT LIKE '%.xlsx'
+          AND lower(filename) NOT LIKE '%.xls'
+          AND lower(filename) NOT LIKE 'document_summaries%'
     """
     params = {"query": tsquery}
 
@@ -84,7 +87,10 @@ def search_documents(
                 Document.filename.ilike(like_query),
                 Document.notes.ilike(like_query),
                 Document.doc_type.ilike(like_query),
-            )
+            ),
+            ~Document.filename.ilike('%.xlsx'),
+            ~Document.filename.ilike('%.xls'),
+            ~Document.filename.ilike('document_summaries%'),
         ).limit(req.limit).all()
 
         return [

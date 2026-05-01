@@ -218,12 +218,17 @@ def _search_relevant_docs(db: Session, query: str) -> str:
         return ""
 
     try:
+        # Exclude derived/internal files (xlsx summaries, etc.) — they aren't real source documents
         results = db.execute(sql_text("""
             SELECT filename, fiscal_year, doc_type, category, notes,
                    substring(extracted_text from 1 for 8000) as text_preview,
                    ts_rank(search_vector, to_tsquery('english', :q)) as score
             FROM documents
             WHERE search_vector @@ to_tsquery('english', :q)
+              AND lower(filename) NOT LIKE '%.xlsx'
+              AND lower(filename) NOT LIKE '%.xls'
+              AND lower(filename) NOT LIKE '%.csv'
+              AND lower(filename) NOT LIKE 'document_summaries%'
             ORDER BY score DESC LIMIT 10
         """), {"q": tsquery}).fetchall()
 
@@ -249,6 +254,9 @@ def _get_document_awareness(db: Session) -> str:
     docs = db.query(Document).filter(
         Document.notes.isnot(None),
         Document.doc_type.in_(["resolution", "ordinance", "budget", "audit", "minutes"]),
+        ~Document.filename.ilike('%.xlsx'),
+        ~Document.filename.ilike('%.xls'),
+        ~Document.filename.ilike('%.csv'),
     ).order_by(desc(Document.fiscal_year)).limit(30).all()
 
     if not docs:

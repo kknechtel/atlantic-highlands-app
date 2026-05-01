@@ -1,4 +1,4 @@
-"""Authentication utilities - JWT-based auth."""
+"""Authentication utilities - JWT-based auth with Google OAuth support."""
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -15,7 +15,7 @@ from models.user import User
 logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def hash_password(password: str) -> str:
@@ -33,30 +33,52 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def _get_or_create_default_user(db: Session) -> User:
-    """Get or create a default admin user (auth disabled)."""
-    user = db.query(User).filter(User.username == "admin").first()
-    if not user:
-        user = User(
-            email="admin@atlantichighlands.local",
-            username="admin",
-            hashed_password="$2b$12$disabled",  # placeholder, auth is off
-            full_name="Admin",
-            is_active=True,
-            is_admin=True,
+def _resolve_user_from_token(
+    credentials: Optional[HTTPAuthorizationCredentials],
+    db: Session,
+) -> User:
+    """Decode JWT and look up user. Does NOT check is_active."""
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
     return user
 
 
-def get_current_user(
+def get_current_user_allow_pending(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    """Auth disabled - returns default admin user."""
-    return _get_or_create_default_user(db)
+    """Returns user even if is_active=False (for /me endpoint and pending screen)."""
+    return _resolve_user_from_token(credentials, db)
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """Verify JWT token and return an active, approved user."""
+    user = _resolve_user_from_token(credentials, db)
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account pending approval")
+    return user
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """Require admin privileges."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     return current_user

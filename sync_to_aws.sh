@@ -39,5 +39,5 @@ echo "  Done."
 
 echo ""
 echo "=== Sync complete! ==="
-echo "  Frontend: https://master.daojq8ovdx8h0.amplifyapp.com"
+echo "  Frontend: https://ahnj.info"
 echo "  Backend:  http://35.173.239.249"

@@ -3,7 +3,7 @@ Atlantic Highlands - Database setup
 PostgreSQL with SQLAlchemy ORM.
 """
 import logging
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import DATABASE_URL
 
@@ -24,6 +24,24 @@ def get_db():
 
 
 def init_db():
-    """Create all tables."""
+    """Create all tables and add any missing columns."""
     Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created")
+    _migrate()
+    logger.info("Database initialized")
+
+
+def _migrate():
+    """Add columns that create_all won't add to existing tables."""
+    new_columns = [
+        ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+    ]
+    with engine.connect() as conn:
+        for table, column, col_type in new_columns:
+            exists = conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = :table AND column_name = :column"
+            ), {"table": table, "column": column}).fetchone()
+            if not exists:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                logger.info(f"Added column {table}.{column}")
+        conn.commit()

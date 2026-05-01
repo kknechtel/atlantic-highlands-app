@@ -36,19 +36,18 @@ export interface User {
   full_name: string | null;
   is_admin: boolean;
   is_active: boolean;
+  must_change_password?: boolean;
+}
+
+export async function changePassword(newPassword: string) {
+  return request<{ detail: string }>("/api/auth/change-password", {
+    method: "POST", body: JSON.stringify({ new_password: newPassword }),
+  });
 }
 
 export async function login(email: string, password: string) {
-  const data = await request<{ access_token: string }>("/api/auth/login", {
+  const data = await request<{ access_token: string; pending_approval?: boolean }>("/api/auth/login", {
     method: "POST", body: JSON.stringify({ email, password }),
-  });
-  localStorage.setItem("ah_token", data.access_token);
-  return data;
-}
-
-export async function register(email: string, username: string, password: string, full_name?: string) {
-  const data = await request<{ access_token: string }>("/api/auth/register", {
-    method: "POST", body: JSON.stringify({ email, username, password, full_name }),
   });
   localStorage.setItem("ah_token", data.access_token);
   return data;
@@ -290,8 +289,28 @@ export async function getCalendarEvents(year?: number, month?: number): Promise<
 
 export interface AdminStats {
   total_users: number; total_projects: number; total_documents: number; total_statements: number;
+  pending_users: number;
+}
+
+export interface Invite {
+  id: string; token: string; email: string | null; is_used: boolean;
+  used_by: string | null; expires_at: string; created_at: string;
+}
+
+export interface AdminUser extends User {
+  created_at: string;
 }
 
 export async function getAdminStats(): Promise<AdminStats> { return request<AdminStats>("/api/admin/stats"); }
-export async function getAdminUsers() { return request<User[]>("/api/admin/users"); }
+export async function getAdminUsers() { return request<AdminUser[]>("/api/admin/users"); }
+export async function approveUser(userId: string) { return request(`/api/admin/users/${userId}/approve`, { method: "PATCH" }); }
 export async function toggleUserActive(userId: string) { return request(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }); }
+export async function toggleUserAdmin(userId: string) { return request(`/api/admin/users/${userId}/toggle-admin`, { method: "PATCH" }); }
+export async function deleteUser(userId: string) { return request(`/api/admin/users/${userId}`, { method: "DELETE" }); }
+export async function createInvite(email?: string, expiresHours: number = 72) {
+  return request<{ token: string; invite_url: string; email: string | null; expires_at: string }>("/api/admin/invites", {
+    method: "POST", body: JSON.stringify({ email: email || null, expires_hours: expiresHours }),
+  });
+}
+export async function getInvites() { return request<Invite[]>("/api/admin/invites"); }
+export async function deleteInvite(inviteId: string) { return request(`/api/admin/invites/${inviteId}`, { method: "DELETE" }); }

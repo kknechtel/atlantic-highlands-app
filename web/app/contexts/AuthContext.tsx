@@ -1,46 +1,103 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { User, getMe, login as apiLogin, register as apiRegister, logout as apiLogout } from "@/lib/api";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { User, getMe, login as apiLogin, logout as apiLogout } from "@/lib/api";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  pendingApproval: boolean;
+  inviteToken: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, username: string, password: string, fullName?: string) => Promise<void>;
+  magicLinkLogin: (inviteToken: string, email: string, password: string, fullName?: string) => Promise<void>;
   logout: () => void;
+  setUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Default user returned when auth is disabled
-const DEFAULT_USER: User = {
-  id: "default",
-  email: "admin@atlantichighlands.local",
-  username: "admin",
-  full_name: "Admin",
-  is_admin: true,
-  is_active: true,
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(DEFAULT_USER);
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pendingApproval, setPendingApproval] = useState(false);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
 
-  const login = async (email: string, password: string) => {
-    setUser(DEFAULT_USER);
-  };
+  // Extract invite token from URL on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get("invite");
+    if (invite) {
+      setInviteToken(invite);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invite");
+      window.history.replaceState({}, "", url.pathname);
+    }
+  }, []);
 
-  const register = async (email: string, username: string, password: string, fullName?: string) => {
-    setUser(DEFAULT_USER);
-  };
+  // Check for existing token on mount
+  useEffect(() => {
+    const token = localStorage.getItem("ah_token");
+    if (token) {
+      getMe()
+        .then((me) => {
+          setUser(me);
+          setPendingApproval(!me.is_active);
+        })
+        .catch(() => {
+          localStorage.removeItem("ah_token");
+          setUser(null);
+          setPendingApproval(false);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, []);
 
-  const logout = () => {
-    setUser(DEFAULT_USER);
-  };
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await apiLogin(email, password);
+    localStorage.setItem("ah_token", data.access_token);
+    if (data.pending_approval) {
+      const me = await getMe();
+      setUser(me);
+      setPendingApproval(true);
+    } else {
+      const me = await getMe();
+      setUser(me);
+      setPendingApproval(false);
+    }
+  }, []);
+
+  const magicLinkLogin = useCallback(async (token: string, email: string, password: string, fullName?: string) => {
+    const res = await fetch("/api/auth/magic-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite_token: token, email, password, full_name: fullName }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Failed to accept invite" }));
+      throw new Error(err.detail || "Failed to accept invite");
+    }
+    const data = await res.json();
+    localStorage.setItem("ah_token", data.access_token);
+    const me = await getMe();
+    setUser(me);
+    setPendingApproval(false);
+    setInviteToken(null);
+  }, []);
+
+  const logout = useCallback(() => {
+    apiLogout();
+    setUser(null);
+    setPendingApproval(false);
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{
+      user, loading, pendingApproval, inviteToken,
+      login, magicLinkLogin, logout, setUser,
+    }}>
       {children}
     </AuthContext.Provider>
   );

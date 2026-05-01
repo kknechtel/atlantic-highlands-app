@@ -1,26 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 
+const brandColor = "#385854";
+
 export default function LoginForm() {
-  const { login, register } = useAuth();
-  const [isRegister, setIsRegister] = useState(false);
+  const { login, magicLinkLogin, inviteToken } = useAuth();
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Invite state
+  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null);
+  const [inviteChecking, setInviteChecking] = useState(false);
+
+  // Check invite token on load
+  useEffect(() => {
+    if (!inviteToken) return;
+    setInviteChecking(true);
+    fetch(`/api/auth/invite/${inviteToken}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setInviteValid(data.valid);
+        if (data.email) {
+          setInviteEmail(data.email);
+          setEmail(data.email);
+        }
+      })
+      .catch(() => setInviteValid(false))
+      .finally(() => setInviteChecking(false));
+  }, [inviteToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      if (isRegister) {
-        await register(email, username, password, fullName || undefined);
+      if (inviteToken && inviteValid) {
+        // Magic link flow: accept invite + set password
+        await magicLinkLogin(inviteToken, email, password, fullName || undefined);
       } else {
+        // Standard login
         await login(email, password);
       }
     } catch (err: any) {
@@ -30,78 +54,125 @@ export default function LoginForm() {
     }
   };
 
+  const isInviteFlow = inviteToken && inviteValid;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
-        <h1 className="text-2xl font-bold text-gray-900 text-center">Atlantic Highlands</h1>
-        <p className="text-sm text-gray-500 text-center mt-1 mb-6">
-          Document Library & Financial Analysis
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
+      <div className="max-w-md w-full">
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          {/* Header */}
+          <div className="flex items-center justify-center mb-1">
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: brandColor }}
+            >
+              <span className="text-white font-bold text-lg">AH</span>
+            </div>
           </div>
+          <h1 className="text-2xl font-bold text-gray-900 text-center mt-3">
+            Atlantic Highlands
+          </h1>
+          <p className="text-sm text-gray-500 text-center mt-1 mb-6">
+            Document Intelligence Platform
+          </p>
 
-          {isRegister && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Username</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          {/* Invite checking */}
+          {inviteToken && inviteChecking && (
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg text-center">
+              <div className="flex items-center justify-center gap-2">
+                <div
+                  className="w-4 h-4 border-2 rounded-full animate-spin"
+                  style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }}
                 />
+                <span className="text-sm text-gray-600">Checking invite...</span>
               </div>
+            </div>
+          )}
+
+          {/* Invalid invite */}
+          {inviteToken && inviteValid === false && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700 text-center">
+                This invite link is invalid or has expired.
+              </p>
+            </div>
+          )}
+
+          {/* Valid invite */}
+          {isInviteFlow && (
+            <div className="mb-4 p-3 rounded-lg border" style={{ borderColor: brandColor, backgroundColor: `${brandColor}08` }}>
+              <p className="text-sm text-center font-medium" style={{ color: brandColor }}>
+                You&apos;ve been invited! Set your password below.
+              </p>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={!!inviteEmail}
+                autoComplete="email"
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-600"
+                style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
+              />
+            </div>
+
+            {isInviteFlow && (
               <div>
-                <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  autoComplete="name"
+                  placeholder="Optional"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:border-transparent"
+                  style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
                 />
               </div>
-            </>
-          )}
+            )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {isInviteFlow ? "Set Password" : "Password"}
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete={isInviteFlow ? "new-password" : "current-password"}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:border-transparent"
+                style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
+              />
+            </div>
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600 text-sm">{error}</p>
+              </div>
+            )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-primary-600 text-white py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-          >
-            {loading ? "..." : isRegister ? "Create Account" : "Sign In"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading || (inviteToken !== null && !inviteValid)}
+              className="w-full text-white py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors font-medium"
+              style={{ backgroundColor: brandColor }}
+            >
+              {loading ? "..." : isInviteFlow ? "Create Account & Sign In" : "Sign In"}
+            </button>
+          </form>
+        </div>
 
-        <button
-          onClick={() => setIsRegister(!isRegister)}
-          className="w-full mt-4 text-sm text-primary-600 hover:text-primary-700"
-        >
-          {isRegister ? "Already have an account? Sign in" : "Need an account? Register"}
-        </button>
+        <p className="text-center text-xs text-gray-400 mt-4">
+          Borough of Atlantic Highlands, NJ
+        </p>
       </div>
     </div>
   );

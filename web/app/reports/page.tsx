@@ -34,9 +34,12 @@ export default function ReportsPage() {
     setIsGenerating(true);
 
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("ah_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const response = await fetch(`${API_BASE}/api/reports/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           report_type: selectedType === "custom" ? "custom" : selectedType,
           entity_type: entityType,

@@ -101,8 +101,11 @@ export default function GlobalChat() {
       const body: any = { query: text, model: webSearchEnabled ? "claude" : "gemini", session_id: sessionId, web_search: webSearchEnabled };
       if (selectedDoc) body.document_id = selectedDoc.id;
 
+      const token = typeof window !== "undefined" ? localStorage.getItem("ah_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const response = await fetch(`${API_BASE}/api/chat/stream`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        method: "POST", headers, body: JSON.stringify(body),
       });
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();

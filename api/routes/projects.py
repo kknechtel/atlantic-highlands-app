@@ -48,6 +48,7 @@ def list_projects(db: Session = Depends(get_db), user: User = Depends(get_curren
     return results
 
 
+@router.post("", response_model=ProjectResponse, include_in_schema=False)
 @router.post("/", response_model=ProjectResponse)
 def create_project(
     req: ProjectCreate,

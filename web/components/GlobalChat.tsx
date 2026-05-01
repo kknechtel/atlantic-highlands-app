@@ -49,11 +49,16 @@ export default function GlobalChat() {
         const r = await searchDocuments(filename);
         if (r.length > 0) docId = r[0].id;
       }
-      if (!docId) return;
+      if (!docId) {
+        console.warn("Could not find doc for citation:", filename);
+        return;
+      }
       const { url } = await getDocumentViewUrl(docId);
       setSplitDoc({ url, filename });
       if (!isExpanded) setIsExpanded(true);
-    } catch {}
+    } catch (e) {
+      console.error("Failed to open doc viewer:", e);
+    }
   };
 
   const handleDownloadChat = () => {

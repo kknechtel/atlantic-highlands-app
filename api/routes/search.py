@@ -34,6 +34,7 @@ class SearchRequest(BaseModel):
     limit: int = 50
 
 
+@router.post("", response_model=List[SearchResult], include_in_schema=False)
 @router.post("/", response_model=List[SearchResult])
 def search_documents(
     req: SearchRequest,

@@ -14,6 +14,7 @@ class WebSearchRequest(BaseModel):
     max_results: int = 5
 
 
+@router.post("", include_in_schema=False)
 @router.post("/")
 def web_search(req: WebSearchRequest, user: User = Depends(get_current_user)):
     """Search the web using DuckDuckGo."""

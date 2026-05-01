@@ -94,15 +94,9 @@ Be specific, authoritative, and analytical. Present information in well-structur
     # 4. Recent document summaries for general awareness
     recent_awareness = _get_document_awareness(db)
 
-    return f"""{background}
+    chart_example = '{"type":"bar","data":{"labels":["FY2022","FY2023","FY2024"],"datasets":[{"label":"Revenue","data":[100,200,300],"backgroundColor":"#385854"},{"label":"Expenses","data":[90,180,280],"backgroundColor":"#ef4444"}]},"options":{"responsive":true}}'
 
-{financial_context}
-
-{doc_context}
-
-{recent_awareness}
-
-INSTRUCTIONS:
+    instructions = f"""INSTRUCTIONS:
 - ALWAYS extract and present actual data from the documents above — dollar amounts, dates, names, specifics
 - NEVER tell the user to "consult" or "review" a document — YOU have the document text, so read it and answer
 - If a document is referenced, extract the relevant data from it and present it directly
@@ -113,11 +107,21 @@ INSTRUCTIONS:
 - Present financial data in markdown tables when comparing multiple periods
 - When presenting numerical data with 3+ data points, include a chart using this format:
   ```chart
-  {"type":"bar","data":{"labels":["FY2022","FY2023","FY2024"],"datasets":[{"label":"Revenue","data":[100,200,300],"backgroundColor":"#385854"},{"label":"Expenses","data":[90,180,280],"backgroundColor":"#ef4444"}]},"options":{"responsive":true}}
+  {chart_example}
   ```
   Supported chart types: bar, line, pie. Use brand color #385854 for primary data.
 - For tabular data, always use proper markdown tables with headers
 - If you truly cannot find specific data in the provided context, say so clearly but suggest which document types might contain it"""
+
+    return f"""{background}
+
+{financial_context}
+
+{doc_context}
+
+{recent_awareness}
+
+{instructions}"""
 
 
 def _build_financial_summary(db: Session) -> str:

@@ -15,7 +15,7 @@ import {
   ChevronUpIcon,
 } from "@heroicons/react/24/outline";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 const brandColor = "#385854";
 const GOVPILOT_URL =
   "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1";

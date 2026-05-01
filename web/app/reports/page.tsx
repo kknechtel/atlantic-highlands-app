@@ -11,7 +11,7 @@ import {
   CheckIcon,
 } from "@heroicons/react/24/outline";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 const brandColor = "#385854";
 
 const REPORT_TYPES = [

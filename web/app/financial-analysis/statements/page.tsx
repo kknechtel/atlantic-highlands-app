@@ -21,7 +21,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 const COLORS = ["#2563eb", "#385854", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
 const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "-";
 const fmtShort = (n: number) => {

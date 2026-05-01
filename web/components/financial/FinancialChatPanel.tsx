@@ -20,7 +20,7 @@ interface Props {
   documents: Document[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 const SUGGESTED_QUESTIONS = [
   "Compare town budget trends from 2020 to 2025",

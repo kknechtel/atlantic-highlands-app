@@ -24,19 +24,21 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                 setIsLoading(true);
                 const { marked } = await import('marked');
 
-                // Process [source: filename] citations into clickable spans
-                let processed = (content || '').replace(
-                    /\[source:\s*([^\]]+)\]/g,
-                    '<button class="ah-citation" data-filename="$1" style="display:inline;background:' + brandColor + '12;color:' + brandColor + ';border:1px solid ' + brandColor + '30;padding:1px 6px;border-radius:4px;font-size:0.7rem;cursor:pointer;font-weight:500">📄 $1</button>'
-                );
-
-                const rendered = await marked.parse(processed, {
+                const rendered = await marked.parse(content || '', {
                     gfm: true,
                     breaks: true,
                 });
 
+                // Process [source: filename] citations AFTER markdown rendering
+                // so marked doesn't escape our HTML
+                let final = (typeof rendered === 'string' ? rendered : String(rendered));
+                final = final.replace(
+                    /\[source:\s*([^\]]+)\]/g,
+                    `<button class="ah-citation" data-filename="$1" style="display:inline-flex;align-items:center;gap:3px;background:${brandColor}12;color:${brandColor};border:1px solid ${brandColor}30;padding:2px 8px;border-radius:5px;font-size:0.7rem;cursor:pointer;font-weight:500;margin:0 2px">📄 $1</button>`
+                );
+
                 if (isMounted) {
-                    setHtml(typeof rendered === 'string' ? rendered : String(rendered));
+                    setHtml(final);
                     setIsLoading(false);
                 }
             } catch (error) {

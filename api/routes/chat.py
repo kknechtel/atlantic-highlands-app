@@ -103,12 +103,15 @@ Be specific, authoritative, and analytical. Present information in well-structur
 {recent_awareness}
 
 INSTRUCTIONS:
-- Always use actual data from the documents above
-- Cite sources with [source: filename.pdf] format
-- Calculate year-over-year changes when comparing periods
-- If you don't have specific data, say what document would contain it
+- ALWAYS extract and present actual data from the documents above — dollar amounts, dates, names, specifics
+- NEVER tell the user to "consult" or "review" a document — YOU have the document text, so read it and answer
+- If a document is referenced, extract the relevant data from it and present it directly
+- Cite sources with [source: filename.pdf] format — these become clickable links for the user
+- Calculate year-over-year changes, percentages, and trends when comparing periods
 - Be analytical and insightful, not just descriptive
-- Reference specific resolutions, ordinances, and meeting dates when relevant"""
+- Reference specific resolutions, ordinances, and meeting dates when relevant
+- Present financial data in markdown tables when comparing multiple periods
+- If you truly cannot find specific data in the provided context, say so clearly but suggest which document types might contain it"""
 
 
 def _build_financial_summary(db: Session) -> str:
@@ -207,11 +210,11 @@ def _search_relevant_docs(db: Session, query: str) -> str:
     try:
         results = db.execute(sql_text("""
             SELECT filename, fiscal_year, doc_type, category, notes,
-                   substring(extracted_text from 1 for 3000) as text_preview,
+                   substring(extracted_text from 1 for 8000) as text_preview,
                    ts_rank(search_vector, to_tsquery('english', :q)) as score
             FROM documents
             WHERE search_vector @@ to_tsquery('english', :q)
-            ORDER BY score DESC LIMIT 5
+            ORDER BY score DESC LIMIT 10
         """), {"q": tsquery}).fetchall()
 
         if not results:
@@ -223,9 +226,9 @@ def _search_relevant_docs(db: Session, query: str) -> str:
             if r.notes:
                 context.append(f"Summary: {r.notes}")
             if r.text_preview:
-                context.append(r.text_preview[:2000])
+                context.append(r.text_preview[:6000])
 
-        return "\n".join(context)[:30000]
+        return "\n".join(context)[:60000]
     except Exception as e:
         logger.warning(f"FTS search failed: {e}")
         return ""

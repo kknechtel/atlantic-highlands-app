@@ -104,6 +104,10 @@ export async function uploadMultipleDocuments(files: File[], projectId: string, 
   return request<{ uploaded: number; files: { filename: string; status: string }[] }>("/api/documents/upload-multiple", { method: "POST", body: form });
 }
 
+export async function getDocument(documentId: string): Promise<Document> {
+  return request<Document>(`/api/documents/${documentId}`);
+}
+
 export async function getDocumentViewUrl(documentId: string): Promise<{ url: string }> {
   const result = await request<{ url: string }>(`/api/documents/${documentId}/view-url`);
   // If URL is relative (local storage), prepend the API base

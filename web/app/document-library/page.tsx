@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getDocuments,
+  getDocument,
   createProject,
   deleteDocument,
   getDocumentViewUrl,
@@ -103,6 +104,14 @@ export default function DocumentLibraryPage() {
 
   const handleSelectDoc = async (doc: Document) => {
     setSelectedDoc(doc);
+    setViewerUrl(null);
+    // Fetch full doc (includes notes/AI summary which are stripped from list)
+    try {
+      const full = await getDocument(doc.id);
+      setSelectedDoc(full);
+    } catch {
+      // Fall back to list-version doc if fetch fails
+    }
     try {
       const { url } = await getDocumentViewUrl(doc.id);
       setViewerUrl(url);

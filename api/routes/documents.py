@@ -40,6 +40,26 @@ class DocumentResponse(BaseModel):
         from_attributes = True
 
 
+class DocumentListItem(BaseModel):
+    """Slim version for list endpoints — omits the large `notes` field."""
+    id: str
+    project_id: str
+    filename: str
+    original_filename: str
+    s3_key: str
+    file_size: int
+    content_type: str | None
+    doc_type: str | None
+    category: str | None
+    department: str | None
+    fiscal_year: str | None
+    status: str
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentUpdate(BaseModel):
     doc_type: str | None = None
     category: str | None = None
@@ -48,7 +68,7 @@ class DocumentUpdate(BaseModel):
     notes: str | None = None
 
 
-@router.get("/", response_model=List[DocumentResponse])
+@router.get("/", response_model=List[DocumentListItem])
 def list_documents(
     project_id: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
@@ -56,6 +76,7 @@ def list_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """List documents (slim — no notes). Use GET /{id} for full details with notes."""
     query = db.query(Document)
     if project_id:
         query = query.filter(Document.project_id == project_id)
@@ -65,7 +86,7 @@ def list_documents(
         query = query.filter(Document.doc_type == doc_type)
     docs = query.order_by(Document.created_at.desc()).all()
     return [
-        DocumentResponse(
+        DocumentListItem(
             id=str(d.id),
             project_id=str(d.project_id),
             filename=d.filename,
@@ -78,11 +99,38 @@ def list_documents(
             department=d.department,
             fiscal_year=d.fiscal_year,
             status=d.status,
-            notes=d.notes,
             created_at=d.created_at.isoformat(),
         )
         for d in docs
     ]
+
+
+@router.get("/{document_id}", response_model=DocumentResponse)
+def get_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get full document details including notes/AI summary."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return DocumentResponse(
+        id=str(doc.id),
+        project_id=str(doc.project_id),
+        filename=doc.filename,
+        original_filename=doc.original_filename,
+        s3_key=doc.s3_key,
+        file_size=doc.file_size,
+        content_type=doc.content_type,
+        doc_type=doc.doc_type,
+        category=doc.category,
+        department=doc.department,
+        fiscal_year=doc.fiscal_year,
+        status=doc.status,
+        notes=doc.notes,
+        created_at=doc.created_at.isoformat(),
+    )
 
 
 @router.post("/upload", response_model=DocumentResponse)

@@ -41,20 +41,16 @@ class DocumentResponse(BaseModel):
 
 
 class DocumentListItem(BaseModel):
-    """Slim version for list endpoints — omits the large `notes` field."""
+    """Slim version for list endpoints — only fields needed for the list UI."""
     id: str
     project_id: str
     filename: str
-    original_filename: str
-    s3_key: str
     file_size: int
-    content_type: str | None
     doc_type: str | None
     category: str | None
     department: str | None
     fiscal_year: str | None
     status: str
-    created_at: str
 
     class Config:
         from_attributes = True
@@ -90,16 +86,12 @@ def list_documents(
             id=str(d.id),
             project_id=str(d.project_id),
             filename=d.filename,
-            original_filename=d.original_filename,
-            s3_key=d.s3_key,
             file_size=d.file_size,
-            content_type=d.content_type,
             doc_type=d.doc_type,
             category=d.category,
             department=d.department,
             fiscal_year=d.fiscal_year,
             status=d.status,
-            created_at=d.created_at.isoformat(),
         )
         for d in docs
     ]

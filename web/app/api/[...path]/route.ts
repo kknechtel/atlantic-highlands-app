@@ -78,9 +78,8 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]) {
       });
     }
 
-    // For JSON/text responses
-    const body = await response.text();
-    return new NextResponse(body, {
+    // For JSON/text responses — stream through to avoid buffering large payloads in Lambda
+    return new NextResponse(response.body, {
       status: response.status,
       headers: responseHeaders,
     });

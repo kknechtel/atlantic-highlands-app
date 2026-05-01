@@ -41,10 +41,22 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                 });
 
                 // Process [source: filename] citations AFTER markdown rendering
+                // Split comma-separated filenames into individual buttons
                 let final = (typeof rendered === 'string' ? rendered : String(rendered));
                 final = final.replace(
                     /\[source:\s*([^\]]+)\]/g,
-                    `<button class="ah-citation" data-filename="$1" style="display:inline-flex;align-items:center;gap:3px;background:${brandColor}12;color:${brandColor};border:1px solid ${brandColor}30;padding:2px 8px;border-radius:5px;font-size:0.7rem;cursor:pointer;font-weight:500;margin:0 2px">📄 $1</button>`
+                    (_match, filenames) => {
+                        const buttonStyle = `display:inline-flex;align-items:center;gap:3px;background:${brandColor}12;color:${brandColor};border:1px solid ${brandColor}30;padding:2px 8px;border-radius:5px;font-size:0.7rem;cursor:pointer;font-weight:500;margin:0 2px`;
+                        return String(filenames)
+                            .split(/\s*,\s*/)
+                            .map((fn: string) => fn.trim())
+                            .filter((fn: string) => fn.length > 0)
+                            .map((fn: string) => {
+                                const escaped = fn.replace(/"/g, '&quot;');
+                                return `<button class="ah-citation" data-filename="${escaped}" style="${buttonStyle}">📄 ${fn}</button>`;
+                            })
+                            .join('');
+                    }
                 );
 
                 if (isMounted) {

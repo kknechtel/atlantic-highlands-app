@@ -5,14 +5,7 @@ const nextConfig = {
   experimental: {
     missingSuspenseWithCSRBailout: false,
   },
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"}/api/:path*`,
-      },
-    ];
-  },
+  // API proxy handled by app/api/[...path]/route.ts
 };
 
 module.exports = nextConfig;

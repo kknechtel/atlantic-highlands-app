@@ -148,7 +148,7 @@ class ConfirmUploadRequest(BaseModel):
     fiscal_year: str | None = None
 
 
-def _resolve_project(db: Session, project_id: str) -> Project:
+def _resolve_project(db: Session, project_id: str, user: User) -> Project:
     """Get project by id, or auto-create a default 'User Uploads' project."""
     if project_id and project_id != "default":
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -157,7 +157,12 @@ def _resolve_project(db: Session, project_id: str) -> Project:
     # Use or create the default 'User Uploads' project
     project = db.query(Project).filter(Project.name == "User Uploads").first()
     if not project:
-        project = Project(name="User Uploads", description="Documents uploaded by users", entity_type="general")
+        project = Project(
+            name="User Uploads",
+            description="Documents uploaded by users",
+            entity_type="general",
+            created_by=user.id,
+        )
         db.add(project)
         db.commit()
         db.refresh(project)
@@ -171,7 +176,7 @@ def presigned_upload(
     user: User = Depends(get_current_user),
 ):
     """Get a presigned S3 URL for direct browser-to-S3 upload (bypasses Amplify proxy)."""
-    project = _resolve_project(db, req.project_id)
+    project = _resolve_project(db, req.project_id, user)
 
     # Duplicate check
     existing = db.query(Document).filter(
@@ -210,7 +215,7 @@ def confirm_upload(
     user: User = Depends(get_current_user),
 ):
     """Register a document in the DB after the browser has uploaded directly to S3."""
-    project = _resolve_project(db, req.project_id)
+    project = _resolve_project(db, req.project_id, user)
 
     # Verify file actually exists in S3
     try:

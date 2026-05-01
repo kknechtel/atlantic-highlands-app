@@ -111,6 +111,12 @@ INSTRUCTIONS:
 - Be analytical and insightful, not just descriptive
 - Reference specific resolutions, ordinances, and meeting dates when relevant
 - Present financial data in markdown tables when comparing multiple periods
+- When presenting numerical data with 3+ data points, include a chart using this format:
+  ```chart
+  {"type":"bar","data":{"labels":["FY2022","FY2023","FY2024"],"datasets":[{"label":"Revenue","data":[100,200,300],"backgroundColor":"#385854"},{"label":"Expenses","data":[90,180,280],"backgroundColor":"#ef4444"}]},"options":{"responsive":true}}
+  ```
+  Supported chart types: bar, line, pie. Use brand color #385854 for primary data.
+- For tabular data, always use proper markdown tables with headers
 - If you truly cannot find specific data in the provided context, say so clearly but suggest which document types might contain it"""
 
 

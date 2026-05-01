@@ -47,7 +47,12 @@ export default function GlobalChat() {
     try {
       if (!docId && filename) {
         const r = await searchDocuments(filename);
-        if (r.length > 0) docId = r[0].id;
+        // Prefer exact filename match over full-text-search ranking
+        const exact = r.find((d) => d.filename === filename);
+        const startsWith = r.find((d) => d.filename.toLowerCase().startsWith(filename.toLowerCase()));
+        const contains = r.find((d) => d.filename.toLowerCase().includes(filename.toLowerCase()));
+        const best = exact || startsWith || contains || r[0];
+        if (best) docId = best.id;
       }
       if (!docId) {
         console.warn("Could not find doc for citation:", filename);

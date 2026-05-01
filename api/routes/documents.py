@@ -564,7 +564,14 @@ def get_view_url(
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    # Always use our proxy endpoint — avoids cross-origin iframe issues
+    # If using S3, return a presigned URL (works in iframes — no auth header needed)
+    if not s3.use_local:
+        try:
+            url = s3.get_presigned_url(doc.s3_key, expires_in=3600)
+            return {"url": url}
+        except Exception as e:
+            logger.warning(f"Could not generate presigned URL for {doc.s3_key}: {e}")
+    # Fall back to proxy endpoint (requires auth, won't work in iframe)
     return {"url": f"/api/documents/{document_id}/file"}
 
 

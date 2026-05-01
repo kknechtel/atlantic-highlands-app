@@ -250,7 +250,7 @@ export default function DocumentLibraryPage() {
         <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-lg font-semibold text-gray-900">Documents</h1>
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1.5">
               <button onClick={collapseAll}
                 className="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200" title="Collapse all">
                 Collapse
@@ -260,8 +260,9 @@ export default function DocumentLibraryPage() {
                 Expand
               </button>
               <button onClick={() => setShowUpload(true)}
-                className="p-1.5 rounded-md hover:opacity-80 text-white" style={{ backgroundColor: brandColor }} title="Upload">
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:opacity-90 text-white text-xs font-medium shadow-sm" style={{ backgroundColor: brandColor }}>
                 <ArrowUpTrayIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Upload</span>
               </button>
             </div>
           </div>

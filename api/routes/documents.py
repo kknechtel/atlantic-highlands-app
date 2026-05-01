@@ -104,6 +104,36 @@ async def upload_document(
     content = await file.read()
     file_size = len(content)
 
+    # Duplicate detection — check filename + size across all projects
+    import hashlib
+    file_hash = hashlib.md5(content).hexdigest()
+    existing = db.query(Document).filter(
+        Document.filename == file.filename,
+        Document.file_size == file_size,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Duplicate document: '{file.filename}' ({file_size} bytes) already exists"
+        )
+
+    # Also check by content hash
+    existing_hash = db.query(Document).filter(
+        Document.file_size == file_size,
+    ).all()
+    for ex in existing_hash:
+        try:
+            ex_content = s3.download_file(ex.s3_key)
+            if hashlib.md5(ex_content).hexdigest() == file_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Duplicate content: same file already exists as '{ex.filename}'"
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Can't download existing file — skip hash check
+
     # Generate unique S3 key
     file_id = str(uuid.uuid4())
     s3_key = f"documents/{project_id}/{file_id}/{file.filename}"
@@ -352,8 +382,35 @@ def get_view_url(
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    url = s3.get_presigned_url(doc.s3_key)
-    return {"url": url}
+    # Always use our proxy endpoint — avoids cross-origin iframe issues
+    return {"url": f"/api/documents/{document_id}/file"}
+
+
+@router.get("/{document_id}/file")
+def serve_document_file(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Stream the actual file content — works in iframes without CORS issues."""
+    from fastapi.responses import Response
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        content = s3.download_file(doc.s3_key)
+        content_type = doc.content_type or "application/pdf"
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"inline; filename=\"{doc.filename}\"",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"File not found: {e}")
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)

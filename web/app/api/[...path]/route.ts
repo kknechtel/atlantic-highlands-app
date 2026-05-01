@@ -20,7 +20,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { path:
 
 async function proxyRequest(request: NextRequest, pathSegments: string[]) {
   const path = pathSegments.join("/");
-  const url = `${API_URL}/api/${path}${request.nextUrl.search}`;
+  // Preserve trailing slash from the original URL — FastAPI distinguishes / from no /
+  const originalPath = request.nextUrl.pathname;
+  const trailingSlash = originalPath.endsWith("/") ? "/" : "";
+  const url = `${API_URL}/api/${path}${trailingSlash}${request.nextUrl.search}`;
 
   const headers: Record<string, string> = {};
   request.headers.forEach((value, key) => {

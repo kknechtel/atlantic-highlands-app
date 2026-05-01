@@ -79,29 +79,104 @@ export interface Document {
 }
 
 export async function getDocuments(params?: { project_id?: string; category?: string; doc_type?: string }): Promise<Document[]> {
-  const query = new URLSearchParams();
-  if (params?.project_id) query.set("project_id", params.project_id);
-  if (params?.category) query.set("category", params.category);
-  if (params?.doc_type) query.set("doc_type", params.doc_type);
-  const qs = query.toString();
-  return request<Document[]>(`/api/documents/${qs ? `?${qs}` : ""}`);
+  // Fetch all pages — paginated to fit Amplify Lambda response limits
+  const PAGE_SIZE = 500;
+  const baseQuery = new URLSearchParams();
+  if (params?.project_id) baseQuery.set("project_id", params.project_id);
+  if (params?.category) baseQuery.set("category", params.category);
+  if (params?.doc_type) baseQuery.set("doc_type", params.doc_type);
+
+  // Get total count first
+  const countRes = await request<{ count: number }>(
+    `/api/documents/count${baseQuery.toString() ? `?${baseQuery}` : ""}`
+  );
+  const total = countRes.count;
+
+  // Fetch all pages in parallel
+  const pageCount = Math.ceil(total / PAGE_SIZE);
+  const pagePromises: Promise<Document[]>[] = [];
+  for (let i = 0; i < pageCount; i++) {
+    const q = new URLSearchParams(baseQuery);
+    q.set("limit", String(PAGE_SIZE));
+    q.set("offset", String(i * PAGE_SIZE));
+    pagePromises.push(request<Document[]>(`/api/documents/?${q}`));
+  }
+  const pages = await Promise.all(pagePromises);
+  return pages.flat();
 }
 
-export async function uploadDocument(file: File, projectId: string, metadata?: { doc_type?: string; category?: string; fiscal_year?: string }): Promise<Document> {
-  const form = new FormData();
-  form.append("file", file); form.append("project_id", projectId);
-  if (metadata?.doc_type) form.append("doc_type", metadata.doc_type);
-  if (metadata?.category) form.append("category", metadata.category);
-  if (metadata?.fiscal_year) form.append("fiscal_year", metadata.fiscal_year);
-  return request<Document>("/api/documents/upload", { method: "POST", body: form });
+/**
+ * Upload a single file directly to S3 via presigned URL (bypasses Amplify proxy size limits).
+ */
+export async function uploadDocument(
+  file: File,
+  projectId: string,
+  metadata?: { doc_type?: string; category?: string; fiscal_year?: string }
+): Promise<Document> {
+  // 1. Get presigned URL from backend
+  const presigned = await request<{ upload_url: string; s3_key: string; document_id: string }>(
+    "/api/documents/presigned-upload",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        filename: file.name,
+        content_type: file.type || "application/octet-stream",
+        project_id: projectId,
+        file_size: file.size,
+        doc_type: metadata?.doc_type,
+        category: metadata?.category,
+        fiscal_year: metadata?.fiscal_year,
+      }),
+    }
+  );
+
+  // 2. Upload directly to S3 (no proxy involved)
+  const uploadRes = await fetch(presigned.upload_url, {
+    method: "PUT",
+    body: file,
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+  });
+  if (!uploadRes.ok) {
+    throw new Error(`S3 upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
+  }
+
+  // 3. Confirm upload — backend records the doc in DB
+  return request<Document>("/api/documents/confirm-upload", {
+    method: "POST",
+    body: JSON.stringify({
+      document_id: presigned.document_id,
+      s3_key: presigned.s3_key,
+      filename: file.name,
+      file_size: file.size,
+      content_type: file.type || "application/octet-stream",
+      project_id: projectId,
+      doc_type: metadata?.doc_type,
+      category: metadata?.category,
+      fiscal_year: metadata?.fiscal_year,
+    }),
+  });
 }
 
-export async function uploadMultipleDocuments(files: File[], projectId: string, category?: string) {
-  const form = new FormData();
-  files.forEach((f) => form.append("files", f));
-  form.append("project_id", projectId);
-  if (category) form.append("category", category);
-  return request<{ uploaded: number; files: { filename: string; status: string }[] }>("/api/documents/upload-multiple", { method: "POST", body: form });
+/**
+ * Upload multiple files via presigned URLs.
+ */
+export async function uploadMultipleDocuments(
+  files: File[],
+  projectId: string,
+  category?: string
+): Promise<{ uploaded: number; files: { filename: string; status: string }[] }> {
+  const results = await Promise.allSettled(
+    files.map((f) => uploadDocument(f, projectId, { category }))
+  );
+  return {
+    uploaded: results.filter((r) => r.status === "fulfilled").length,
+    files: results.map((r, i) => ({
+      filename: files[i].name,
+      status: r.status === "fulfilled" ? "uploaded" : `error: ${(r.reason as Error).message}`,
+    })),
+  };
 }
 
 export async function getDocument(documentId: string): Promise<Document> {

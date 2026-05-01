@@ -69,6 +69,8 @@ def list_documents(
     project_id: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     doc_type: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -80,7 +82,7 @@ def list_documents(
         query = query.filter(Document.category == category)
     if doc_type:
         query = query.filter(Document.doc_type == doc_type)
-    docs = query.order_by(Document.created_at.desc()).all()
+    docs = query.order_by(Document.created_at.desc()).offset(offset).limit(limit).all()
     return [
         DocumentListItem(
             id=str(d.id),
@@ -95,6 +97,145 @@ def list_documents(
         )
         for d in docs
     ]
+
+
+@router.get("/count")
+def count_documents(
+    project_id: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    doc_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Total document count for pagination."""
+    query = db.query(Document)
+    if project_id:
+        query = query.filter(Document.project_id == project_id)
+    if category:
+        query = query.filter(Document.category == category)
+    if doc_type:
+        query = query.filter(Document.doc_type == doc_type)
+    return {"count": query.count()}
+
+
+class PresignedUploadRequest(BaseModel):
+    filename: str
+    content_type: str | None = None
+    project_id: str
+    doc_type: str | None = None
+    category: str | None = None
+    fiscal_year: str | None = None
+    file_size: int
+
+
+class PresignedUploadResponse(BaseModel):
+    upload_url: str
+    s3_key: str
+    document_id: str  # Pre-allocated UUID; client confirms via /confirm-upload
+
+
+class ConfirmUploadRequest(BaseModel):
+    document_id: str
+    s3_key: str
+    filename: str
+    file_size: int
+    content_type: str | None = None
+    project_id: str
+    doc_type: str | None = None
+    category: str | None = None
+    fiscal_year: str | None = None
+
+
+@router.post("/presigned-upload", response_model=PresignedUploadResponse)
+def presigned_upload(
+    req: PresignedUploadRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get a presigned S3 URL for direct browser-to-S3 upload (bypasses Amplify proxy)."""
+    project = db.query(Project).filter(Project.id == req.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Duplicate check
+    existing = db.query(Document).filter(
+        Document.filename == req.filename,
+        Document.file_size == req.file_size,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Duplicate document: '{req.filename}' ({req.file_size} bytes) already exists"
+        )
+
+    # Generate document ID and S3 key
+    doc_id = str(uuid.uuid4())
+    safe_name = req.filename.replace("/", "_").replace("\\", "_")
+    s3_key = f"uploads/{req.project_id}/{doc_id}/{safe_name}"
+
+    try:
+        upload_url = s3.get_presigned_upload_url(s3_key, content_type=req.content_type)
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not generate upload URL: {e}")
+
+    return PresignedUploadResponse(
+        upload_url=upload_url,
+        s3_key=s3_key,
+        document_id=doc_id,
+    )
+
+
+@router.post("/confirm-upload", response_model=DocumentResponse)
+def confirm_upload(
+    req: ConfirmUploadRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Register a document in the DB after the browser has uploaded directly to S3."""
+    project = db.query(Project).filter(Project.id == req.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Verify file actually exists in S3
+    try:
+        s3.client.head_object(Bucket=s3.bucket, Key=req.s3_key)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File not found in S3: {e}")
+
+    doc = Document(
+        id=req.document_id,
+        project_id=req.project_id,
+        filename=req.filename,
+        original_filename=req.filename,
+        s3_key=req.s3_key,
+        file_size=req.file_size,
+        content_type=req.content_type,
+        doc_type=req.doc_type,
+        category=req.category,
+        fiscal_year=req.fiscal_year,
+        status="uploaded",
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    return DocumentResponse(
+        id=str(doc.id),
+        project_id=str(doc.project_id),
+        filename=doc.filename,
+        original_filename=doc.original_filename,
+        s3_key=doc.s3_key,
+        file_size=doc.file_size,
+        content_type=doc.content_type,
+        doc_type=doc.doc_type,
+        category=doc.category,
+        department=doc.department,
+        fiscal_year=doc.fiscal_year,
+        status=doc.status,
+        notes=doc.notes,
+        created_at=doc.created_at.isoformat(),
+    )
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

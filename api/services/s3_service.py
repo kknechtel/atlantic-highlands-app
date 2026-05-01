@@ -99,6 +99,19 @@ class S3Service:
                 ExpiresIn=expires_in,
             )
 
+    def get_presigned_upload_url(self, key: str, content_type: str = None, expires_in: int = 3600) -> str:
+        """Generate a presigned PUT URL for direct browser-to-S3 upload."""
+        if self.use_local:
+            raise RuntimeError("Presigned upload URLs require S3 (not local storage)")
+        params = {"Bucket": self.bucket, "Key": key}
+        if content_type:
+            params["ContentType"] = content_type
+        return self.client.generate_presigned_url(
+            "put_object",
+            Params=params,
+            ExpiresIn=expires_in,
+        )
+
     def delete_file(self, key: str):
         if self.use_local:
             for path in [

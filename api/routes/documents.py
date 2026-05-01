@@ -133,6 +133,7 @@ class PresignedUploadResponse(BaseModel):
     upload_url: str
     s3_key: str
     document_id: str  # Pre-allocated UUID; client confirms via /confirm-upload
+    project_id: str  # Resolved project id (may differ from request if 'default' was sent)
 
 
 class ConfirmUploadRequest(BaseModel):
@@ -147,6 +148,22 @@ class ConfirmUploadRequest(BaseModel):
     fiscal_year: str | None = None
 
 
+def _resolve_project(db: Session, project_id: str) -> Project:
+    """Get project by id, or auto-create a default 'User Uploads' project."""
+    if project_id and project_id != "default":
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            return project
+    # Use or create the default 'User Uploads' project
+    project = db.query(Project).filter(Project.name == "User Uploads").first()
+    if not project:
+        project = Project(name="User Uploads", description="Documents uploaded by users", entity_type="general")
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+    return project
+
+
 @router.post("/presigned-upload", response_model=PresignedUploadResponse)
 def presigned_upload(
     req: PresignedUploadRequest,
@@ -154,9 +171,7 @@ def presigned_upload(
     user: User = Depends(get_current_user),
 ):
     """Get a presigned S3 URL for direct browser-to-S3 upload (bypasses Amplify proxy)."""
-    project = db.query(Project).filter(Project.id == req.project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = _resolve_project(db, req.project_id)
 
     # Duplicate check
     existing = db.query(Document).filter(
@@ -172,7 +187,7 @@ def presigned_upload(
     # Generate document ID and S3 key
     doc_id = str(uuid.uuid4())
     safe_name = req.filename.replace("/", "_").replace("\\", "_")
-    s3_key = f"uploads/{req.project_id}/{doc_id}/{safe_name}"
+    s3_key = f"uploads/{project.id}/{doc_id}/{safe_name}"
 
     try:
         upload_url = s3.get_presigned_upload_url(s3_key, content_type=req.content_type)
@@ -184,6 +199,7 @@ def presigned_upload(
         upload_url=upload_url,
         s3_key=s3_key,
         document_id=doc_id,
+        project_id=str(project.id),
     )
 
 
@@ -194,9 +210,7 @@ def confirm_upload(
     user: User = Depends(get_current_user),
 ):
     """Register a document in the DB after the browser has uploaded directly to S3."""
-    project = db.query(Project).filter(Project.id == req.project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = _resolve_project(db, req.project_id)
 
     # Verify file actually exists in S3
     try:
@@ -206,7 +220,7 @@ def confirm_upload(
 
     doc = Document(
         id=req.document_id,
-        project_id=req.project_id,
+        project_id=project.id,
         filename=req.filename,
         original_filename=req.filename,
         s3_key=req.s3_key,

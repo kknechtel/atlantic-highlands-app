@@ -161,6 +161,7 @@ export async function uploadDocument(
 
 /**
  * Upload multiple files via presigned URLs.
+ * Throws if any file fails — caller can inspect `error.results` for per-file status.
  */
 export async function uploadMultipleDocuments(
   files: File[],
@@ -170,13 +171,21 @@ export async function uploadMultipleDocuments(
   const results = await Promise.allSettled(
     files.map((f) => uploadDocument(f, projectId, { category }))
   );
-  return {
-    uploaded: results.filter((r) => r.status === "fulfilled").length,
-    files: results.map((r, i) => ({
-      filename: files[i].name,
-      status: r.status === "fulfilled" ? "uploaded" : `error: ${(r.reason as Error).message}`,
-    })),
-  };
+  const fileResults = results.map((r, i) => ({
+    filename: files[i].name,
+    status: r.status === "fulfilled" ? "uploaded" : `error: ${(r.reason as Error).message}`,
+  }));
+  const uploaded = results.filter((r) => r.status === "fulfilled").length;
+  const failed = files.length - uploaded;
+
+  if (failed > 0) {
+    const failedNames = fileResults.filter((f) => f.status.startsWith("error")).map((f) => `${f.filename}: ${f.status}`).join("; ");
+    const err = new Error(`${failed} of ${files.length} uploads failed. ${failedNames}`);
+    (err as any).results = fileResults;
+    (err as any).uploaded = uploaded;
+    throw err;
+  }
+  return { uploaded, files: fileResults };
 }
 
 export async function getDocument(documentId: string): Promise<Document> {

@@ -149,16 +149,20 @@ export default function GlobalChat() {
     </div>
   );
 
-  const w = isExpanded ? (splitDoc ? "w-[1200px]" : "w-[600px]") : splitDoc ? "w-[900px]" : "w-[440px]";
+  // Constrain widths so the chat always fits within the viewport
+  const widthClass = isExpanded
+    ? (splitDoc ? "md:w-[min(1100px,calc(100vw-3rem))]" : "md:w-[min(560px,calc(100vw-3rem))]")
+    : splitDoc ? "md:w-[min(820px,calc(100vw-3rem))]" : "md:w-[min(420px,calc(100vw-3rem))]";
+  const heightClass = isExpanded ? "md:h-[min(85vh,800px)]" : "md:h-[min(620px,calc(100vh-6rem))]";
 
   return (
     <div className={`fixed z-50
       /* Mobile: full screen */
       inset-0 md:inset-auto
-      /* Desktop: positioned bottom-right */
-      md:bottom-6 md:right-6 md:${w} ${isExpanded ? "md:h-[85vh]" : "md:h-[650px]"}
+      /* Desktop: positioned bottom-right, never exceeds viewport */
+      md:bottom-6 md:right-6 ${widthClass} ${heightClass}
       flex md:rounded-2xl shadow-2xl md:border md:border-gray-200 overflow-hidden transition-all duration-200`}>
-      <div className={`${splitDoc ? "w-1/2" : "w-full"} bg-gray-50 flex flex-col`}>
+      <div className={`${splitDoc ? "w-1/2" : "w-full"} bg-gray-50 flex flex-col min-w-0`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>
           <div className="flex items-center gap-2">

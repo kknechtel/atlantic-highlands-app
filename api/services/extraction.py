@@ -126,15 +126,42 @@ async def reextract_batch(
     db: Session,
     limit: int = 20,
     auto_chunk: bool = True,
+    concurrency: int = 4,
 ) -> dict:
-    """Re-OCR up to `limit` empty-text documents. Returns per-doc summaries."""
+    """Re-OCR up to `limit` empty-text documents in parallel.
+
+    Each doc gets its own short-lived DB session inside reextract_one_isolated
+    so they don't fight over the shared session. Concurrency capped at 4 to
+    stay sane with Tesseract CPU + Voyage rate limits.
+    """
     docs = list_empty_text_documents(db, limit=limit)
     out: list[dict] = []
-    ok = 0
-    skipped = 0
-    errors = 0
-    for d in docs:
-        res = await reextract_one(db, d, auto_chunk=auto_chunk)
+    ok = 0; skipped = 0; errors = 0
+
+    sem = asyncio.Semaphore(concurrency)
+
+    async def run_one(doc_id: str) -> dict:
+        from database import SessionLocal as _SL
+        async with sem:
+            local_db = _SL()
+            try:
+                doc = local_db.query(Document).filter(Document.id == doc_id).first()
+                if not doc:
+                    return {"document_id": doc_id, "skipped": True, "reason": "vanished"}
+                return await reextract_one(local_db, doc, auto_chunk=auto_chunk)
+            finally:
+                local_db.close()
+
+    # Capture ids up-front so we don't hold the parent session's rows after closing.
+    doc_ids = [str(d.id) for d in docs]
+
+    results = await asyncio.gather(*[run_one(did) for did in doc_ids],
+                                   return_exceptions=True)
+    for res in results:
+        if isinstance(res, Exception):
+            errors += 1
+            out.append({"error": str(res)[:200]})
+            continue
         if res.get("skipped"):
             skipped += 1
         elif res.get("error"):
@@ -142,8 +169,9 @@ async def reextract_batch(
         else:
             ok += 1
         out.append(res)
+
     return {
-        "total": len(docs),
+        "total": len(doc_ids),
         "ok": ok,
         "skipped": skipped,
         "errors": errors,

@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getStatements, type FinancialStatement } from "@/lib/api";
-import { BuildingOfficeIcon, AcademicCapIcon } from "@heroicons/react/24/outline";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getStatements, getFinancialDiagnostics, drillAll,
+  type FinancialStatement,
+} from "@/lib/api";
+import { BuildingOfficeIcon, AcademicCapIcon, BoltIcon, BugAntIcon } from "@heroicons/react/24/outline";
 import StatementCard from "./StatementCard";
 import DrillPanel from "./DrillPanel";
 
@@ -12,11 +15,30 @@ type EntityFilter = "all" | "town" | "school";
 export default function FinancialDashboardV2() {
   const [entityFilter, setEntityFilter] = useState<EntityFilter>("school");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showDiag, setShowDiag] = useState(false);
+  const qc = useQueryClient();
 
   const { data: statements } = useQuery({
     queryKey: ["statements"],
     queryFn: () => getStatements(),
     refetchInterval: 10_000,
+  });
+
+  const { data: diag } = useQuery({
+    queryKey: ["financial-diagnostics"],
+    queryFn: () => getFinancialDiagnostics(),
+    refetchInterval: 30_000,
+  });
+
+  const drillAllMut = useMutation({
+    mutationFn: () => drillAll({
+      entity_type: entityFilter === "all" ? undefined : entityFilter,
+      concurrency: 2,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["statements"] });
+      qc.invalidateQueries({ queryKey: ["financial-diagnostics"] });
+    },
   });
 
   const filtered = useMemo(() => {
@@ -54,7 +76,7 @@ export default function FinancialDashboardV2() {
   return (
     <div className="space-y-6">
       {/* Filter bar */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         {[
           { key: "school" as const, label: "School (Henry Hudson Regional)", icon: AcademicCapIcon, color: "orange" },
           { key: "town" as const, label: "Town (Atlantic Highlands Borough)", icon: BuildingOfficeIcon, color: "blue" },
@@ -72,7 +94,75 @@ export default function FinancialDashboardV2() {
             {label}
           </button>
         ))}
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => drillAllMut.mutate()}
+            disabled={drillAllMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+            title="Run drill agents on every extracted statement matching the current filter"
+          >
+            <BoltIcon className="w-4 h-4" />
+            Drill All
+          </button>
+          <button
+            onClick={() => setShowDiag(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+          >
+            <BugAntIcon className="w-4 h-4" />
+            Diagnostics
+          </button>
+        </div>
       </div>
+
+      {drillAllMut.data && (
+        <div className="rounded-lg bg-purple-50 border border-purple-200 px-4 py-2 text-sm text-purple-900">
+          Queued <strong>{drillAllMut.data.queued}</strong> drills (concurrency {drillAllMut.data.concurrency}). Watch the cards for status changes.
+        </div>
+      )}
+
+      {showDiag && diag && (
+        <div className="rounded-xl bg-white border border-gray-200 p-4 space-y-3 text-xs">
+          <div className="font-semibold text-gray-700 text-sm">Pipeline Diagnostics</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <DiagBlock title="LLM Keys">
+              <div>Anthropic: <span className={diag.llm_keys.anthropic_api_key_set ? "text-green-700" : "text-red-700"}>{diag.llm_keys.anthropic_api_key_set ? "set" : "MISSING"}</span></div>
+              <div>Gemini: <span className={diag.llm_keys.gemini_api_key_set ? "text-green-700" : "text-red-700"}>{diag.llm_keys.gemini_api_key_set ? "set" : "MISSING"}</span></div>
+            </DiagBlock>
+            <DiagBlock title={`Statements (${diag.statements.total})`}>
+              {Object.entries(diag.statements.by_status).map(([k, v]) => (
+                <div key={k}><span className="font-mono">{v}</span> {k}</div>
+              ))}
+            </DiagBlock>
+            <DiagBlock title="Extraction Issues">
+              <div>Empty (no line items): <span className="font-mono text-red-700">{diag.extraction_issues.extracted_with_no_line_items_count}</span></div>
+            </DiagBlock>
+            <DiagBlock title="Drill Issues">
+              <div>With errors: <span className="font-mono text-red-700">{diag.drill_issues.drills_with_errors_count}</span></div>
+            </DiagBlock>
+          </div>
+          {diag.next_steps_hint && (
+            <div className="rounded bg-blue-50 border border-blue-200 px-3 py-2 text-blue-900">
+              <strong>Next:</strong> {diag.next_steps_hint}
+            </div>
+          )}
+          {diag.drill_issues.drills_with_errors_sample.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-gray-600">Drill error details ({diag.drill_issues.drills_with_errors_sample.length})</summary>
+              <div className="mt-2 space-y-1">
+                {diag.drill_issues.drills_with_errors_sample.map((s: any, i: number) => (
+                  <div key={i} className="rounded bg-red-50 border border-red-200 p-2 text-[11px]">
+                    <div className="font-medium">{s.entity_type} FY {s.fiscal_year}</div>
+                    {s.errors.map((e: any, j: number) => (
+                      <div key={j} className="text-red-800">· {e.drill}: {e.error} {e.msg ? `— ${e.msg}` : ""}</div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -143,6 +233,15 @@ export default function FinancialDashboardV2() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function DiagBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-gray-50 border p-3">
+      <div className="text-[10px] uppercase font-semibold tracking-wide text-gray-500 mb-1">{title}</div>
+      <div className="space-y-0.5 text-gray-800">{children}</div>
     </div>
   );
 }

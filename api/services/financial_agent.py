@@ -1,30 +1,39 @@
 """
 Financial agent orchestrator: deep-dive drills on extracted statements.
 
-Four parallel drill agents, each focused:
-  - revenue_drill        — property tax composition, state aid, local revenue, federal
-  - expenditure_drill    — by function (instruction/admin/facilities) + by object (salaries/benefits/services)
-  - debt_drill           — outstanding debt, debt service ratio, capital reserve
-  - fund_balance_drill   — multi-year fund balance trajectory, restricted/assigned/unassigned
+Four parallel drill agents:
+  - revenue_drill        — property tax composition, state aid, local revenue
+  - expenditure_drill    — by function + by object
+  - debt_drill           — outstanding debt, debt service ratio, statutory cap
+  - fund_balance_drill   — multi-year trajectory, GASB54 / NJ regulatory
 
-Then a synthesis agent ties them together.
+Then a synthesis agent ties them together. Schools (GAAP) and towns
+(NJ regulatory basis) get different prompts.
 
 Results land in FinancialStatement.drill_results JSONB:
   {
-    "revenue":     {findings: [...], narrative: "...", run_at: ...},
+    "revenue":     {...findings, narrative, run_at, error?, error_trace?},
     "expenditure": {...},
     "debt":        {...},
     "fund_balance":{...},
-    "synthesis":   {executive_summary: "...", red_flags: [...], questions_to_ask: [...]}
+    "synthesis":   {...},
+    "_meta": {started_at, finished_at, duration_s, llm_model, success_count, error_count}
   }
+
+Each drill catches its own exceptions and returns a structured error,
+so a partial failure doesn't kill the others. The synthesis still runs
+on whatever drills succeeded.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import re
+import time
+import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -153,10 +162,10 @@ Produce JSON:
   ],
   "by_object": [
     {{"object": "Salaries", "amount": 0, "pct_of_total": 0}},
-    {{"object": "Benefits", ...}},
-    {{"object": "Purchased Services", ...}},
-    {{"object": "Supplies", ...}},
-    {{"object": "Capital Outlay", ...}}
+    {{"object": "Benefits", "amount": 0, "pct_of_total": 0}},
+    {{"object": "Purchased Services", "amount": 0, "pct_of_total": 0}},
+    {{"object": "Supplies", "amount": 0, "pct_of_total": 0}},
+    {{"object": "Capital Outlay", "amount": 0, "pct_of_total": 0}}
   ],
   "salary_to_total_ratio": 0.0,
   "benefits_to_salary_ratio": 0.0,
@@ -172,15 +181,14 @@ NJ SCHOOL FUNCTION CODES (parse from `function_code` field if present):
   301=Guidance, 302=Child Study Team, 303=Improvement of Instruction,
   310=Educational Media/Library, 320=General Admin, 321=School Admin,
   330=Central Services, 331=Admin Info Tech, 332=Required Maint, 333=Other Plant,
-  340=Care/Upkeep of Grounds, 350=Security, 360=Pupil Transportation,
-  401=Food Services, 700=Special Schools, 800=Charter, 900=Choice
+  340=Care/Upkeep of Grounds, 350=Security, 360=Pupil Transportation
 
 NJ OBJECT CODES:
   100/101=Salaries, 200/270=Benefits/FICA, 300=Purchased Professional Services,
   400=Repairs/Rentals, 500=Other Purchased Services, 600=Supplies/Materials,
   700=Capital Outlay/Equipment, 800=Other Objects (debt service)
 
-Output ONLY valid JSON."""
+Output ONLY valid JSON. No fences."""
 
 
 DEBT_PROMPT = """Analyze DEBT and CAPITAL position of this NJ {entity_type} financial statement ({accounting_basis}).
@@ -205,9 +213,9 @@ Produce JSON:
   "outstanding_debt": 0,
   "annual_debt_service": 0,
   "debt_to_revenue_ratio": 0.0,
-  "debt_to_eq_valuation_pct": "if eq valuation visible in document, compute; else null",
+  "debt_to_eq_valuation_pct": null,
   "statutory_cap_pct": 3.5,
-  "within_statutory_cap": "true|false|unknown — needs equalized valuation data",
+  "within_statutory_cap": "true|false|unknown",
   "debt_per_capita": 0,
   "capital_reserve": 0,
   "debt_components": [
@@ -221,7 +229,7 @@ Produce JSON:
 
 For Atlantic Highlands borough use ~4318 population; for HHRSD report debt per pupil (use ~725 students).
 
-Output ONLY valid JSON."""
+Output ONLY valid JSON. No fences."""
 
 
 FUND_BALANCE_PROMPT_SCHOOL = """Analyze FUND BALANCE on a NJ SCHOOL DISTRICT financial statement (GAAP/GASB 54).
@@ -268,7 +276,7 @@ Produce JSON:
   "questions": ["..."]
 }}
 
-Output ONLY valid JSON."""
+Output ONLY valid JSON. No fences."""
 
 
 FUND_BALANCE_PROMPT_MUNI = """Analyze FUND BALANCE on a NJ MUNICIPAL financial statement (regulatory basis, NOT GAAP).
@@ -309,7 +317,7 @@ Produce JSON:
   "questions": ["..."]
 }}
 
-Output ONLY valid JSON."""
+Output ONLY valid JSON. No fences."""
 
 
 SYNTHESIS_PROMPT = """You are senior municipal finance analyst writing an executive summary for community members reviewing the financial health of {entity_name} for FY{fiscal_year}.
@@ -351,15 +359,64 @@ Produce JSON:
   ]
 }}
 
-Be specific. Cite numbers. Output ONLY valid JSON."""
+Be specific. Cite numbers. Output ONLY valid JSON. No fences."""
+
+
+# ─── Prompt sanity check at import time ──────────────────────────────────────
+# Catches any unescaped `{...}` brace bug before the agent is ever invoked.
+
+_PROMPT_FIELDS = {
+    "REVENUE_PROMPT_SCHOOL": dict(entity_name="x", fiscal_year="x", statement_type="x",
+                                  total_revenue="x", prior_year_summary="x", line_items_json="x"),
+    "REVENUE_PROMPT_MUNI": dict(entity_name="x", fiscal_year="x", statement_type="x",
+                                total_revenue="x", prior_year_summary="x", line_items_json="x"),
+    "EXPENDITURE_PROMPT": dict(entity_type="x", entity_name="x", fiscal_year="x",
+                               total_expenditures="x", prior_year_summary="x", line_items_json="x"),
+    "DEBT_PROMPT": dict(entity_type="x", entity_name="x", accounting_basis="x", fiscal_year="x",
+                        total_debt="x", fund_balance="x", total_revenue="x", line_items_json="x"),
+    "FUND_BALANCE_PROMPT_SCHOOL": dict(entity_name="x", fiscal_year="x", fund_balance="x",
+                                       total_expenditures="x", line_items_json="x", prior_fund_balances="x"),
+    "FUND_BALANCE_PROMPT_MUNI": dict(entity_name="x", fiscal_year="x", fund_balance="x",
+                                     total_expenditures="x", line_items_json="x", prior_fund_balances="x"),
+    "SYNTHESIS_PROMPT": dict(entity_name="x", entity_type="x", fiscal_year="x",
+                             revenue_drill="x", expenditure_drill="x", debt_drill="x",
+                             fund_balance_drill="x", anomaly_flags="x", reconcile_status="x"),
+}
+
+
+def _validate_prompts():
+    """Raise loudly at import time if any prompt has a brace bug."""
+    import sys
+    module = sys.modules[__name__]
+    for name, kwargs in _PROMPT_FIELDS.items():
+        template = getattr(module, name)
+        try:
+            template.format(**kwargs)
+        except (KeyError, IndexError, ValueError) as exc:
+            raise RuntimeError(
+                f"Prompt template `{name}` failed format validation: {exc!r}. "
+                f"Likely an unescaped `{{...}}` brace inside the JSON example. "
+                f"Fix by doubling braces (e.g. `{{{{` for `{{`)."
+            ) from exc
+
+
+_validate_prompts()
 
 
 # ─── LLM call ────────────────────────────────────────────────────────────────
 
 
-async def _call_llm(prompt: str, max_output: int = 16000) -> Optional[Dict]:
-    """Try Claude first for analytical work (Sonnet 4.6 is stronger at reasoning),
-    fall back to Gemini."""
+async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") -> Tuple[Optional[Dict], Optional[str]]:
+    """
+    Try Claude first, fall back to Gemini.
+
+    Returns (parsed_json | None, error_message | None).
+    The error message is the LAST failure encountered; it bubbles up so the
+    drill can report exactly what went wrong instead of just "drill failed".
+    """
+    last_error: Optional[str] = None
+    raw_response: Optional[str] = None
+
     if ANTHROPIC_API_KEY:
         try:
             import anthropic
@@ -369,26 +426,52 @@ async def _call_llm(prompt: str, max_output: int = 16000) -> Optional[Dict]:
                 max_tokens=max_output,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return _parse_json(msg.content[0].text) if msg and msg.content else None
+            if msg and msg.content:
+                raw_response = msg.content[0].text
+                parsed = _parse_json(raw_response)
+                if parsed is not None:
+                    return parsed, None
+                last_error = f"claude_returned_unparseable_json (first 300 chars): {raw_response[:300]}"
+                logger.warning("[%s] %s", label, last_error)
+            else:
+                last_error = "claude_returned_empty_response"
+                logger.warning("[%s] %s", label, last_error)
         except Exception as exc:
-            logger.warning("claude drill failed: %s", exc)
+            last_error = f"claude_api_error: {type(exc).__name__}: {exc}"
+            logger.warning("[%s] %s", label, last_error)
 
     if GEMINI_API_KEY:
         try:
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=GEMINI_API_KEY)
-            cfg = types.GenerateContentConfig(temperature=0.1, max_output_tokens=max_output,
-                                              thinking_config=types.ThinkingConfig(thinking_budget=0))
+            cfg = types.GenerateContentConfig(
+                temperature=0.1, max_output_tokens=max_output,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            )
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
                 lambda: client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=cfg),
             )
-            return _parse_json(response.text) if response and response.text else None
+            if response and response.text:
+                raw_response = response.text
+                parsed = _parse_json(raw_response)
+                if parsed is not None:
+                    return parsed, None
+                last_error = f"gemini_returned_unparseable_json (first 300 chars): {raw_response[:300]}"
+                logger.warning("[%s] %s", label, last_error)
+            else:
+                last_error = "gemini_returned_empty_response"
+                logger.warning("[%s] %s", label, last_error)
         except Exception as exc:
-            logger.warning("gemini drill failed: %s", exc)
-    return None
+            last_error = f"gemini_api_error: {type(exc).__name__}: {exc}"
+            logger.warning("[%s] %s", label, last_error)
+
+    if last_error is None:
+        last_error = "no_llm_api_key_configured"
+
+    return None, last_error
 
 
 def _parse_json(text: str) -> Optional[Dict]:
@@ -477,51 +560,103 @@ def _prior_fund_balances(stmt, db: Session, n: int = 5) -> str:
     return json.dumps([{"fy": r.fiscal_year, "fund_balance": r.fund_balance} for r in rows])
 
 
-# ─── Drill runners ───────────────────────────────────────────────────────────
-
-import re  # used by _prior_year_summary
-
-
 def _is_school(stmt) -> bool:
     return (stmt.accounting_basis or "").lower() == "gaap" or (stmt.entity_type or "").lower() == "school"
 
 
-async def run_revenue_drill(stmt, db: Session) -> Dict:
+# ─── Drill runners ───────────────────────────────────────────────────────────
+#
+# IMPORTANT: each runner takes `statement_id` (string) and opens its OWN DB
+# session. Do NOT share a session across asyncio.gather coroutines —
+# SQLAlchemy Session is not safe for concurrent use, even if the queries
+# happen to be quick.
+
+
+async def _run_in_session(label: str, statement_id: str, build_inputs, prompt_template, max_output: int = 16000) -> Dict:
+    """Common drill runner: open session, build inputs, call LLM, return structured result.
+
+    `build_inputs(stmt, db) -> dict` returns the kwargs for prompt_template.format().
+    """
+    from database import SessionLocal
+    from models.financial import FinancialStatement
+
+    started_at = time.monotonic()
+    db = SessionLocal()
+    try:
+        stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+        if not stmt:
+            return {"error": "statement_not_found", "label": label,
+                    "run_at": datetime.utcnow().isoformat()}
+
+        try:
+            kwargs = build_inputs(stmt, db)
+        except Exception as exc:
+            tb = traceback.format_exc()
+            logger.exception("[%s] build_inputs failed for %s", label, statement_id)
+            return {"error": "build_inputs_failed", "error_message": str(exc),
+                    "error_trace": tb[:2000], "run_at": datetime.utcnow().isoformat(),
+                    "duration_s": round(time.monotonic() - started_at, 2)}
+
+        try:
+            prompt = prompt_template.format(**kwargs)
+        except KeyError as exc:
+            tb = traceback.format_exc()
+            logger.exception("[%s] prompt format error for %s", label, statement_id)
+            return {"error": "prompt_format_error", "missing_key": str(exc),
+                    "error_trace": tb[:2000], "run_at": datetime.utcnow().isoformat()}
+
+        result, llm_error = await _call_llm(prompt, max_output=max_output, label=label)
+        duration_s = round(time.monotonic() - started_at, 2)
+
+        if result is None:
+            return {"error": "llm_call_failed", "error_message": llm_error,
+                    "run_at": datetime.utcnow().isoformat(),
+                    "duration_s": duration_s, "label": label}
+
+        return {**result, "run_at": datetime.utcnow().isoformat(),
+                "duration_s": duration_s, "label": label}
+
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.exception("[%s] unexpected error for %s", label, statement_id)
+        return {"error": "unexpected_exception", "error_message": str(exc),
+                "error_trace": tb[:2000], "run_at": datetime.utcnow().isoformat(),
+                "duration_s": round(time.monotonic() - started_at, 2)}
+    finally:
+        db.close()
+
+
+def _build_revenue_inputs(stmt, db):
     from models.financial import FinancialLineItem
     items = (db.query(FinancialLineItem)
              .filter(FinancialLineItem.statement_id == stmt.id,
                      FinancialLineItem.section.in_(["Revenue", "Aid"]))
              .all())
-    prompt_template = REVENUE_PROMPT_SCHOOL if _is_school(stmt) else REVENUE_PROMPT_MUNI
-    prompt = prompt_template.format(
+    return dict(
         entity_name=stmt.entity_name or "?",
         fiscal_year=stmt.fiscal_year, statement_type=stmt.statement_type,
         total_revenue=stmt.total_revenue,
         prior_year_summary=_prior_year_summary(stmt, db),
         line_items_json=_serialize_lines(items),
     )
-    result = await _call_llm(prompt)
-    return {**(result or {"error": "drill failed"}), "run_at": datetime.utcnow().isoformat()}
 
 
-async def run_expenditure_drill(stmt, db: Session) -> Dict:
+def _build_expenditure_inputs(stmt, db):
     from models.financial import FinancialLineItem
     items = (db.query(FinancialLineItem)
              .filter(FinancialLineItem.statement_id == stmt.id,
                      FinancialLineItem.section.in_(["Expenditures", "Personnel", "Capital"]))
              .all())
-    prompt = EXPENDITURE_PROMPT.format(
+    return dict(
         entity_type=stmt.entity_type, entity_name=stmt.entity_name or "?",
         fiscal_year=stmt.fiscal_year,
         total_expenditures=stmt.total_expenditures,
         prior_year_summary=_prior_year_summary(stmt, db),
         line_items_json=_serialize_lines(items, max_items=300),
     )
-    result = await _call_llm(prompt, max_output=24000)
-    return {**(result or {"error": "drill failed"}), "run_at": datetime.utcnow().isoformat()}
 
 
-async def run_debt_drill(stmt, db: Session) -> Dict:
+def _build_debt_inputs(stmt, db):
     from models.financial import FinancialLineItem
     items = (db.query(FinancialLineItem)
              .filter(FinancialLineItem.statement_id == stmt.id)
@@ -530,18 +665,16 @@ async def run_debt_drill(stmt, db: Session) -> Dict:
                      (FinancialLineItem.line_name.ilike("%debt%")) |
                      (FinancialLineItem.line_name.ilike("%bond%")))
              .all())
-    prompt = DEBT_PROMPT.format(
+    return dict(
         entity_type=stmt.entity_type, entity_name=stmt.entity_name or "?",
         accounting_basis=stmt.accounting_basis or ("gaap" if _is_school(stmt) else "nj_regulatory"),
         fiscal_year=stmt.fiscal_year,
         total_debt=stmt.total_debt, fund_balance=stmt.fund_balance, total_revenue=stmt.total_revenue,
         line_items_json=_serialize_lines(items),
     )
-    result = await _call_llm(prompt)
-    return {**(result or {"error": "drill failed"}), "run_at": datetime.utcnow().isoformat()}
 
 
-async def run_fund_balance_drill(stmt, db: Session) -> Dict:
+def _build_fund_balance_inputs(stmt, db):
     from models.financial import FinancialLineItem
     items = (db.query(FinancialLineItem)
              .filter(FinancialLineItem.statement_id == stmt.id)
@@ -550,72 +683,155 @@ async def run_fund_balance_drill(stmt, db: Session) -> Dict:
                      (FinancialLineItem.line_name.ilike("%reserve%")) |
                      (FinancialLineItem.line_name.ilike("%surplus%")))
              .all())
-    prompt_template = FUND_BALANCE_PROMPT_SCHOOL if _is_school(stmt) else FUND_BALANCE_PROMPT_MUNI
-    prompt = prompt_template.format(
+    return dict(
         entity_name=stmt.entity_name or "?",
         fiscal_year=stmt.fiscal_year,
         fund_balance=stmt.fund_balance, total_expenditures=stmt.total_expenditures,
         line_items_json=_serialize_lines(items),
         prior_fund_balances=_prior_fund_balances(stmt, db),
     )
-    result = await _call_llm(prompt)
-    return {**(result or {"error": "drill failed"}), "run_at": datetime.utcnow().isoformat()}
 
 
-async def run_synthesis(stmt, drills: Dict[str, Dict]) -> Dict:
-    prompt = SYNTHESIS_PROMPT.format(
-        entity_name=stmt.entity_name or "?",
-        entity_type=stmt.entity_type,
-        fiscal_year=stmt.fiscal_year,
-        revenue_drill=json.dumps(drills.get("revenue", {}))[:8000],
-        expenditure_drill=json.dumps(drills.get("expenditure", {}))[:8000],
-        debt_drill=json.dumps(drills.get("debt", {}))[:6000],
-        fund_balance_drill=json.dumps(drills.get("fund_balance", {}))[:6000],
-        anomaly_flags=json.dumps(stmt.anomaly_flags or [])[:4000],
-        reconcile_status=stmt.reconcile_status or "unknown",
-    )
-    result = await _call_llm(prompt, max_output=12000)
-    return {**(result or {"error": "synthesis failed"}), "run_at": datetime.utcnow().isoformat()}
+async def run_revenue_drill_by_id(statement_id: str) -> Dict:
+    from database import SessionLocal
+    from models.financial import FinancialStatement
+    db = SessionLocal()
+    try:
+        stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+        if not stmt:
+            return {"error": "statement_not_found", "run_at": datetime.utcnow().isoformat()}
+        template = REVENUE_PROMPT_SCHOOL if _is_school(stmt) else REVENUE_PROMPT_MUNI
+    finally:
+        db.close()
+    return await _run_in_session("revenue", statement_id, _build_revenue_inputs, template)
+
+
+async def run_expenditure_drill_by_id(statement_id: str) -> Dict:
+    return await _run_in_session("expenditure", statement_id, _build_expenditure_inputs,
+                                 EXPENDITURE_PROMPT, max_output=24000)
+
+
+async def run_debt_drill_by_id(statement_id: str) -> Dict:
+    return await _run_in_session("debt", statement_id, _build_debt_inputs, DEBT_PROMPT)
+
+
+async def run_fund_balance_drill_by_id(statement_id: str) -> Dict:
+    from database import SessionLocal
+    from models.financial import FinancialStatement
+    db = SessionLocal()
+    try:
+        stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+        if not stmt:
+            return {"error": "statement_not_found", "run_at": datetime.utcnow().isoformat()}
+        template = FUND_BALANCE_PROMPT_SCHOOL if _is_school(stmt) else FUND_BALANCE_PROMPT_MUNI
+    finally:
+        db.close()
+    return await _run_in_session("fund_balance", statement_id, _build_fund_balance_inputs, template)
+
+
+async def run_synthesis_by_id(statement_id: str, drills: Dict[str, Dict]) -> Dict:
+    """Synthesis runs only on drills that succeeded (have no `error` key).
+    If all four failed, synthesis still runs but the LLM gets the error JSON
+    so it can report meta-failure honestly."""
+    from database import SessionLocal
+    from models.financial import FinancialStatement
+
+    started_at = time.monotonic()
+    db = SessionLocal()
+    try:
+        stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+        if not stmt:
+            return {"error": "statement_not_found", "run_at": datetime.utcnow().isoformat()}
+
+        prompt = SYNTHESIS_PROMPT.format(
+            entity_name=stmt.entity_name or "?",
+            entity_type=stmt.entity_type,
+            fiscal_year=stmt.fiscal_year,
+            revenue_drill=json.dumps(drills.get("revenue", {}))[:8000],
+            expenditure_drill=json.dumps(drills.get("expenditure", {}))[:8000],
+            debt_drill=json.dumps(drills.get("debt", {}))[:6000],
+            fund_balance_drill=json.dumps(drills.get("fund_balance", {}))[:6000],
+            anomaly_flags=json.dumps(stmt.anomaly_flags or [])[:4000],
+            reconcile_status=stmt.reconcile_status or "unknown",
+        )
+    finally:
+        db.close()
+
+    result, err = await _call_llm(prompt, max_output=12000, label="synthesis")
+    duration_s = round(time.monotonic() - started_at, 2)
+    if result is None:
+        return {"error": "llm_call_failed", "error_message": err,
+                "run_at": datetime.utcnow().isoformat(),
+                "duration_s": duration_s, "label": "synthesis"}
+    return {**result, "run_at": datetime.utcnow().isoformat(),
+            "duration_s": duration_s, "label": "synthesis"}
 
 
 # ─── Public entry point ──────────────────────────────────────────────────────
 
 
 async def run_full_drill(statement_id: str) -> Dict[str, Any]:
-    """Background task: run all four drill agents in parallel + synthesis. Persists to drill_results."""
+    """Run all four drill agents in parallel + synthesis. Persists to drill_results.
+
+    Even if every drill fails, the function completes cleanly and writes the
+    error structures into drill_results so the UI / caller can see exactly what
+    happened. Status only flips to 'drilled' if synthesis succeeded.
+    """
     from database import SessionLocal
     from models.financial import FinancialStatement
 
+    started = time.monotonic()
+    started_iso = datetime.utcnow().isoformat()
+    logger.info("[run_full_drill] start statement_id=%s", statement_id)
+
+    # Each drill opens its own session — safe under asyncio.gather
+    revenue, expenditure, debt, fund_balance = await asyncio.gather(
+        run_revenue_drill_by_id(statement_id),
+        run_expenditure_drill_by_id(statement_id),
+        run_debt_drill_by_id(statement_id),
+        run_fund_balance_drill_by_id(statement_id),
+        return_exceptions=False,
+    )
+
+    drills = {
+        "revenue": revenue, "expenditure": expenditure,
+        "debt": debt, "fund_balance": fund_balance,
+    }
+
+    success_count = sum(1 for d in drills.values() if "error" not in d)
+    error_count = 4 - success_count
+    logger.info("[run_full_drill] drills done success=%d error=%d statement_id=%s",
+                success_count, error_count, statement_id)
+
+    synthesis = await run_synthesis_by_id(statement_id, drills)
+    drills["synthesis"] = synthesis
+
+    drills["_meta"] = {
+        "started_at": started_iso,
+        "finished_at": datetime.utcnow().isoformat(),
+        "duration_s": round(time.monotonic() - started, 2),
+        "success_count": success_count,
+        "error_count": error_count,
+        "synthesis_ok": "error" not in synthesis,
+        "llm_models_attempted": [m for m, k in [("claude-sonnet-4-6", ANTHROPIC_API_KEY),
+                                                 ("gemini-2.5-flash", GEMINI_API_KEY)] if k],
+    }
+
+    # Persist regardless of success — caller needs to see errors.
     db = SessionLocal()
     try:
         stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
-        if not stmt:
-            return {"error": "statement_not_found"}
-
-        # Parallel drills
-        revenue, expenditure, debt, fund_balance = await asyncio.gather(
-            run_revenue_drill(stmt, db),
-            run_expenditure_drill(stmt, db),
-            run_debt_drill(stmt, db),
-            run_fund_balance_drill(stmt, db),
-            return_exceptions=False,
-        )
-
-        drills = {
-            "revenue": revenue, "expenditure": expenditure,
-            "debt": debt, "fund_balance": fund_balance,
-        }
-
-        synthesis = await run_synthesis(stmt, drills)
-        drills["synthesis"] = synthesis
-
-        stmt.drill_results = drills
-        stmt.status = "drilled"
-        db.commit()
-
-        return drills
-    except Exception as exc:
-        logger.exception("run_full_drill failed for %s", statement_id)
-        return {"error": str(exc)[:300]}
+        if stmt:
+            stmt.drill_results = drills
+            # Only flip status to "drilled" if synthesis succeeded.
+            if "error" not in synthesis:
+                stmt.status = "drilled"
+            db.commit()
+            logger.info("[run_full_drill] persisted statement_id=%s status=%s",
+                        statement_id, stmt.status)
+    except Exception:
+        logger.exception("[run_full_drill] persist failed for %s", statement_id)
     finally:
         db.close()
+
+    return drills

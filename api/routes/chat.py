@@ -414,14 +414,19 @@ def _propose_section_tool() -> dict:
 
 
 def _web_search_tool() -> dict:
+    """Anthropic's server-side web search tool. Claude executes the search on
+    Anthropic's infrastructure (Brave-backed), so we don't need to run a local
+    DDG/Tavily/etc. — and EC2 IPs aren't blocked the way they are by DDG.
+
+    Pricing: $10 / 1000 searches (billed by Anthropic).
+    Result blocks come back inline as `web_search_tool_result` — no client
+    round-trip required. The model also emits citations as `citations` arrays
+    on text blocks; our existing markdown stream still works.
+    """
     return {
+        "type": "web_search_20250305",
         "name": "web_search",
-        "description": "Search the public web. Use for current events, recent appointments, news after the document index was last updated, or topics not covered in the document library.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        },
+        "max_uses": 5,
     }
 
 

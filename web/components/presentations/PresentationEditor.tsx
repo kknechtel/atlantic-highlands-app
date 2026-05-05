@@ -101,7 +101,6 @@ export default function PresentationEditor({ presentationId }: Props) {
 
   const handleAcceptProposal = async (proposal: any) => {
     const fields = {
-      title: proposal.title,
       body: proposal.body,
       headers: proposal.headers,
       rows: proposal.rows,
@@ -110,10 +109,14 @@ export default function PresentationEditor({ presentationId }: Props) {
       data: proposal.data,
     };
     if (proposal.section_id) {
-      const updated = await patchSection(presentationId, proposal.section_id, { kind: proposal.kind, ...fields });
+      const updated = await patchSection(presentationId, proposal.section_id, {
+        kind: proposal.kind, title: proposal.title, ...fields,
+      });
       setDeck(updated);
     } else {
-      const updated = await addSection(presentationId, { kind: proposal.kind, title: proposal.title || '', ...fields });
+      const updated = await addSection(presentationId, {
+        kind: proposal.kind, title: proposal.title || '', ...fields,
+      });
       setDeck(updated);
     }
   };

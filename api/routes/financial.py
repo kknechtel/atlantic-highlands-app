@@ -187,9 +187,9 @@ async def extract_financial_data(
     db.commit()
     db.refresh(stmt)
 
-    # Run extraction in background
-    from services.financial_extractor import extract_financial_statement
-    background_tasks.add_task(extract_financial_statement, str(stmt.id), doc.s3_key)
+    # Run multi-pass extraction in background (v2 = sectioned, parallel, reconciled)
+    from services.financial_extractor_v2 import extract_financial_statement_v2
+    background_tasks.add_task(extract_financial_statement_v2, str(stmt.id), doc.s3_key)
 
     return {"statement_id": str(stmt.id), "status": "processing"}
 
@@ -238,6 +238,59 @@ async def create_analysis(
         summary=analysis.summary,
         created_at=analysis.created_at.isoformat(),
     )
+
+
+@router.post("/statements/{statement_id}/drill")
+async def run_drill(
+    statement_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Run all four drill agents (revenue/expenditure/debt/fund_balance) + synthesis in background.
+    Results land in FinancialStatement.drill_results."""
+    stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    if stmt.status not in ("extracted", "drilled", "verified"):
+        raise HTTPException(status_code=409, detail=f"Statement not ready for drill (status={stmt.status})")
+
+    from services.financial_agent import run_full_drill
+    background_tasks.add_task(run_full_drill, str(stmt.id))
+    return {"statement_id": str(stmt.id), "status": "drill_running"}
+
+
+@router.get("/statements/{statement_id}/drill")
+def get_drill_results(
+    statement_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    return {
+        "statement_id": str(stmt.id),
+        "status": stmt.status,
+        "accounting_basis": stmt.accounting_basis,
+        "fiscal_calendar": stmt.fiscal_calendar,
+        "reconcile_status": stmt.reconcile_status,
+        "reconcile_details": stmt.reconcile_details or {},
+        "anomaly_flags": stmt.anomaly_flags or [],
+        "drill_results": stmt.drill_results or {},
+    }
+
+
+@router.get("/statements/{statement_id}/anomalies")
+def get_anomalies(
+    statement_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = db.query(FinancialStatement).filter(FinancialStatement.id == statement_id).first()
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    return {"statement_id": str(stmt.id), "anomaly_flags": stmt.anomaly_flags or []}
 
 
 @router.get("/analyses", response_model=List[AnalysisResponse])

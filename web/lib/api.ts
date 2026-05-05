@@ -257,6 +257,82 @@ export async function getStatementRawExtraction(statementId: string): Promise<Re
   return request<Record<string, any>>(`/api/financial/statements/${statementId}/raw`);
 }
 
+// ─── Drill-down + anomalies (Phase 2) ─────────────────────────────────
+
+export interface AnomalyFlag {
+  code: string;
+  severity: "info" | "warn" | "high";
+  message: string;
+  line_id?: string;
+  value?: number;
+}
+
+export interface DrillResults {
+  revenue?: any;
+  expenditure?: any;
+  debt?: any;
+  fund_balance?: any;
+  synthesis?: any;
+}
+
+export interface DrillResponse {
+  statement_id: string;
+  status: string;
+  accounting_basis: string | null;
+  fiscal_calendar: string | null;
+  reconcile_status: string | null;
+  reconcile_details: Record<string, any>;
+  anomaly_flags: AnomalyFlag[];
+  drill_results: DrillResults;
+}
+
+export async function runDrill(statementId: string) {
+  return request<{ statement_id: string; status: string }>(
+    `/api/financial/statements/${statementId}/drill`,
+    { method: "POST" },
+  );
+}
+
+export async function getDrillResults(statementId: string): Promise<DrillResponse> {
+  return request<DrillResponse>(`/api/financial/statements/${statementId}/drill`);
+}
+
+export async function getStatementAnomalies(statementId: string): Promise<{ statement_id: string; anomaly_flags: AnomalyFlag[] }> {
+  return request(`/api/financial/statements/${statementId}/anomalies`);
+}
+
+// ─── Contracts + Vendors (Phase 3) ────────────────────────────────────
+
+export interface VendorSummary {
+  id: string; name: string; category: string | null;
+  contract_count: number; payment_total: number; created_at: string;
+}
+
+export interface ContractRow {
+  id: string; vendor_id: string; vendor_name: string;
+  entity_type: string; title: string; amount: number | null;
+  fiscal_year: string | null; contract_type: string | null;
+  awarded_date: string | null;
+  authorizing_resolution: string | null;
+  status: string;
+}
+
+export async function listVendors(params?: { q?: string; category?: string }): Promise<VendorSummary[]> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.category) qs.set("category", params.category);
+  return request<VendorSummary[]>(`/api/contracts/vendors${qs.toString() ? `?${qs}` : ""}`);
+}
+
+export async function listContracts(params?: { entity_type?: string; fiscal_year?: string; vendor?: string; min_amount?: number }): Promise<ContractRow[]> {
+  const qs = new URLSearchParams();
+  if (params?.entity_type) qs.set("entity_type", params.entity_type);
+  if (params?.fiscal_year) qs.set("fiscal_year", params.fiscal_year);
+  if (params?.vendor) qs.set("vendor", params.vendor);
+  if (params?.min_amount != null) qs.set("min_amount", String(params.min_amount));
+  return request<ContractRow[]>(`/api/contracts/contracts${qs.toString() ? `?${qs}` : ""}`);
+}
+
 export async function extractFinancialData(documentId: string, entityType: string, statementType: string) {
   return request<{ statement_id: string; status: string }>("/api/financial/extract", {
     method: "POST", body: JSON.stringify({ document_id: documentId, entity_type: entityType, statement_type: statementType }),

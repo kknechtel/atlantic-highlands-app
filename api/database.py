@@ -45,6 +45,9 @@ def _migrate():
         ("financial_statements", "reconcile_details", "JSONB DEFAULT '{}'::jsonb"),
         ("financial_statements", "anomaly_flags", "JSONB DEFAULT '[]'::jsonb"),
         ("financial_statements", "drill_results", "JSONB DEFAULT '{}'::jsonb"),
+        ("financial_statements", "accounting_basis", "VARCHAR"),
+        ("financial_statements", "fiscal_calendar", "VARCHAR"),
+        ("financial_statements", "predecessor_entity", "VARCHAR"),
         # Financial line item upgrades — fund + NJ account codes
         ("financial_line_items", "fund", "VARCHAR"),
         ("financial_line_items", "account_code", "VARCHAR"),

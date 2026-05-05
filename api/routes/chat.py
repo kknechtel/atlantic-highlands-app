@@ -106,8 +106,19 @@ You have powerful tools. USE THEM. Do not say "I cannot find" without calling at
 For every non-trivial question:
 1. Call `search_chunks` with the user's question (verbatim or rephrased) — this returns the most relevant passages from across the entire document corpus.
 2. If the chunks point to a document worth reading in full, call `read_document` with that document's ID.
-3. If the question concerns budgets, taxes, debt, or fund balances, also call `get_financial_summary`.
-4. Cite every fact with `[source: filename.pdf]` — these become clickable links.
+3. If the question concerns budgets, taxes, debt, or fund balances:
+   - For HEADLINE figures, call `get_financial_summary`.
+   - For ANALYSIS (revenue composition, expenditure breakdown, fund-balance health, debt position, red flags), call `get_drill_results` for the relevant statement_id. The drill is far richer than the summary — use it.
+   - For SPECIFIC line items ("show me transportation costs", "salaries vs benefits"), call `get_line_items` with section/fund/function_code/object_code filters.
+   - To surface FINANCIAL CONCERNS proactively, call `get_anomalies` — pre-computed rule-based flags.
+4. For VENDOR / CONTRACT questions, call `search_contracts` and/or `get_vendor_summary`.
+5. NJ-SPECIFIC AWARENESS:
+   - NJ schools use GAAP/GASB; NJ municipalities use REGULATORY BASIS — they are NOT directly comparable.
+   - Atlantic Highlands borough = calendar year; Henry Hudson Regional School District = July-June school year.
+   - HHRSD is a 7/1/2024 consolidation of three predecessor districts (AHSD, HSD, HHRS-HS). Pre-7/1/2024 figures are from the predecessors and CANNOT be summed naively.
+   - NJ school surplus is statutorily capped at greater of 2% of expenditures or $250K (N.J.S.A. 18A:7F-7) — do NOT apply GFOA's 16% benchmark to schools.
+   - For FY26+, CMPTRA is FULLY consolidated into ETR for municipalities — expect $0 CMPTRA, not a decline.
+6. Cite every fact with `[source: filename.pdf]` — these become clickable links.
 
 ## Output style
 
@@ -230,6 +241,73 @@ def _tool_defs() -> list[dict]:
                     "doc_type": {"type": "string"},
                     "limit": {"type": "integer", "default": 20, "maximum": 50},
                 },
+            },
+        },
+        {
+            "name": "get_drill_results",
+            "description": "Get the deep-drill analysis results for a specific financial statement: revenue composition, expenditure breakdown by function/object, debt analysis, fund-balance analysis, and an executive synthesis with red flags. Use this when the user asks for ANALYSIS rather than raw figures.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "statement_id": {"type": "string"},
+                    "drill_type": {"type": "string", "enum": ["revenue", "expenditure", "debt", "fund_balance", "synthesis", "all"], "default": "all"},
+                },
+                "required": ["statement_id"],
+            },
+        },
+        {
+            "name": "get_anomalies",
+            "description": "Get rule-based anomaly flags (operating deficit, fund balance over/under benchmark, large YoY swings, budget variances, debt/revenue ratio, salary concentration) for a statement, or across all statements if no ID given. Each flag has a severity (info|warn|high).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "statement_id": {"type": "string"},
+                    "entity_type": {"type": "string", "enum": ["town", "school"]},
+                    "min_severity": {"type": "string", "enum": ["info", "warn", "high"], "default": "info"},
+                },
+            },
+        },
+        {
+            "name": "get_line_items",
+            "description": "Fetch detailed extracted line items for a statement, optionally filtered by section (Revenue/Expenditures/Debt Service/...) or by NJ school account-code segments (program/function/object). Use this when the user wants to drill into a specific spending category like 'show me transportation costs' or 'how much was spent on salaries vs benefits'.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "statement_id": {"type": "string"},
+                    "section": {"type": "string"},
+                    "fund": {"type": "string", "enum": ["general", "capital", "capital_projects", "debt_service", "special_revenue", "enterprise", "trust"]},
+                    "function_code": {"type": "string", "description": "NJ school function code, e.g. '230' for Basic Skills"},
+                    "object_code": {"type": "string", "description": "NJ object code, e.g. '100' for Salaries"},
+                    "min_amount": {"type": "number"},
+                    "limit": {"type": "integer", "default": 50, "maximum": 200},
+                },
+                "required": ["statement_id"],
+            },
+        },
+        {
+            "name": "search_contracts",
+            "description": "Search municipal/school contracts by vendor, fiscal year, minimum amount, or entity. Returns contract title, amount, vendor, awarded date, authorizing resolution.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "vendor": {"type": "string"},
+                    "entity_type": {"type": "string", "enum": ["town", "school"]},
+                    "fiscal_year": {"type": "string"},
+                    "min_amount": {"type": "number"},
+                    "limit": {"type": "integer", "default": 30, "maximum": 100},
+                },
+            },
+        },
+        {
+            "name": "get_vendor_summary",
+            "description": "Summarize all activity for a single vendor — total contracts, total payments, fiscal years active, contract types. Use for 'How much has the borough paid X over the last 5 years?' style questions.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "vendor_name": {"type": "string"},
+                    "entity_type": {"type": "string", "enum": ["town", "school"]},
+                },
+                "required": ["vendor_name"],
             },
         },
     ]
@@ -377,6 +455,158 @@ def _exec_list_recent_documents(db: Session, args: dict) -> dict:
     }
 
 
+def _exec_get_drill_results(db: Session, args: dict) -> dict:
+    from models.financial import FinancialStatement
+    sid = args.get("statement_id")
+    if not sid:
+        return {"error": "statement_id required"}
+    stmt = db.query(FinancialStatement).filter(FinancialStatement.id == sid).first()
+    if not stmt:
+        return {"error": "statement_not_found"}
+    drills = stmt.drill_results or {}
+    drill_type = args.get("drill_type", "all")
+    if drill_type != "all" and drill_type in drills:
+        return {
+            "statement_id": str(stmt.id), "fiscal_year": stmt.fiscal_year,
+            "entity_type": stmt.entity_type, "drill_type": drill_type,
+            "result": drills.get(drill_type),
+        }
+    return {
+        "statement_id": str(stmt.id), "fiscal_year": stmt.fiscal_year,
+        "entity_type": stmt.entity_type,
+        "accounting_basis": stmt.accounting_basis,
+        "reconcile_status": stmt.reconcile_status,
+        "drills": drills,
+    }
+
+
+def _exec_get_anomalies(db: Session, args: dict) -> dict:
+    from models.financial import FinancialStatement
+    sid = args.get("statement_id")
+    entity_type = args.get("entity_type")
+    severity_rank = {"info": 0, "warn": 1, "high": 2}
+    min_sev = severity_rank.get(args.get("min_severity", "info"), 0)
+
+    q = db.query(FinancialStatement)
+    if sid:
+        q = q.filter(FinancialStatement.id == sid)
+    if entity_type:
+        q = q.filter(FinancialStatement.entity_type == entity_type)
+
+    rows = []
+    for s in q.all():
+        flags = [f for f in (s.anomaly_flags or [])
+                 if severity_rank.get(f.get("severity", "info"), 0) >= min_sev]
+        if not flags:
+            continue
+        rows.append({
+            "statement_id": str(s.id), "entity_type": s.entity_type,
+            "fiscal_year": s.fiscal_year, "statement_type": s.statement_type,
+            "flags": flags,
+        })
+    return {"count": len(rows), "statements": rows}
+
+
+def _exec_get_line_items(db: Session, args: dict) -> dict:
+    from models.financial import FinancialLineItem
+    sid = args.get("statement_id")
+    if not sid:
+        return {"error": "statement_id required"}
+    q = db.query(FinancialLineItem).filter(FinancialLineItem.statement_id == sid)
+    if args.get("section"):
+        q = q.filter(FinancialLineItem.section == args["section"])
+    if args.get("fund"):
+        q = q.filter(FinancialLineItem.fund == args["fund"])
+    if args.get("function_code"):
+        q = q.filter(FinancialLineItem.function_code == args["function_code"])
+    if args.get("object_code"):
+        q = q.filter(FinancialLineItem.object_code == args["object_code"])
+    if args.get("min_amount") is not None:
+        q = q.filter(FinancialLineItem.amount >= float(args["min_amount"]))
+    items = q.order_by(FinancialLineItem.amount.desc().nullslast()).limit(int(args.get("limit", 50))).all()
+    return {
+        "count": len(items),
+        "items": [
+            {
+                "line_name": it.line_name, "section": it.section, "subsection": it.subsection,
+                "amount": it.amount, "prior_year_amount": it.prior_year_amount,
+                "yoy_change_pct": it.yoy_change_pct, "variance_pct": it.variance_pct,
+                "fund": it.fund, "account_code": it.account_code,
+                "is_total_row": it.is_total_row,
+            } for it in items
+        ],
+    }
+
+
+def _exec_search_contracts(db: Session, args: dict) -> dict:
+    from models.contract import Contract, Vendor
+    q = db.query(Contract).join(Vendor)
+    if args.get("entity_type"):
+        q = q.filter(Contract.entity_type == args["entity_type"])
+    if args.get("fiscal_year"):
+        q = q.filter(Contract.fiscal_year == args["fiscal_year"])
+    if args.get("vendor"):
+        norm = " ".join(str(args["vendor"]).lower().split())
+        q = q.filter(Vendor.normalized_name.ilike(f"%{norm}%"))
+    if args.get("min_amount") is not None:
+        q = q.filter(Contract.amount >= float(args["min_amount"]))
+    rows = q.order_by(Contract.awarded_date.desc().nullslast()).limit(int(args.get("limit", 30))).all()
+    return {
+        "count": len(rows),
+        "contracts": [
+            {
+                "id": str(c.id), "vendor_name": c.vendor.name, "title": c.title,
+                "amount": c.amount, "fiscal_year": c.fiscal_year,
+                "contract_type": c.contract_type, "entity_type": c.entity_type,
+                "awarded_date": c.awarded_date.isoformat() if c.awarded_date else None,
+                "authorizing_resolution": c.authorizing_resolution,
+            } for c in rows
+        ],
+    }
+
+
+def _exec_get_vendor_summary(db: Session, args: dict) -> dict:
+    from sqlalchemy import func
+    from models.contract import Vendor, Contract, Payment
+    name = args.get("vendor_name", "")
+    norm = " ".join(name.lower().split())
+    if not norm:
+        return {"error": "vendor_name required"}
+    vendor = db.query(Vendor).filter(Vendor.normalized_name.ilike(f"%{norm}%")).first()
+    if not vendor:
+        return {"error": "vendor_not_found", "searched": name}
+
+    contract_q = db.query(Contract).filter(Contract.vendor_id == vendor.id)
+    if args.get("entity_type"):
+        contract_q = contract_q.filter(Contract.entity_type == args["entity_type"])
+    contracts = contract_q.order_by(Contract.awarded_date.desc().nullslast()).all()
+
+    payment_q = db.query(Payment).filter(Payment.vendor_id == vendor.id)
+    if args.get("entity_type"):
+        payment_q = payment_q.filter(Payment.entity_type == args["entity_type"])
+
+    total_contracts = sum(float(c.amount or 0) for c in contracts)
+    payment_total = float(
+        payment_q.with_entities(func.coalesce(func.sum(Payment.amount), 0.0)).scalar() or 0.0
+    )
+
+    fy_set = sorted({c.fiscal_year for c in contracts if c.fiscal_year}, reverse=True)
+    return {
+        "vendor": {"id": str(vendor.id), "name": vendor.name, "category": vendor.category},
+        "contract_count": len(contracts),
+        "total_contracts_awarded": total_contracts,
+        "total_paid": payment_total,
+        "fiscal_years_active": fy_set[:10],
+        "recent_contracts": [
+            {
+                "title": c.title, "amount": c.amount, "fiscal_year": c.fiscal_year,
+                "awarded_date": c.awarded_date.isoformat() if c.awarded_date else None,
+                "contract_type": c.contract_type,
+            } for c in contracts[:10]
+        ],
+    }
+
+
 def _exec_web_search(args: dict) -> dict:
     try:
         from duckduckgo_search import DDGS
@@ -409,6 +639,16 @@ def _execute_tool(name: str, args: dict, db: Session) -> dict:
             return _exec_get_financial_summary(db, args)
         if name == "list_recent_documents":
             return _exec_list_recent_documents(db, args)
+        if name == "get_drill_results":
+            return _exec_get_drill_results(db, args)
+        if name == "get_anomalies":
+            return _exec_get_anomalies(db, args)
+        if name == "get_line_items":
+            return _exec_get_line_items(db, args)
+        if name == "search_contracts":
+            return _exec_search_contracts(db, args)
+        if name == "get_vendor_summary":
+            return _exec_get_vendor_summary(db, args)
         if name == "web_search":
             return _exec_web_search(args)
         return {"error": f"unknown_tool:{name}"}
@@ -747,6 +987,19 @@ def _summarize_tool_result(name: str, res: dict) -> str:
         return f"Read {res.get('filename', 'document')}"
     if name == "get_financial_summary":
         return f"Loaded {res.get('count', 0)} financial statement(s)"
+    if name == "get_drill_results":
+        if "drill_type" in res:
+            return f"Loaded {res['drill_type']} drill"
+        return f"Loaded full drill ({len(res.get('drills', {}))} sections)"
+    if name == "get_anomalies":
+        return f"Found anomalies in {res.get('count', 0)} statement(s)"
+    if name == "get_line_items":
+        return f"Loaded {res.get('count', 0)} line item(s)"
+    if name == "search_contracts":
+        return f"Found {res.get('count', 0)} contract(s)"
+    if name == "get_vendor_summary":
+        v = res.get("vendor") or {}
+        return f"Loaded vendor: {v.get('name', '?')}"
     if name == "web_search":
         return f"Found {res.get('count', 0)} web results"
     return "ok"

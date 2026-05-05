@@ -42,6 +42,7 @@ from routes.calendar import router as calendar_router
 from routes.opra import router as opra_router
 from routes.ingestion import router as ingestion_router
 from routes.presentations import router as presentations_router
+from routes.contracts import router as contracts_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -59,6 +60,7 @@ app.include_router(calendar_router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(opra_router, prefix="/api/opra", tags=["opra"])
 app.include_router(ingestion_router, prefix="/api/ingestion", tags=["ingestion"])
 app.include_router(presentations_router, prefix="/api/presentations", tags=["presentations"])
+app.include_router(contracts_router, prefix="/api/contracts", tags=["contracts"])
 
 
 @app.on_event("startup")

@@ -30,6 +30,139 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate()
     logger.info("Database initialized")
+    _log_rag_health_banner()
+
+
+def rag_health() -> dict:
+    """
+    Inspect the live database and return a status dict for the RAG pipeline.
+
+    Used by:
+      - the startup banner (so an operator notices a degraded mode)
+      - GET /health/rag (so a uptime check can alert)
+      - tests / diagnostic scripts
+
+    Three independent axes:
+      1. pgvector extension installed              → semantic search possible
+      2. embedding columns exist on docs + chunks  → ingestion can write vectors
+      3. VOYAGE_API_KEY set                        → vectors will be SEMANTIC
+                                                     (otherwise hash-vector fallback)
+    """
+    import os
+
+    status = {
+        "pgvector_extension": False,
+        "pgvector_version": None,
+        "documents_embedding_column": False,
+        "chunks_embedding_column": False,
+        "voyage_api_key_set": bool(os.environ.get("VOYAGE_API_KEY", "").strip()),
+        "ready_for_semantic_search": False,
+        "degraded_mode": None,  # None | "no_pgvector" | "no_voyage_key"
+        "documents_total": 0,
+        "documents_embedded": 0,
+        "chunks_total": 0,
+        "chunks_embedded": 0,
+    }
+
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+            )).fetchone()
+            if row:
+                status["pgvector_extension"] = True
+                status["pgvector_version"] = row[0]
+
+            # Embedding columns
+            for table in ("documents", "document_chunks"):
+                exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = :t AND column_name = 'embedding'"
+                ), {"t": table}).fetchone()
+                key = "documents_embedding_column" if table == "documents" else "chunks_embedding_column"
+                status[key] = bool(exists)
+
+            # Coverage (only meaningful if embedding column exists)
+            if status["documents_embedding_column"]:
+                status["documents_total"] = conn.execute(text("SELECT count(*) FROM documents")).scalar() or 0
+                status["documents_embedded"] = conn.execute(text(
+                    "SELECT count(*) FROM documents WHERE embedding IS NOT NULL"
+                )).scalar() or 0
+            if status["chunks_embedding_column"]:
+                status["chunks_total"] = conn.execute(text("SELECT count(*) FROM document_chunks")).scalar() or 0
+                status["chunks_embedded"] = conn.execute(text(
+                    "SELECT count(*) FROM document_chunks WHERE embedding IS NOT NULL"
+                )).scalar() or 0
+    except Exception as exc:
+        logger.warning("rag_health: query failed: %s", exc)
+
+    has_pgvector = (
+        status["pgvector_extension"]
+        and status["documents_embedding_column"]
+        and status["chunks_embedding_column"]
+    )
+
+    if not has_pgvector:
+        status["degraded_mode"] = "no_pgvector"
+    elif not status["voyage_api_key_set"]:
+        status["degraded_mode"] = "no_voyage_key"
+
+    status["ready_for_semantic_search"] = has_pgvector and status["voyage_api_key_set"]
+    return status
+
+
+def _log_rag_health_banner() -> None:
+    """Print a hard-to-miss multi-line banner about the RAG pipeline state.
+    Helps operators notice when the system is silently running in a degraded
+    mode (keyword-only search, hash-vector fallback)."""
+    s = rag_health()
+    rule = "=" * 72
+
+    if s["ready_for_semantic_search"]:
+        logger.info("\n%s\nRAG: READY (semantic + keyword)\n  pgvector v%s · voyage embeddings · %d/%d chunks embedded\n%s",
+                    rule, s["pgvector_version"], s["chunks_embedded"], s["chunks_total"], rule)
+        return
+
+    lines = [rule, "RAG PIPELINE: DEGRADED MODE"]
+
+    if s["degraded_mode"] == "no_pgvector":
+        lines += [
+            "",
+            "  pgvector extension is NOT available on this Postgres instance.",
+            "  Semantic search is OFF. Chat will fall back to tsvector keyword search.",
+            "",
+            f"  pgvector_extension:        {s['pgvector_extension']}",
+            f"  documents.embedding col:   {s['documents_embedding_column']}",
+            f"  document_chunks.embedding: {s['chunks_embedding_column']}",
+            "",
+            "  Fix:",
+            "    RDS:        parameter group → shared_preload_libraries += pgvector → reboot",
+            "    Docker:     image must be `pgvector/pgvector:pgN`, not stock postgres",
+            "    Self-host:  apt-get install postgresql-{16,15,...}-pgvector",
+            "",
+            "  Then restart the API — the inline migration will create the extension",
+            "  and add the embedding columns. Re-run ingestion to populate vectors.",
+        ]
+    elif s["degraded_mode"] == "no_voyage_key":
+        lines += [
+            "",
+            "  pgvector is installed, but VOYAGE_API_KEY is not set.",
+            "  Embeddings will use the SHA-512 hash fallback (deterministic, NOT semantic).",
+            "  Keyword search via tsvector still works; chat recall will be okay but not great.",
+            "",
+            f"  pgvector v{s['pgvector_version']} · {s['chunks_embedded']}/{s['chunks_total']} chunks embedded (hash)",
+            "",
+            "  Fix:",
+            "    Set VOYAGE_API_KEY (free tier covers AH's corpus). Get a key at",
+            "      https://dash.voyageai.com",
+            "    Restart the API and re-run ingestion to overwrite hash vectors with",
+            "    real embeddings.",
+        ]
+    else:
+        lines.append("  Unknown state — see status: %s" % s)
+
+    lines.append(rule)
+    logger.warning("\n%s", "\n".join(lines))
 
 
 def _migrate():
@@ -61,8 +194,17 @@ def _migrate():
     ]
 
     with engine.connect() as conn:
-        # 1. Add per-row missing columns
+        def _table_exists(t: str) -> bool:
+            return bool(conn.execute(text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_name = :t"
+            ), {"t": t}).fetchone())
+
+        # 1. Add per-row missing columns. Skip silently if the table doesn't
+        # exist yet (can happen mid-deploy if models haven't been imported).
         for table, column, col_type in new_columns:
+            if not _table_exists(table):
+                continue
             exists = conn.execute(text(
                 "SELECT 1 FROM information_schema.columns "
                 "WHERE table_name = :table AND column_name = :column"
@@ -85,6 +227,8 @@ def _migrate():
             ("document_chunks", "fts_vector", "tsvector"),
         ]
         for table, column, col_type in rag_columns:
+            if not _table_exists(table):
+                continue
             exists = conn.execute(text(
                 "SELECT 1 FROM information_schema.columns "
                 "WHERE table_name = :table AND column_name = :column"

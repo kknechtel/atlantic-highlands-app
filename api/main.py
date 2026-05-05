@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import APP_NAME, ALLOWED_ORIGINS, DEBUG
-from database import init_db
+from database import init_db, rag_health
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
@@ -72,3 +72,10 @@ async def startup():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "app": APP_NAME}
+
+
+@app.get("/health/rag")
+async def health_rag():
+    """RAG pipeline readiness — pgvector, embedding columns, Voyage key, coverage.
+    Same shape as the startup banner. Use for monitoring/alerting."""
+    return rag_health()

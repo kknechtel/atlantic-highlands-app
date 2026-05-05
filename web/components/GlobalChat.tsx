@@ -142,7 +142,9 @@ export default function GlobalChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepThinking, setDeepThinking] = useState(false);
-  const [reportMode, setReportMode] = useState(false);
+  // reportMode kept in state (still passed to backend) so existing chat sessions
+  // don't break, but the toggle UI is gone — presentations replace formal reports.
+  const reportMode = false;
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [splitDoc, setSplitDoc] = useState<{ url: string; filename: string } | null>(null);
   const [showDocPicker, setShowDocPicker] = useState(false);
@@ -710,15 +712,6 @@ export default function GlobalChat() {
             Deep
           </label>
           <label
-            className={`flex items-center gap-1.5 cursor-pointer ${reportMode ? "font-semibold" : "text-gray-500"}`}
-            style={reportMode ? { color: brandColor } : undefined}
-          >
-            <input type="checkbox" checked={reportMode} onChange={e => setReportMode(e.target.checked)}
-              className="cursor-pointer" style={{ accentColor: brandColor, width: 13, height: 13 }} />
-            <DocumentChartBarIcon className="w-3 h-3" />
-            Report
-          </label>
-          <label
             className={`flex items-center gap-1.5 cursor-pointer ${webSearchEnabled ? "font-semibold" : "text-gray-500"}`}
             style={webSearchEnabled ? { color: brandColor } : undefined}
           >
@@ -827,7 +820,6 @@ export default function GlobalChat() {
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
               placeholder={
                 selectedDoc ? `Ask about ${selectedDoc.filename}...`
-                : reportMode ? "Request a report..."
                 : deepThinking ? "Ask a deep analytical question..."
                 : webSearchEnabled ? "Ask anything (+ web search)..."
                 : "Ask about AH documents..."

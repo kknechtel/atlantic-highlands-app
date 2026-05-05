@@ -6,14 +6,14 @@ import {
   ChartBarIcon,
   FolderIcon,
   CalendarDaysIcon,
-  BuildingStorefrontIcon,
+  PresentationChartLineIcon,
   EllipsisHorizontalIcon,
 } from "@heroicons/react/24/outline";
 import {
   ChartBarIcon as ChartBarSolid,
   FolderIcon as FolderSolid,
   CalendarDaysIcon as CalendarSolid,
-  BuildingStorefrontIcon as StorefrontSolid,
+  PresentationChartLineIcon as PresentationSolid,
 } from "@heroicons/react/24/solid";
 import { useState } from "react";
 
@@ -22,15 +22,16 @@ const brandColor = "#385854";
 const mainTabs = [
   { name: "Home", href: "/", icon: ChartBarIcon, activeIcon: ChartBarSolid },
   { name: "Docs", href: "/document-library", icon: FolderIcon, activeIcon: FolderSolid },
+  { name: "Decks", href: "/presentations", icon: PresentationChartLineIcon, activeIcon: PresentationSolid },
   { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon, activeIcon: CalendarSolid },
-  { name: "Local", href: "/local-business", icon: BuildingStorefrontIcon, activeIcon: StorefrontSolid },
   { name: "More", href: "#more", icon: EllipsisHorizontalIcon, activeIcon: EllipsisHorizontalIcon },
 ];
 
 const moreItems = [
+  { name: "Local Business", href: "/local-business" },
   { name: "Events", href: "/events" },
   { name: "Financials", href: "/financial-analysis" },
-  { name: "Reports", href: "/reports" },
+  { name: "OPRA Requests", href: "/opra" },
   { name: "Scraper", href: "/scraper" },
   { name: "Admin", href: "/admin" },
 ];

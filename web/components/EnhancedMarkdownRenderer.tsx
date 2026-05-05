@@ -31,7 +31,9 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                     (_match, chartJson) => {
                         const id = `chart-${charts.length}`;
                         charts.push({ id, config: chartJson.trim() });
-                        return `<div class="ah-chart" data-chart-id="${id}" data-chart='${chartJson.trim().replace(/'/g, "&apos;")}'><canvas id="${id}" style="max-height:300px"></canvas></div>`;
+                        // Container needs an explicit height: with maintainAspectRatio:false
+                        // Chart.js sizes to its parent and renders 0px tall otherwise.
+                        return `<div class="ah-chart" data-chart-id="${id}" data-chart='${chartJson.trim().replace(/'/g, "&apos;")}' style="position:relative;height:320px;width:100%;margin:12px 0"><canvas id="${id}"></canvas></div>`;
                     }
                 );
 

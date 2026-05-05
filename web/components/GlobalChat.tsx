@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchDocuments, getDocumentViewUrl, getChatSessions, type Document } from "@/lib/api";
+import { searchDocuments, getDocumentViewUrl, getChatSessions, getChatHistory, type Document } from "@/lib/api";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
 import {
@@ -222,6 +222,32 @@ export default function GlobalChat() {
       content: "New conversation started. Ask me anything about Atlantic Highlands.",
     }]);
     setShowHistory(false);
+  };
+
+  /** Load a previous session's messages and switch to it. */
+  const handleLoadSession = async (newSessionId: string) => {
+    setShowHistory(false);
+    if (newSessionId === sessionId) return;
+    try {
+      const data = await getChatHistory(newSessionId);
+      setSessionId(newSessionId);
+      const loaded: ChatMessage[] = (data.messages || []).map((m, i) => ({
+        id: `${newSessionId}_${i}`,
+        role: (m.role === 'user' || m.role === 'assistant') ? m.role : 'system',
+        content: m.content,
+        timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+      }));
+      setMessages(loaded.length ? loaded : [{
+        id: "empty", role: "assistant", timestamp: new Date(),
+        content: "(This conversation has no messages.)",
+      }]);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : 'Unknown error';
+      setMessages(prev => [...prev, {
+        id: `e_${Date.now()}`, role: "error", timestamp: new Date(),
+        content: `Couldn't load that conversation: ${detail}`,
+      }]);
+    }
   };
 
   const handleCitationClick = (info: { filename: string }) => {
@@ -641,7 +667,7 @@ export default function GlobalChat() {
               <button onClick={handleNewSession} className="text-xs hover:opacity-80" style={{ color: brandColor }}>+ New Chat</button>
             </div>
             {sessions?.map((s: any) => (
-              <button key={s.session_id} onClick={() => { setSessionId(s.session_id); setShowHistory(false); }}
+              <button key={s.session_id} onClick={() => handleLoadSession(s.session_id)}
                 className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-100 ${s.session_id === sessionId ? "text-gray-900" : "text-gray-600"}`}
                 style={s.session_id === sessionId ? { backgroundColor: `${brandColor}10` } : {}}>
                 <p className="truncate font-medium">{s.last_query || "Conversation"}</p>

@@ -20,7 +20,11 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
-EMBEDDING_MODEL = "voyage-3-lite"
+# voyage-3 is 1024-dim (matches database.py:EMBEDDING_DIM and the
+# vector(1024) columns). voyage-3-lite is 512-dim — DO NOT use without
+# also changing the column type, or every UPDATE rejects with
+# "expected 1024 dimensions, not 512".
+EMBEDDING_MODEL = "voyage-3"
 EMBEDDING_DIM = 1024
 
 

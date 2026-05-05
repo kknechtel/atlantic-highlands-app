@@ -510,8 +510,12 @@ RULES:
 - 6-10 sections. Group related findings together. Don't make one section per chat turn.
 - Each narrative body should be 2-6 paragraphs of substantive content.
 - PRESERVE every [source: filename.pdf] citation from the assistant turns — do not drop them.
-- PRESERVE every ```chart ... ``` fenced block VERBATIM inside the narrative body it belongs to.
-  The frontend renders these as live Chart.js charts; dropping them loses information.
+- The transcript contains tokens like [[CHART_PLACEHOLDER_0]], [[CHART_PLACEHOLDER_1]], etc.
+  These represent live Chart.js charts the user will see in the deck. Keep the EXACT token
+  text in the narrative body it belongs to. Do NOT replace, paraphrase, expand, or remove it
+  — the backend swaps the token back to the original chart after you respond. If a section
+  references a chart, just include the [[CHART_PLACEHOLDER_N]] token on its own line
+  inside the markdown body.
 - PRESERVE every markdown table inside the narrative body. Don't convert to "table" sections
   unless the table is the entire point of a section — narrative sections render markdown
   tables natively, including the chart fences.
@@ -526,7 +530,18 @@ Output ONLY valid JSON — no fences, no commentary."""
 
 def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str]) -> dict:
     import anthropic
+    import re as _re
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # Belt-and-suspenders: extract every ```chart fence from the transcript and
+    # replace with an opaque placeholder before sending to Claude. The model
+    # would otherwise paraphrase or drop the JSON. We restore the original
+    # fences after Claude returns the structured deck.
+    chart_blocks: list[str] = []
+    def _stash_chart(m):
+        idx = len(chart_blocks)
+        chart_blocks.append(m.group(0))
+        return f"[[CHART_PLACEHOLDER_{idx}]]"
 
     # Trim each turn to a sane size — full chat transcripts often run 300K+
     # tokens once tool results bloat the assistant turns. The structurer doesn't
@@ -536,6 +551,9 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
     for m in messages:
         role = (m.get("role") or "user").upper()
         body = (m.get("content") or "")
+        # Extract chart blocks BEFORE trimming so a fence that straddles the cut
+        # still gets preserved in full.
+        body = _re.sub(r"```chart\s*\n[\s\S]*?\n```", _stash_chart, body)
         if len(body) > PER_TURN_CHARS:
             body = body[:PER_TURN_CHARS] + "\n\n[... truncated ...]"
         transcript_lines.append(f"## {role}\n\n{body}")
@@ -560,14 +578,29 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
         for chunk in stream.text_stream:
             text += chunk
     text = text.strip().removeprefix("```json").removeprefix("```").strip().removesuffix("```").strip()
+
+    def _restore_charts(obj):
+        """Walk the parsed deck JSON and substitute placeholders back to
+        their original ```chart``` fences. Operates on dict/list/str."""
+        if isinstance(obj, str):
+            def repl(m):
+                idx = int(m.group(1))
+                return chart_blocks[idx] if 0 <= idx < len(chart_blocks) else m.group(0)
+            return _re.sub(r"\[\[CHART_PLACEHOLDER_(\d+)\]\]", repl, obj)
+        if isinstance(obj, list):
+            return [_restore_charts(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: _restore_charts(v) for k, v in obj.items()}
+        return obj
+
     try:
-        return json.loads(text)
+        return _restore_charts(json.loads(text))
     except json.JSONDecodeError:
         # Best-effort: salvage the largest JSON object substring
         start, end = text.find("{"), text.rfind("}")
         if start >= 0 and end > start:
             try:
-                return json.loads(text[start:end + 1])
+                return _restore_charts(json.loads(text[start:end + 1]))
             except Exception:
                 pass
         raise HTTPException(502, "AI returned invalid JSON for the deck structure")

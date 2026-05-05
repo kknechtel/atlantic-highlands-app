@@ -17,6 +17,8 @@ import TypingIndicator from './TypingIndicator';
 
 export type ToolActivity = {
     name: string;
+    /** Human-readable line built from the tool's input args, e.g. `Searching: "X"`. */
+    description?: string;
     input?: Record<string, unknown>;
     summary?: string;
     status: 'started' | 'done' | 'error';
@@ -33,6 +35,8 @@ export interface ChatMessage {
     thinking?: 'started' | 'done';
     /** Tool calls Claude made on this turn (search_chunks, read_document, etc.). */
     toolActivity?: ToolActivity[];
+    /** Latest progress line emitted by the backend (e.g. "Calling Claude…"). */
+    statusText?: string;
 }
 
 interface EnhancedMessageComponentProps {
@@ -57,22 +61,57 @@ function ToolActivityList({ items, brandColor }: { items: ToolActivity[]; brandC
     return (
         <div className="mt-2 space-y-1">
             {items.map((t, i) => (
-                <div key={i} className="flex items-center gap-2 text-[11px] text-gray-500">
-                    <WrenchScrewdriverIcon className="w-3 h-3 flex-shrink-0" style={{ color: brandColor }} />
-                    <span className="font-medium">{TOOL_LABEL[t.name] || t.name}</span>
-                    {t.status === 'started' && (
-                        <span className="flex gap-0.5">
-                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor }} />
-                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '120ms' }} />
-                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '240ms' }} />
-                        </span>
-                    )}
-                    {t.summary && t.status !== 'started' && (
-                        <span className="text-gray-400 truncate">— {t.summary}</span>
-                    )}
+                <div key={i} className="flex items-start gap-2 text-[11px] text-gray-500">
+                    <WrenchScrewdriverIcon className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: brandColor }} />
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="font-medium">{t.description || TOOL_LABEL[t.name] || t.name}</span>
+                            {t.status === 'started' && (
+                                <span className="flex gap-0.5">
+                                    <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor }} />
+                                    <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '120ms' }} />
+                                    <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '240ms' }} />
+                                </span>
+                            )}
+                        </div>
+                        {t.summary && t.status !== 'started' && (
+                            <div className="text-gray-400 truncate">{t.summary}</div>
+                        )}
+                    </div>
                 </div>
             ))}
         </div>
+    );
+}
+
+function StatusIndicator({ text, brandColor }: { text: string; brandColor: string }) {
+    return (
+        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+            <span className="flex gap-0.5">
+                <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor }} />
+                <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '120ms' }} />
+                <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '240ms' }} />
+            </span>
+            <span className="italic">{text}</span>
+        </div>
+    );
+}
+
+/** Tiny live-updating mm:ss elapsed-time chip. Re-renders every second. */
+function ElapsedTicker({ since }: { since: Date }) {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+    const sec = Math.max(0, Math.floor((now - since.getTime()) / 1000));
+    if (sec < 3) return null; // hide for the first couple seconds — looks frantic otherwise
+    const mm = Math.floor(sec / 60);
+    const ss = sec % 60;
+    return (
+        <span className="text-[10px] text-gray-400 font-mono tabular-nums">
+            {mm > 0 ? `${mm}m ${ss}s` : `${ss}s`}
+        </span>
     );
 }
 
@@ -120,9 +159,14 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
-    // While we wait for the first content delta (could be thinking or tool use), show
-    // either a typing indicator or — if we have activity already — render the activity inside the bubble.
-    const hasEarlyActivity = (message.toolActivity && message.toolActivity.length > 0) || message.thinking === 'started';
+    // While we wait for the first content delta we may still have status text,
+    // tool activity, or thinking already populated — render those inside the bubble
+    // rather than the generic typing indicator.
+    const hasEarlyActivity = (
+        (message.toolActivity && message.toolActivity.length > 0) ||
+        message.thinking === 'started' ||
+        Boolean(message.statusText)
+    );
 
     if (message.isStreaming && !message.content && message.role === 'assistant' && !hasEarlyActivity) {
         return (
@@ -177,8 +221,18 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
 
                     {!isUser && message.thinking && <ThinkingIndicator status={message.thinking} brandColor={brandColor} />}
 
+                    {!isUser && message.statusText && message.isStreaming && !message.content && (
+                        <StatusIndicator text={message.statusText} brandColor={brandColor} />
+                    )}
+
                     {!isUser && message.toolActivity && message.toolActivity.length > 0 && (
                         <ToolActivityList items={message.toolActivity} brandColor={brandColor} />
+                    )}
+
+                    {!isUser && message.isStreaming && !message.content && (
+                        <div className="mt-1.5">
+                            <ElapsedTicker since={message.timestamp} />
+                        </div>
                     )}
 
                     {isUser ? (

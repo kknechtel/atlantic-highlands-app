@@ -756,6 +756,42 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
+def _describe_tool_call(name: str, input_args: dict) -> str:
+    """Build a short, human-readable line for what a tool is about to do.
+    Surfaces the actual query / document name so the user sees substance,
+    not just a generic 'Searching…' string."""
+    args = input_args or {}
+    q = (args.get("query") or "").strip()
+    if name in ("search_chunks", "search_documents") and q:
+        return f"Searching: “{q[:80]}”"
+    if name == "web_search" and q:
+        return f"Web search: “{q[:80]}”"
+    if name == "read_document":
+        return "Reading document"
+    if name == "get_financial_summary":
+        ent = args.get("entity") or "all"
+        fy = args.get("fiscal_year")
+        return f"Loading financial summary ({ent}{', FY ' + fy if fy else ''})"
+    if name == "list_recent_documents":
+        return f"Listing recent {args.get('doc_type') or 'documents'}"
+    if name == "get_drill_results":
+        return f"Loading drill analysis ({args.get('drill_type', 'all')})"
+    if name == "get_anomalies":
+        return f"Loading anomalies ({args.get('min_severity', 'info')}+)"
+    if name == "get_line_items":
+        bits = [args.get("section"), args.get("fund"),
+                args.get("function_code"), args.get("object_code")]
+        f = ", ".join(b for b in bits if b)
+        return f"Loading line items{(' — ' + f) if f else ''}"
+    if name == "search_contracts":
+        ent = args.get("entity_type") or ""
+        v = args.get("vendor") or ""
+        return f"Searching contracts{(' / ' + ent) if ent else ''}{(' / ' + v) if v else ''}"
+    if name == "get_vendor_summary":
+        return f"Loading vendor: {args.get('vendor_name', '?')}"
+    return name.replace("_", " ").title()
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest,
@@ -845,10 +881,18 @@ async def _stream_claude(
 
     try:
         yield _sse("session", {"session_id": session_id})
+        yield _sse("status", {"text": "Building context…", "stage": "context"})
 
         for iteration in range(8):
             if await request.is_disconnected():
                 return
+
+            yield _sse("status", {
+                "text": ("Calling Claude (deep thinking)…" if req.deep_thinking
+                         else "Calling Claude…"),
+                "stage": "model_call",
+                "iteration": iteration + 1,
+            })
 
             api_kwargs = {
                 "model": model,
@@ -928,11 +972,17 @@ async def _stream_claude(
                     finally:
                         s.close()
 
+                yield _sse("status", {
+                    "text": f"Running {len(tool_blocks)} tool{'s' if len(tool_blocks) != 1 else ''}…",
+                    "stage": "tools",
+                })
+
                 results = []
                 for tb in tool_blocks:
                     yield _sse("tool_call", {
                         "name": tb.name,
                         "input": tb.input,
+                        "description": _describe_tool_call(tb.name, dict(tb.input or {})),
                     })
                     res = await asyncio.to_thread(run_tool, tb.name, tb.input)
                     summary = _summarize_tool_result(tb.name, res)

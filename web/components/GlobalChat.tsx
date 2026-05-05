@@ -16,10 +16,23 @@ const brandColor = "#385854";
 // Use relative URLs in browser so Next.js rewrite proxy handles it (avoids HTTPS/HTTP mixed content)
 const API_BASE = "";
 
+/** Stable ref to "is the chat panel currently visible to the user".
+ *  Read inside the streaming reader so the 'done' handler can decide
+ *  whether to flag unread + fire a browser notification. */
+function useHiddenRef(isOpen: boolean, isMinimized: boolean) {
+  const ref = useRef(false);
+  useEffect(() => {
+    ref.current = !isOpen || isMinimized;
+  }, [isOpen, isMinimized]);
+  return ref;
+}
+
 export default function GlobalChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const hiddenRef = useHiddenRef(isOpen, isMinimized);
   const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([{
     id: "welcome", role: "assistant", timestamp: new Date(),
@@ -45,6 +58,31 @@ export default function GlobalChat() {
   });
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  // When the chat opens (or comes back from minimized), clear the unread count.
+  useEffect(() => {
+    if (isOpen && !isMinimized) setUnread(0);
+  }, [isOpen, isMinimized]);
+
+  // Ask for browser-notification permission lazily — first time the user sends.
+  // We don't ask up-front because that's annoying and most browsers will ignore it.
+  const ensureNotifyPermission = () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  };
+
+  const fireDoneNotification = (preview: string) => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const n = new Notification("AH Expert response ready", {
+      body: preview.slice(0, 200),
+      tag: "ah-chat-done",
+      icon: "/icon-192.png",
+    });
+    n.onclick = () => { window.focus(); setIsOpen(true); setIsMinimized(false); n.close(); };
+  };
 
   const handleViewDoc = async (docId: string, filename: string) => {
     try {
@@ -107,6 +145,7 @@ export default function GlobalChat() {
     const text = input.trim();
     if (!text || isStreaming) return;
     setInput(""); setShowDocPicker(false); setShowHistory(false);
+    ensureNotifyPermission();
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(), role: "user", content: text, timestamp: new Date(),
@@ -171,9 +210,14 @@ export default function GlobalChat() {
               if (d.session_id) setSessionId(d.session_id);
               break;
 
+            case "status":
+              // Backend transition marker: "Building context…", "Calling Claude…", etc.
+              patchMessage(assistantMsg.id, { statusText: d.text || undefined });
+              break;
+
             case "delta":
               full += d.content || "";
-              patchMessage(assistantMsg.id, { content: full });
+              patchMessage(assistantMsg.id, { content: full, statusText: undefined });
               break;
 
             case "thinking":
@@ -185,7 +229,12 @@ export default function GlobalChat() {
             case "tool_call":
             case "tool_use": {
               const name = d.name || (Array.isArray(d.tools) ? d.tools[0]?.name : "") || "tool";
-              const newEntry: ToolActivity = { name, input: d.input, status: "started" };
+              const newEntry: ToolActivity = {
+                name,
+                input: d.input,
+                description: d.description,
+                status: "started",
+              };
               patchMessage(assistantMsg.id, m => ({
                 toolActivity: [...(m.toolActivity || []), newEntry],
               }));
@@ -207,13 +256,18 @@ export default function GlobalChat() {
               break;
 
             case "done":
-              patchMessage(assistantMsg.id, { isStreaming: false });
+              patchMessage(assistantMsg.id, { isStreaming: false, statusText: undefined });
+              if (hiddenRef.current) {
+                setUnread(u => u + 1);
+                fireDoneNotification(full || "Response ready");
+              }
               break;
 
             case "error":
               patchMessage(assistantMsg.id, m => ({
                 content: (m.content || "") + (m.content ? "\n\n" : "") + "Error: " + (d.content || "Unknown error"),
                 isStreaming: false,
+                statusText: undefined,
                 role: "error" as const,
               }));
               break;
@@ -229,12 +283,24 @@ export default function GlobalChat() {
     }
   };
 
-  // Closed state - FAB button
+  // Closed state - FAB button. Streaming pulse on the right; unread count on top-left.
   if (!isOpen) return (
     <button onClick={() => setIsOpen(true)}
       className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white p-3.5 md:p-4 rounded-full shadow-xl hover:shadow-2xl transition-all hover:scale-105 group"
-      style={{ backgroundColor: brandColor }}>
+      style={{ backgroundColor: brandColor }}
+      aria-label={unread > 0 ? `${unread} new response ready` : "Open AH Expert"}>
       <SparklesIcon className="w-5 h-5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform" />
+      {isStreaming && (
+        <span className="absolute top-1 right-1 w-2 h-2 bg-white rounded-full animate-pulse"
+              title="Working on a response…" />
+      )}
+      {unread > 0 && (
+        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1
+                         bg-amber-400 text-[#1a2e2c] text-[11px] font-bold
+                         rounded-full flex items-center justify-center shadow ring-2 ring-white">
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
     </button>
   );
 
@@ -242,7 +308,12 @@ export default function GlobalChat() {
     <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white rounded-full shadow-xl flex items-center gap-2 px-4 py-2.5 md:px-5 md:py-3 cursor-pointer hover:shadow-2xl"
       style={{ backgroundColor: brandColor }} onClick={() => setIsMinimized(false)}>
       <SparklesIcon className="w-4 h-4" /><span className="text-sm font-medium">AH Expert</span>
-      {isStreaming && <span className="w-2 h-2 bg-white rounded-full animate-pulse" />}
+      {isStreaming && <span className="w-2 h-2 bg-white rounded-full animate-pulse" title="Working…" />}
+      {unread > 0 && (
+        <span className="min-w-[18px] h-[18px] px-1 bg-amber-400 text-[#1a2e2c] text-[10px] font-bold rounded-full flex items-center justify-center">
+          {unread > 9 ? "9+" : unread} new
+        </span>
+      )}
       <button onClick={e => { e.stopPropagation(); setIsOpen(false); setIsMinimized(false); setSplitDoc(null); }} className="ml-1 hover:bg-white/20 rounded p-0.5"><XMarkIcon className="w-4 h-4" /></button>
     </div>
   );

@@ -32,6 +32,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _wrap_literal(window: str, literal: str) -> str:
+    """Wrap each case-insensitive occurrence of `literal` in `window` with the
+    same MARK delimiters ts_headline uses, so the UI's existing highlighter
+    works without modification."""
+    if not window or not literal:
+        return window or ""
+    import re as _re
+    pattern = _re.compile(_re.escape(literal), _re.IGNORECASE)
+    return pattern.sub(lambda m: f"<<MARK>>{m.group(0)}<</MARK>>", window)
+
+
 class SearchResult(BaseModel):
     id: str
     filename: str
@@ -90,16 +101,43 @@ def search_documents(
     has_quotes = '"' in query
 
     # Pass 1: websearch_to_tsquery — handles quoted phrases, AND, OR, -word.
+    #
+    # We also compute a `literal_score` that boosts docs containing the actual
+    # query string verbatim (case-insensitive). Without this, English stemming
+    # makes "highlander" match every doc with "Highlands" (the borough name)
+    # and the bike-shop doc sinks behind 685 false positives. With the boost,
+    # docs that literally say "Highlander" rank first; pure-stem matches fall
+    # to the secondary tier.
+    #
+    # `q_literal` strips quotes/operators so the LIKE pattern matches what the
+    # user typed literally. ts_headline still uses the FTS query so phrase
+    # snippets still work for quoted searches.
+    import re as _re
+    q_literal = _re.sub(r'["\-+]', '', query).strip()
     sql = """
         SELECT id, filename, doc_type, category, fiscal_year, department, status,
-               ts_rank(search_vector, websearch_to_tsquery('english', :query)) AS score,
+               ts_rank(search_vector, websearch_to_tsquery('english', :query)) AS fts_score,
+               (CASE WHEN length(:q_literal) > 0
+                       AND lower(coalesce(extracted_text,'') || ' ' || coalesce(filename,''))
+                           LIKE lower('%' || :q_literal || '%')
+                     THEN 1.0 ELSE 0.0 END) AS literal_score,
                ts_headline(
                    'english',
                    coalesce(extracted_text, ''),
                    websearch_to_tsquery('english', :query),
                    'MaxWords=35, MinWords=10, MaxFragments=2, ShortWord=2,
                     StartSel=<<MARK>>, StopSel=<</MARK>>'
-               ) AS snippet
+               ) AS snippet,
+               -- 300-char window around the literal match (NULL when literal
+               -- isn't present). Use case-insensitive position() to find it.
+               CASE WHEN length(:q_literal) > 0
+                      AND position(lower(:q_literal) in lower(coalesce(extracted_text,''))) > 0
+                    THEN substring(
+                       extracted_text
+                       FROM greatest(1, position(lower(:q_literal) in lower(coalesce(extracted_text,''))) - 100)
+                       FOR 300)
+                    ELSE NULL
+               END AS literal_window
         FROM documents
         WHERE search_vector @@ websearch_to_tsquery('english', :query)
           AND lower(filename) NOT LIKE '%.xlsx'
@@ -107,9 +145,9 @@ def search_documents(
           AND lower(filename) NOT LIKE '%.csv'
           AND lower(filename) NOT LIKE 'document_summaries%'
     """
-    params: dict = {"query": query}
+    params: dict = {"query": query, "q_literal": q_literal}
     sql += _build_filter_sql(req, params)
-    sql += " ORDER BY score DESC LIMIT :lim"
+    sql += " ORDER BY literal_score DESC, fts_score DESC LIMIT :lim"
     params["lim"] = req.limit
 
     try:
@@ -120,13 +158,27 @@ def search_documents(
         rows = []
 
     if rows:
+        # If ANY row had a literal match, drop the stem-only rows entirely —
+        # they were noise (English stemmer over-matches: "highlander" → "highland",
+        # and so does "Highlands"). Returning all 685 stem matches when the
+        # user typed a specific term made the relevant doc unfindable.
+        any_literal = any(float(r.literal_score) > 0 for r in rows)
+        if any_literal:
+            rows = [r for r in rows if float(r.literal_score) > 0]
         match_type = "phrase" if has_quotes else "fts"
+        # For literal matches, use the literal_window (300 chars around the
+        # actual term) so the user sees their query in context — not a
+        # stem-collision word from elsewhere in the doc.
         return [
             SearchResult(
                 id=str(r.id), filename=r.filename, doc_type=r.doc_type,
                 category=r.category, fiscal_year=r.fiscal_year, department=r.department,
-                status=r.status, score=round(float(r.score), 4),
-                snippet=r.snippet, match_type=match_type,
+                status=r.status,
+                score=round(float(r.fts_score) + float(r.literal_score), 4),
+                snippet=(_wrap_literal(r.literal_window, q_literal)
+                         if float(r.literal_score) > 0 and r.literal_window
+                         else r.snippet),
+                match_type=match_type,
             )
             for r in rows
         ]

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -72,6 +72,32 @@ export default function NarrativeBlock({
 }
 
 
+/**
+ * Tiptap's markdown bridge mangles ```chart fences (the JSON body breaks
+ * round-tripping). Stash chart fences out-of-band before handing the text
+ * to Tiptap, show the user an opaque marker line instead, and splice the
+ * original fence back in on save. This guarantees chart blocks survive
+ * any number of edits without being touched by the markdown serializer.
+ */
+const CHART_FENCE_RE = /```chart\s*\n[\s\S]*?\n```/g;
+function stashCharts(md: string): { stripped: string; charts: string[] } {
+  const charts: string[] = [];
+  const stripped = md.replace(CHART_FENCE_RE, (match) => {
+    const idx = charts.length;
+    charts.push(match);
+    // Visible marker the user sees in Tiptap. Plain text — no markdown
+    // syntax — so tiptap-markdown round-trips it untouched.
+    return `📊 [Chart ${idx + 1} — preserved, edit via raw markdown]`;
+  });
+  return { stripped, charts };
+}
+function restoreCharts(md: string, charts: string[]): string {
+  return md.replace(/📊 \[Chart (\d+) — preserved[^\]]*\]/g, (_m, n) => {
+    const idx = parseInt(n, 10) - 1;
+    return charts[idx] ?? _m;
+  });
+}
+
 /** Inner component so we don't init Tiptap on read-only sections. */
 function EditorWrapper({
   section, onSave, brandColor,
@@ -82,6 +108,15 @@ function EditorWrapper({
 }) {
   const [title, setTitle] = React.useState(section.title || '');
   const [dirty, setDirty] = React.useState(false);
+  // Holds the original ```chart fences for the body currently loaded into
+  // the editor. Updated whenever section.body changes externally.
+  const chartsRef = useRef<string[]>([]);
+
+  const initial = React.useMemo(() => stashCharts(section.body || ''), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Seed the ref synchronously so the very first save has the stash too.
+  if (chartsRef.current.length === 0 && initial.charts.length > 0) {
+    chartsRef.current = initial.charts;
+  }
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -104,7 +139,7 @@ function EditorWrapper({
       Image,
       Markdown.configure({ html: false, breaks: true, transformPastedText: true }),
     ],
-    content: section.body || '',
+    content: initial.stripped,
     editorProps: {
       attributes: {
         class: 'prose prose-sm max-w-none focus:outline-none min-h-[120px] py-2',
@@ -114,12 +149,14 @@ function EditorWrapper({
   });
 
   // If the section's body changes externally (e.g. AI proposal applied),
-  // reload the editor without nuking the user's mid-edit cursor.
+  // re-stash the chart fences and reload the editor with the stripped text.
   useEffect(() => {
     if (!editor) return;
+    const next = stashCharts(section.body || '');
     const current = (editor.storage.markdown.getMarkdown?.() ?? editor.getText()) as string;
-    if (current.trim() === (section.body || '').trim()) return;
-    editor.commands.setContent(section.body || '', false);
+    if (current.trim() === next.stripped.trim()) return;
+    chartsRef.current = next.charts;
+    editor.commands.setContent(next.stripped, false);
     setDirty(false);
   }, [editor, section.id, section.body]);
 
@@ -128,7 +165,9 @@ function EditorWrapper({
   const handleSave = () => {
     if (!editor) return;
     const md = (editor.storage.markdown.getMarkdown?.() ?? '') as string;
-    onSave({ title, body: md });
+    // Splice the original chart fences back before persisting.
+    const restored = restoreCharts(md, chartsRef.current);
+    onSave({ title, body: restored });
     setDirty(false);
   };
 
@@ -161,7 +200,9 @@ function EditorWrapper({
         {dirty && (
           <button
             onClick={() => {
-              editor.commands.setContent(section.body || '', false);
+              const next = stashCharts(section.body || '');
+              chartsRef.current = next.charts;
+              editor.commands.setContent(next.stripped, false);
               setTitle(section.title || '');
               setDirty(false);
             }}

@@ -63,13 +63,18 @@ export function DeckChatProvider({ children }: { children: React.ReactNode }) {
 
   const applyProposal = useCallback(async (p: DeckProposal): Promise<boolean> => {
     const cur = ref.current;
-    if (!cur) return false;
+    if (!cur) {
+      console.warn("DeckChatContext: applyProposal called with no active deck");
+      return false;
+    }
     try {
       const res = await cur.applyProposal(p);
       return Boolean(res);
     } catch (err) {
       console.error("DeckChatContext: applyProposal failed", err);
-      return false;
+      // Re-throw so callers can surface the real reason (e.g. 422 / 500)
+      // instead of all errors collapsing to a generic "couldn't add".
+      throw err;
     }
   }, []);
 

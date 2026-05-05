@@ -329,23 +329,36 @@ export default function GlobalChat() {
 
   /** Send an assistant message body to the active deck as a new narrative section. */
   const handleSendMessageToDeck = async (msg: ChatMessage) => {
-    if (!activeDeck) return;
+    if (!activeDeck) {
+      setMessages(prev => [...prev, {
+        id: `n_${Date.now()}`, role: "system", timestamp: new Date(),
+        content: "No active presentation. Open a presentation first, then come back.",
+      }]);
+      return;
+    }
     const body = (msg.content || "").trim();
     if (!body) return;
     // Pull a title from the first heading or first sentence.
     const firstHeading = body.match(/^#{1,3}\s+(.+)$/m)?.[1];
     const firstSentence = body.split(/[.\n]/)[0];
     const title = (firstHeading || firstSentence || "From chat").trim().slice(0, 80);
-    const ok = await deckChat.applyProposal({
-      kind: "narrative",
-      title,
-      body,
-      rationale: "Sent from chat",
-    });
-    if (!ok) {
+    try {
+      const ok = await deckChat.applyProposal({
+        kind: "narrative",
+        title,
+        body,
+        rationale: "Sent from chat",
+      });
+      if (!ok) throw new Error("applyProposal returned false");
       setMessages(prev => [...prev, {
         id: `n_${Date.now()}`, role: "system", timestamp: new Date(),
-        content: "Couldn't add to deck — open a presentation first.",
+        content: `Added to “${activeDeck.title}” as a new section.`,
+      }]);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : 'Unknown error';
+      setMessages(prev => [...prev, {
+        id: `e_${Date.now()}`, role: "error", timestamp: new Date(),
+        content: `Couldn't add to deck: ${detail}`,
       }]);
     }
   };

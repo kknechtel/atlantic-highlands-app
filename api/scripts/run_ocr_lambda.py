@@ -160,7 +160,31 @@ def process_doc(doc_id: str, filename: str, s3_key: str) -> dict:
     return persist_and_ingest(payload)
 
 
+def _smoke_test_invoke() -> Optional[str]:
+    """Probe the Lambda once before fanning out 2k+ invocations. Returns
+    None on success, or an error string we can use to fail-fast."""
+    try:
+        resp = _lambda_client.invoke(
+            FunctionName=LAMBDA_FN,
+            InvocationType="DryRun",  # checks IAM + function existence; no actual run
+        )
+        if resp.get("StatusCode") not in (200, 204):
+            return f"DryRun returned StatusCode={resp.get('StatusCode')}"
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
 def main() -> int:
+    # Don't blow through 2,194 invocations with stale-IAM AccessDenied.
+    # DryRun probes the IAM perm + function existence in <1s.
+    err = _smoke_test_invoke()
+    if err:
+        log.error("Lambda smoke test failed (will not start drain): %s", err)
+        log.error("If this is AccessDenied, IAM policy is still propagating — "
+                  "wait 30-60s and retry.")
+        return 2
+
     sess = SessionLocal()
     try:
         pending = list_pending(sess)

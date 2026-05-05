@@ -30,10 +30,43 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                     /```chart\s*\n([\s\S]*?)\n```/g,
                     (_match, chartJson) => {
                         const id = `chart-${charts.length}`;
-                        charts.push({ id, config: chartJson.trim() });
+                        const cleanJson = chartJson.trim();
+                        charts.push({ id, config: cleanJson });
+                        // Build a fallback HTML table from the chart config so the
+                        // numbers are ALWAYS visible — Chart.js may fail silently
+                        // on some deployments / ad-blocker configs, leaving an
+                        // empty 320px box. The fallback renders inline; once
+                        // Chart.js mounts a real chart, the fallback hides itself.
+                        let fallback = '';
+                        try {
+                            const cfg = JSON.parse(cleanJson);
+                            const labels: string[] = cfg?.data?.labels || [];
+                            const datasets: { label?: string; data?: number[] }[] = cfg?.data?.datasets || [];
+                            if (labels.length && datasets.length) {
+                                const head = `<th style="text-align:left;padding:4px 8px;font-weight:600;border-bottom:1px solid #e5e7eb">Label</th>` +
+                                    datasets.map((d) => `<th style="text-align:right;padding:4px 8px;font-weight:600;border-bottom:1px solid #e5e7eb">${(d.label || 'Value').replace(/</g, '&lt;')}</th>`).join('');
+                                const rows = labels.map((lbl, i) => {
+                                    const cells = datasets.map((d) => {
+                                        const v = d.data?.[i];
+                                        const txt = typeof v === 'number'
+                                            ? v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+                                            : (v == null ? '—' : String(v));
+                                        return `<td style="text-align:right;padding:4px 8px;border-bottom:1px solid #f3f4f6">${txt}</td>`;
+                                    }).join('');
+                                    return `<tr><td style="padding:4px 8px;border-bottom:1px solid #f3f4f6">${String(lbl).replace(/</g, '&lt;')}</td>${cells}</tr>`;
+                                }).join('');
+                                const title = (cfg?.options?.plugins?.title?.text || '').replace(/</g, '&lt;');
+                                fallback = `<details class="ah-chart-fallback" style="margin:8px 0 16px;font-size:0.75rem;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;background:#fafafa">` +
+                                    `<summary style="cursor:pointer;color:#6b7280;font-weight:500">Chart data${title ? ': ' + title : ''}</summary>` +
+                                    `<table style="width:100%;margin-top:8px;border-collapse:collapse"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>` +
+                                    `</details>`;
+                            }
+                        } catch {
+                            // Bad JSON — let the regular fallback in the chart renderer handle it.
+                        }
                         // Container needs an explicit height: with maintainAspectRatio:false
                         // Chart.js sizes to its parent and renders 0px tall otherwise.
-                        return `<div class="ah-chart" data-chart-id="${id}" data-chart='${chartJson.trim().replace(/'/g, "&apos;")}' style="position:relative;height:320px;width:100%;margin:12px 0"><canvas id="${id}"></canvas></div>`;
+                        return `<div class="ah-chart" data-chart-id="${id}" data-chart='${cleanJson.replace(/'/g, "&apos;")}' style="position:relative;height:320px;width:100%;margin:12px 0"><canvas id="${id}"></canvas></div>${fallback}`;
                     }
                 );
 

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Globe } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Globe, FileText } from 'lucide-react';
 import type { DeckSection, DeckAttachment } from '@/lib/presentationsApi';
 import NarrativeBlock from './NarrativeBlock';
 import TableBlock from './TableBlock';
@@ -22,9 +22,31 @@ interface Props {
 
 const brandColor = '#385854';
 
+/** Walk every narrative section body and pull out the unique filenames cited
+ *  via [source: filename.pdf]. Used to render an always-visible Sources panel
+ *  at the bottom — guarantees the user can always click through to citations
+ *  even if the inline button rendering somehow fails (CSS conflict, JS error). */
+function collectCitedFilenames(sections: DeckSection[]): string[] {
+  const seen = new Set<string>();
+  const re = /\[source:\s*([^\]]+)\]/g;
+  for (const s of sections) {
+    const body = (s as { body?: string }).body || '';
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) {
+      for (const fn of m[1].split(/\s*[,;|]\s*|\s+\|\s+/)) {
+        const trimmed = fn.trim();
+        if (trimmed) seen.add(trimmed);
+      }
+    }
+  }
+  return Array.from(seen).sort();
+}
+
+
 /** Read-only renderer used by both public viewer and authenticated preview. */
 export default function PresentationViewer({ title, sections, attachments, publicAttachmentBase, onResolveCitation }: Props) {
   const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
+  const citedFilenames = useMemo(() => collectCitedFilenames(sections), [sections]);
 
   const previewAttachment = (att: DeckAttachment) => {
     if (publicAttachmentBase) {
@@ -82,6 +104,39 @@ export default function PresentationViewer({ title, sections, attachments, publi
           </div>
         ))}
       </div>
+
+      {/* Always-visible Sources panel — guarantees doc links are reachable
+          even if inline citation buttons fail to render (CSS conflict, etc.).
+          Lists every unique filename cited anywhere in the deck. */}
+      {citedFilenames.length > 0 && (
+        <div className="mt-8 bg-white rounded-lg border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText className="w-4 h-4" style={{ color: brandColor }} />
+            <h2 className="text-base font-semibold text-gray-900">
+              Sources ({citedFilenames.length})
+            </h2>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">Click any document to open its preview.</p>
+          <div className="flex flex-wrap gap-2">
+            {citedFilenames.map((fn) => (
+              <button
+                key={fn}
+                type="button"
+                onClick={() => onResolveCitation && handleCitationClick({ filename: fn })}
+                className="text-xs inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border transition-colors hover:bg-gray-50"
+                style={{
+                  color: brandColor,
+                  borderColor: `${brandColor}40`,
+                  backgroundColor: `${brandColor}08`,
+                }}
+              >
+                <FileText className="w-3 h-3" />
+                <span className="truncate max-w-md">{fn}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {preview && (
         <FilePreviewModal

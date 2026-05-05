@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { X, Download, ExternalLink, Image as ImageIcon, FileText as FileTextIcon, File as FileIcon } from 'lucide-react';
+import { X, Download, ExternalLink, Image as ImageIcon, FileText as FileTextIcon, File as FileIcon, Maximize2, Minimize2 } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 import XlsxSheetViewer from './XlsxSheetViewer';
 
@@ -30,6 +30,22 @@ export default function FilePreviewModal({ isOpen, url, filename, onClose, initi
 
     const [textContent, setTextContent] = useState<string | null>(null);
     const [textError, setTextError] = useState<string | null>(null);
+    const [maximized, setMaximized] = useState(false);
+
+    // Reset to default size when a new file opens.
+    useEffect(() => { if (isOpen) setMaximized(false); }, [isOpen, url]);
+
+    // Esc to exit maximize first, then close. Matches chat behavior.
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            if (maximized) setMaximized(false);
+            else onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isOpen, maximized, onClose]);
 
     useEffect(() => {
         if (!isOpen || !isTextLike) return;
@@ -55,9 +71,19 @@ export default function FilePreviewModal({ isOpen, url, filename, onClose, initi
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div
+            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${maximized ? 'p-0' : 'p-4'}`}
+            onClick={onClose}
+        >
+            <div
+                className={`bg-white shadow-xl flex flex-col ${maximized ? 'w-screen h-screen rounded-none' : 'w-full max-w-5xl h-[85vh] rounded-lg'}`}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div
+                    className="flex items-center justify-between p-4 border-b border-gray-200"
+                    onDoubleClick={() => setMaximized(m => !m)}
+                    title="Double-click to toggle full screen"
+                >
                     <div className="flex items-center gap-2 min-w-0">
                         {isPdf ? <FileIcon className="w-5 h-5 text-red-600" />
                             : isImage ? <ImageIcon className="w-5 h-5 text-blue-600" />
@@ -66,13 +92,20 @@ export default function FilePreviewModal({ isOpen, url, filename, onClose, initi
                         <div className="truncate text-sm text-gray-800">{filename}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="px-2 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-100 text-gray-700">
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="px-2 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-100 text-gray-700" title="Open in new tab">
                             <ExternalLink className="w-4 h-4" />
                         </a>
-                        <a href={url} download={filename} className="px-2 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-100 text-gray-700">
+                        <a href={url} download={filename} className="px-2 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-100 text-gray-700" title="Download">
                             <Download className="w-4 h-4" />
                         </a>
-                        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded">
+                        <button
+                            onClick={() => setMaximized(m => !m)}
+                            className="p-2 hover:bg-gray-100 rounded"
+                            title={maximized ? 'Exit full screen' : 'Full screen'}
+                        >
+                            {maximized ? <Minimize2 className="w-4 h-4 text-gray-500" /> : <Maximize2 className="w-4 h-4 text-gray-500" />}
+                        </button>
+                        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded" title="Close">
                             <X className="w-5 h-5 text-gray-500" />
                         </button>
                     </div>

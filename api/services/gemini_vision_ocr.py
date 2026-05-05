@@ -167,9 +167,13 @@ class GeminiVisionOCR:
                         types.Part(text=_OCR_PROMPT),
                     ])
                 ]
+                # OCR doesn't need reasoning. We deliberately do NOT pass a
+                # thinking_config — different google-genai versions expose
+                # different fields on ThinkingConfig (thinking_budget vs
+                # thinkingBudget vs no kwarg at all), and "no thinking" is
+                # the default behavior on Flash anyway.
                 config = types.GenerateContentConfig(
                     temperature=0.0, max_output_tokens=16384,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),  # OCR — no reasoning needed
                 )
                 response = await loop.run_in_executor(
                     self._executor,

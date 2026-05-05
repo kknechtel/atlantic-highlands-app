@@ -33,6 +33,7 @@ pdfplumber>=0.11.0
 pdf2image>=1.17.0
 Pillow>=10.0.0
 pytesseract>=0.3.10  # Tier 2 of the OCR cascade — needs the `tesseract` system binary
+reportlab>=4.2.0  # OPRA request PDF generation (mirrors NJ DCA model form)
 
 # Office document export (presentations)
 python-docx>=1.1.0

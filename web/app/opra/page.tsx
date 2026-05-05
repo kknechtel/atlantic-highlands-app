@@ -13,12 +13,28 @@ import {
   InformationCircleIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  BuildingLibraryIcon,
+  AcademicCapIcon,
 } from "@heroicons/react/24/outline";
 
 const API_BASE = "";
 const brandColor = "#385854";
 const GOVPILOT_URL =
   "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1";
+
+type EntityKey = "borough" | "school";
+
+interface AgencyInfo {
+  agency_name: string;
+  address_line: string;
+  phone: string;
+  email: string;
+  custodian_name: string;
+  custodian_title: string;
+  submission_note: string;
+  govpilot_url?: string;
+  form_url?: string;
+}
 
 interface RecordCategory {
   label: string;
@@ -36,6 +52,11 @@ interface FactCheckResult {
 }
 
 export default function OPRAPage() {
+  // Entity selector — borough vs school district. Drives which custodian
+  // address, which categories, and which submission link the page shows.
+  const [entity, setEntity] = useState<EntityKey>("borough");
+  const [agencies, setAgencies] = useState<Record<EntityKey, AgencyInfo> | null>(null);
+
   // Form state
   const [categories, setCategories] = useState<Record<string, RecordCategory>>({});
   const [selectedCategory, setSelectedCategory] = useState("financial");
@@ -48,10 +69,15 @@ export default function OPRAPage() {
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorPhone, setRequestorPhone] = useState("");
   const [additionalContext, setAdditionalContext] = useState("");
+  // Certification answers (typical defaults — clearable in UI).
+  const [certNoIndictable, setCertNoIndictable] = useState(true);
+  const [certNotCommercial, setCertNotCommercial] = useState(true);
+  const [certLitigation, setCertLitigation] = useState(false);
 
   // Output state
   const [generatedRequest, setGeneratedRequest] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isPdfBuilding, setIsPdfBuilding] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
 
@@ -61,26 +87,49 @@ export default function OPRAPage() {
 
   // Regulations panel
   const [showRegulations, setShowRegulations] = useState(false);
-  const [regulations, setRegulations] = useState<{ regulations: string; atlantic_highlands_info: string } | null>(null);
+  const [regulations, setRegulations] = useState<{ regulations: string; entity_info?: string } | null>(null);
 
   const outputRef = useRef<HTMLDivElement>(null);
 
-  // Load categories on mount
+  // Load agencies once
   useEffect(() => {
-    fetch(`${API_BASE}/api/opra/categories`)
+    fetch(`${API_BASE}/api/opra/agencies`)
       .then((r) => r.json())
-      .then(setCategories)
+      .then((data) => setAgencies(data as Record<EntityKey, AgencyInfo>))
       .catch(console.error);
   }, []);
 
-  // Load regulations on demand
+  // Re-load categories whenever the entity changes (school vs borough have
+  // different applicable categories and different example wording).
+  useEffect(() => {
+    fetch(`${API_BASE}/api/opra/categories?entity=${entity}`)
+      .then((r) => r.json())
+      .then((cats: Record<string, RecordCategory>) => {
+        setCategories(cats);
+        // If the previously-selected category isn't valid for this entity,
+        // fall back to "financial" (always available) so the form stays usable.
+        if (!cats[selectedCategory]) {
+          setSelectedCategory(cats["financial"] ? "financial" : Object.keys(cats)[0] || "custom");
+        }
+        setShowExamples(false);
+      })
+      .catch(console.error);
+    // We intentionally don't depend on selectedCategory — only refetch when
+    // entity changes; selectedCategory is reset inline if invalidated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  const agency = agencies?.[entity];
+
+  // Load regulations on demand (entity-specific so the submission info block
+  // shown matches the selected agency).
   const loadRegulations = async () => {
     if (regulations) {
       setShowRegulations(!showRegulations);
       return;
     }
     try {
-      const r = await fetch(`${API_BASE}/api/opra/regulations`);
+      const r = await fetch(`${API_BASE}/api/opra/regulations?entity=${entity}`);
       const data = await r.json();
       setRegulations(data);
       setShowRegulations(true);
@@ -88,6 +137,23 @@ export default function OPRAPage() {
       console.error(e);
     }
   };
+
+  const buildRequestPayload = () => ({
+    entity,
+    category: selectedCategory,
+    specific_records: specificRecords,
+    date_range_start: dateStart || null,
+    date_range_end: dateEnd || null,
+    preferred_format: preferredFormat,
+    requestor_name: requestorName,
+    requestor_address: requestorAddress,
+    requestor_email: requestorEmail,
+    requestor_phone: requestorPhone,
+    additional_context: additionalContext,
+    cert_no_indictable: certNoIndictable,
+    cert_not_commercial: certNotCommercial,
+    cert_litigation: certLitigation,
+  });
 
   const handleGenerate = async () => {
     setGeneratedRequest("");
@@ -98,18 +164,7 @@ export default function OPRAPage() {
       const response = await fetch(`${API_BASE}/api/opra/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: selectedCategory,
-          specific_records: specificRecords,
-          date_range_start: dateStart || null,
-          date_range_end: dateEnd || null,
-          preferred_format: preferredFormat,
-          requestor_name: requestorName,
-          requestor_address: requestorAddress,
-          requestor_email: requestorEmail,
-          requestor_phone: requestorPhone,
-          additional_context: additionalContext,
-        }),
+        body: JSON.stringify(buildRequestPayload()),
       });
 
       const reader = response.body?.getReader();
@@ -176,85 +231,42 @@ export default function OPRAPage() {
     a.click();
   };
 
+  /** Download a formal, prefilled PDF that mirrors the NJ DCA model OPRA
+   *  form. Long requests overflow into a Detailed Records Request attachment
+   *  page rather than being crammed into the page-1 box. */
   const handleDownloadPdf = async () => {
+    if (!specificRecords.trim()) {
+      alert("Describe the records you want above first — the form box can't be left blank.");
+      return;
+    }
+    setIsPdfBuilding(true);
     try {
-      const r = await fetch(`${API_BASE}/api/opra/generate-pdf-text`, {
+      const r = await fetch(`${API_BASE}/api/opra/generate-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: selectedCategory,
-          specific_records: specificRecords,
-          date_range_start: dateStart || null,
-          date_range_end: dateEnd || null,
-          preferred_format: preferredFormat,
-          requestor_name: requestorName,
-          requestor_address: requestorAddress,
-          requestor_email: requestorEmail,
-          requestor_phone: requestorPhone,
-          additional_context: additionalContext,
-        }),
+        body: JSON.stringify(buildRequestPayload()),
       });
-      const data = await r.json();
-
-      // Generate a formatted text document from the structured data
-      const lines = [
-        data.date,
-        "",
-        "TO:",
-        `  ${data.to.title}`,
-        `  ${data.to.organization}`,
-        `  ${data.to.address}`,
-        `  ${data.to.phone}`,
-        "",
-        "FROM:",
-        `  ${data.from.name}`,
-        `  ${data.from.address}`,
-        `  ${data.from.email}`,
-        `  ${data.from.phone}`,
-        "",
-        `RE: ${data.subject}`,
-        `Legal Basis: ${data.legal_basis}`,
-        "",
-        "=" .repeat(70),
-        "OPEN PUBLIC RECORDS ACT (OPRA) REQUEST",
-        "=".repeat(70),
-        "",
-        "RECORDS REQUESTED:",
-        data.records_requested,
-        "",
-        `Category: ${data.record_category}`,
-        data.date_range ? `Date Range: ${data.date_range}` : "",
-        `Delivery Format: ${data.delivery_format}`,
-        "",
-        "CERTIFICATIONS:",
-        `  ${data.certifications.commercial_purpose}`,
-        `  ${data.certifications.litigation}`,
-        "",
-        `Response Deadline: ${data.response_deadline}`,
-        "",
-        "FEE SCHEDULE:",
-        `  Letter-size: ${data.fee_schedule.letter_size}`,
-        `  Legal-size: ${data.fee_schedule.legal_size}`,
-        `  Electronic: ${data.fee_schedule.electronic}`,
-        "",
-        data.additional_context ? `ADDITIONAL CONTEXT:\n${data.additional_context}\n` : "",
-        `LEGAL NOTES:\n${data.legal_notes}`,
-        "",
-        "---",
-        `Online Submission: ${data.govpilot_url}`,
-        "",
-        "Signature: ________________________________",
-        `Name: ${data.from.name}`,
-        `Date: ${data.date}`,
-      ].filter(Boolean);
-
-      const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+      if (!r.ok) {
+        const detail = await r.text().catch(() => "");
+        throw new Error(`PDF generation failed (${r.status}): ${detail.slice(0, 200)}`);
+      }
+      const blob = await r.blob();
+      const cd = r.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const fname = m ? m[1] : `OPRA-Request-${new Date().toISOString().slice(0, 10)}.pdf`;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `OPRA-Request-Formal-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
       a.click();
-    } catch (e) {
-      console.error("PDF text generation failed:", e);
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      console.error("PDF generation failed:", e);
+      alert(`PDF download failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsPdfBuilding(false);
     }
   };
 
@@ -284,23 +296,65 @@ export default function OPRAPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">OPRA Request Generator</h1>
             <p className="text-sm text-gray-500">
-              Open Public Records Act - Borough of Atlantic Highlands, NJ
+              Open Public Records Act &mdash;{" "}
+              {agency ? agency.agency_name : (entity === "school" ? "Henry Hudson Regional School District" : "Borough of Atlantic Highlands")}
             </p>
           </div>
         </div>
-        <a
-          href={GOVPILOT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow"
-          style={{ backgroundColor: brandColor }}
-        >
-          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-          Submit on GovPilot
-        </a>
+        {entity === "borough" ? (
+          <a
+            href={GOVPILOT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow"
+            style={{ backgroundColor: brandColor }}
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+            Submit on GovPilot
+          </a>
+        ) : agency?.email ? (
+          <a
+            href={`mailto:${agency.email}?subject=${encodeURIComponent("OPRA Request — " + (categories[selectedCategory]?.label || ""))}`}
+            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow"
+            style={{ backgroundColor: brandColor }}
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+            Email {agency.custodian_name.split(" ")[0]}
+          </a>
+        ) : null}
       </div>
 
-      {/* Legal Notice */}
+      {/* Entity selector — borough vs school */}
+      <div className="mb-6">
+        <p className="text-sm font-medium text-gray-700 mb-2">Submitting to</p>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { id: "borough", label: "Borough of Atlantic Highlands", sub: "Michelle Clark, Municipal Clerk", Icon: BuildingLibraryIcon },
+            { id: "school",  label: "Henry Hudson Regional School District", sub: "Janet Sherlock, School Business Administrator", Icon: AcademicCapIcon },
+          ] as const).map(({ id, label, sub, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setEntity(id)}
+              className={`p-3 rounded-lg border-2 text-left transition-colors flex items-start gap-3 ${
+                entity === id ? "border-gray-300" : "border-gray-200 hover:border-gray-300"
+              }`}
+              style={
+                entity === id
+                  ? { borderColor: brandColor, backgroundColor: `${brandColor}08` }
+                  : {}
+              }
+            >
+              <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: entity === id ? brandColor : "#9CA3AF" }} />
+              <div>
+                <p className="font-medium text-sm text-gray-900">{label}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{sub}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Legal Notice — entity-specific submission info */}
       <div
         className="mb-6 p-4 rounded-xl border-l-4"
         style={{ borderColor: brandColor, backgroundColor: `${brandColor}08` }}
@@ -314,6 +368,15 @@ export default function OPRAPage() {
               within <strong>7 business days</strong> for non-commercial requests. Fees: $0.05/letter
               page, $0.07/legal page. Electronic copies are provided at no charge for the medium.
             </p>
+            {agency && (
+              <p className="mt-2 text-xs">
+                <strong>Custodian:</strong> {agency.custodian_name}, {agency.custodian_title} &middot;{" "}
+                <a href={`mailto:${agency.email}`} className="underline" style={{ color: brandColor }}>
+                  {agency.email}
+                </a>{" "}
+                &middot; {agency.phone} &middot; {agency.address_line}
+              </p>
+            )}
             <button
               onClick={loadRegulations}
               className="mt-2 text-xs font-medium underline hover:no-underline"
@@ -339,7 +402,7 @@ export default function OPRAPage() {
           <pre className="p-4 text-xs text-gray-600 whitespace-pre-wrap max-h-96 overflow-y-auto font-mono leading-relaxed">
             {regulations.regulations}
             {"\n\n"}
-            {regulations.atlantic_highlands_info}
+            {regulations.entity_info || ""}
           </pre>
         </div>
       )}
@@ -553,13 +616,60 @@ export default function OPRAPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Additional Context or Notes
           </label>
+          <p className="text-xs text-gray-500 mb-2">
+            Any context that would help the custodian narrow scope, prioritize, or
+            understand the request. If the request is detailed, this and the description
+            above will move to the <strong>Detailed Records Request</strong> attachment
+            page in the PDF rather than be crammed into the form box.
+          </p>
           <textarea
             value={additionalContext}
             onChange={(e) => setAdditionalContext(e.target.value)}
-            placeholder="Any additional details that would help the custodian locate the records..."
+            placeholder="e.g. 'If the audit and management letter exceed 500 pages, please contact me before processing so we can scope it down.'"
             className="w-full p-3 border border-gray-300 rounded-lg text-sm"
-            rows={2}
+            rows={3}
           />
+        </div>
+
+        {/* Certifications — required by NJSA 2C:28-3 */}
+        <div className="mt-5 p-3 border border-gray-200 rounded-lg bg-gray-50">
+          <p className="text-xs font-medium text-gray-700 mb-2">
+            Certifications (under penalty of N.J.S.A. 2C:28-3)
+          </p>
+          <label className="flex items-start gap-2 mb-1.5 cursor-pointer">
+            <input
+              type="checkbox" checked={certNoIndictable}
+              onChange={(e) => setCertNoIndictable(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-gray-700">
+              I <strong>HAVE NOT</strong> been convicted of any indictable offense under
+              the laws of New Jersey, any other state, or the United States.
+            </span>
+          </label>
+          <label className="flex items-start gap-2 mb-1.5 cursor-pointer">
+            <input
+              type="checkbox" checked={certNotCommercial}
+              onChange={(e) => setCertNotCommercial(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-gray-700">
+              I <strong>WILL NOT</strong> use the requested government records for a
+              commercial purpose (as defined in N.J.S.A. 47:1A-1.1).
+            </span>
+          </label>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox" checked={certLitigation}
+              onChange={(e) => setCertLitigation(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-gray-700">
+              I <strong>AM</strong> seeking these records in connection with a legal
+              proceeding (check only if true; identification of the proceeding is required
+              in the request body below).
+            </span>
+          </label>
         </div>
 
         {/* Generate Button */}
@@ -606,19 +716,32 @@ export default function OPRAPage() {
               </button>
               <button
                 onClick={handleDownloadPdf}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-100"
+                disabled={isPdfBuilding}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-100 disabled:opacity-50"
+                title="Download as a formal, prefilled OPRA Request PDF (mirrors the NJ DCA model form). Long requests overflow into a Detailed Records Request attachment page rather than being crammed into the form box."
               >
-                <ArrowDownTrayIcon className="w-3.5 h-3.5" /> Formal
+                <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                {isPdfBuilding ? "Building…" : "Form PDF"}
               </button>
-              <a
-                href={GOVPILOT_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 px-3 py-1.5 text-xs text-white rounded-lg hover:opacity-90"
-                style={{ backgroundColor: brandColor }}
-              >
-                <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" /> Submit
-              </a>
+              {entity === "borough" ? (
+                <a
+                  href={GOVPILOT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-white rounded-lg hover:opacity-90"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" /> Submit
+                </a>
+              ) : agency?.email ? (
+                <a
+                  href={`mailto:${agency.email}?subject=${encodeURIComponent("OPRA Request — " + (categories[selectedCategory]?.label || ""))}`}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-white rounded-lg hover:opacity-90"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" /> Email Custodian
+                </a>
+              ) : null}
             </div>
           </div>
           <div
@@ -732,23 +855,53 @@ export default function OPRAPage() {
         </div>
       )}
 
-      {/* GovPilot Link Footer */}
+      {/* Submission footer — entity-aware */}
       <div className="text-center py-6 border-t border-gray-200">
-        <p className="text-sm text-gray-600 mb-3">
-          Ready to submit? Copy the generated text and paste it into the official form:
-        </p>
-        <a
-          href={GOVPILOT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow-lg"
-          style={{ backgroundColor: brandColor }}
-        >
-          <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-          Open Atlantic Highlands OPRA Form on GovPilot
-        </a>
+        {entity === "borough" ? (
+          <>
+            <p className="text-sm text-gray-600 mb-3">
+              Ready to submit? Download the prefilled <strong>Form PDF</strong> above
+              and email it to <a href="mailto:clerk@ahnj.com" className="underline" style={{ color: brandColor }}>clerk@ahnj.com</a>,
+              or paste the generated text into the GovPilot online form.
+            </p>
+            <a
+              href={GOVPILOT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow-lg"
+              style={{ backgroundColor: brandColor }}
+            >
+              <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+              Open Atlantic Highlands OPRA Form on GovPilot
+            </a>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-gray-600 mb-3">
+              Ready to submit? Download the prefilled <strong>Form PDF</strong> above
+              and email it to{" "}
+              <a href={`mailto:${agency?.email || "jsherlock@henryhudsonreg.k12.nj.us"}`} className="underline" style={{ color: brandColor }}>
+                {agency?.email || "jsherlock@henryhudsonreg.k12.nj.us"}
+              </a>
+              . Mail or fax (732-872-1315) to <strong>1 Grand Tour, Highlands, NJ 07732</strong> also accepted.
+            </p>
+            {agency?.form_url && (
+              <a
+                href={agency.form_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow-lg"
+                style={{ backgroundColor: brandColor }}
+              >
+                <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                View District&apos;s Official OPRA Form
+              </a>
+            )}
+          </>
+        )}
         <p className="text-xs text-gray-400 mt-3">
-          N.J.S.A. 47:1A-1 et seq. | P.L. 2024, c.16 | Borough of Atlantic Highlands, Monmouth County, NJ
+          N.J.S.A. 47:1A-1 et seq. | P.L. 2024, c.16 |{" "}
+          {entity === "school" ? "Henry Hudson Regional School District" : "Borough of Atlantic Highlands, Monmouth County, NJ"}
         </p>
       </div>
     </div>

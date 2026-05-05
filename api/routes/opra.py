@@ -1,6 +1,6 @@
 """
 OPRA Request Generator - Generate legally compliant Open Public Records Act requests
-for the Borough of Atlantic Highlands, NJ.
+for the Borough of Atlantic Highlands and the Henry Hudson Regional School District, NJ.
 
 Legal basis: N.J.S.A. 47:1A-1 et seq., as amended by P.L. 2024, c.16 (eff. 9/3/2024).
 """
@@ -9,11 +9,12 @@ import json
 import asyncio
 from datetime import datetime, date
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 
 from config import GEMINI_API_KEY
+from services.opra_pdf import render_opra_pdf, AGENCY_INFO as PDF_AGENCY_INFO
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -163,8 +164,9 @@ government function" (clear and convincing evidence standard).
 ATLANTIC_HIGHLANDS_INFO = """
 === ATLANTIC HIGHLANDS BOROUGH - OPRA SUBMISSION INFO ===
 Municipality: Borough of Atlantic Highlands, Monmouth County, New Jersey
-Records Custodian: Municipal Clerk
-Phone: 732-291-1444 x3103
+Records Custodian: Michelle Clark, Municipal Clerk
+Phone: 732-291-1444
+Email: clerk@ahnj.com
 GovPilot Online Form: https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1
 Physical Address: 100 First Avenue, Atlantic Highlands, NJ 07716
 Fee Schedule:
@@ -174,104 +176,234 @@ Fee Schedule:
   - Electronic delivery: no charge for the medium
 """
 
+HHRSD_INFO = """
+=== HENRY HUDSON REGIONAL SCHOOL DISTRICT - OPRA SUBMISSION INFO ===
+District: Henry Hudson Regional School District (HHRSD)
+Records Custodian: Janet Sherlock, School Business Administrator / Board Secretary
+Phone: 732-872-0900 ext. 4001
+Fax: 732-872-1315
+Email: jsherlock@henryhudsonreg.k12.nj.us
+Physical Address: 1 Grand Tour, Highlands, NJ 07732
+District Website: https://www.tridistrict.org
+Submission: email completed OPRA form to Janet Sherlock; mail or fax also accepted.
+Note: Consolidated July 1, 2024 (predecessor districts AHSD, Highlands SD, HHR HS no longer
+maintain separate records custodians).
+Fee Schedule:
+  - Letter-size copies: $0.05/page (N.J.S.A. 47:1A-5)
+  - Legal-size copies: $0.07/page (N.J.S.A. 47:1A-5)
+  - Electronic delivery: no charge for the medium
+"""
+
+ENTITY_INFO = {
+    "borough": ATLANTIC_HIGHLANDS_INFO,
+    "school":  HHRSD_INFO,
+}
+
 # ── Record Category Templates ────────────────────────────────────────────────
 
 RECORD_CATEGORIES = {
     "financial": {
         "label": "Financial/Budget Records",
-        "description": "Municipal budgets, audit reports, expenditure records, revenue reports",
-        "example_records": [
-            "Annual municipal budget for fiscal year [YEAR]",
-            "Comprehensive Annual Financial Report (CAFR) for fiscal year [YEAR]",
-            "Monthly treasurer's reports from [START DATE] to [END DATE]",
-            "All purchase orders and vouchers exceeding $[AMOUNT] from [DATE RANGE]",
-            "Bank statements for all municipal accounts from [DATE RANGE]",
-            "Capital improvement plan and associated expenditure records",
-        ],
-        "notes": "Budget records are 'immediate access' records under N.J.S.A. 47:1A-5. Bills, vouchers, and contracts are also immediate access.",
+        "description": "Budgets, audit reports, expenditure records, revenue reports",
+        "entities": ["borough", "school"],
+        "example_records": {
+            "borough": [
+                "Annual municipal budget for fiscal year [YEAR]",
+                "Comprehensive Annual Financial Report (CAFR) for fiscal year [YEAR]",
+                "Monthly treasurer's reports from [START DATE] to [END DATE]",
+                "All purchase orders and vouchers exceeding $[AMOUNT] from [DATE RANGE]",
+                "Bank statements for all municipal accounts from [DATE RANGE]",
+                "Capital improvement plan and associated expenditure records",
+            ],
+            "school": [
+                "User-Friendly Budget for school year [YEAR-YEAR]",
+                "Annual Comprehensive Financial Report (ACFR) / annual audit for fiscal year [YEAR]",
+                "Board Secretary's monthly financial reports from [START] to [END]",
+                "All bill lists / vouchers approved by the Board from [DATE RANGE]",
+                "Approved purchase orders exceeding $[AMOUNT] for fiscal year [YEAR]",
+                "Surplus / fund balance reconciliation reports for fiscal year [YEAR]",
+                "Maintenance Reserve and Capital Reserve account activity for [YEAR]",
+            ],
+        },
+        "notes": "Budget records are 'immediate access' records under N.J.S.A. 47:1A-5. Bills, vouchers, and contracts are also immediate access. School districts must publish a User-Friendly Budget under N.J.S.A. 18A:22-8(a).",
     },
     "contracts": {
         "label": "Contracts & Agreements",
         "description": "Professional service agreements, vendor contracts, leases",
-        "example_records": [
-            "All professional service contracts awarded in calendar year [YEAR]",
-            "Contract between the Borough and [VENDOR NAME] for [SERVICE]",
-            "All vendor contracts exceeding $[AMOUNT] executed since [DATE]",
-            "Request for proposals (RFPs) issued for [SERVICE TYPE] in [YEAR]",
-            "Insurance policies and broker agreements currently in effect",
-        ],
-        "notes": "Contracts are 'immediate access' records under N.J.S.A. 47:1A-5.",
+        "entities": ["borough", "school"],
+        "example_records": {
+            "borough": [
+                "All professional service contracts awarded in calendar year [YEAR]",
+                "Contract between the Borough and [VENDOR NAME] for [SERVICE]",
+                "All vendor contracts exceeding $[AMOUNT] executed since [DATE]",
+                "Request for proposals (RFPs) issued for [SERVICE TYPE] in [YEAR]",
+                "Insurance policies and broker agreements currently in effect",
+            ],
+            "school": [
+                "All professional service contracts awarded for fiscal year [YEAR-YEAR]",
+                "Contract between HHRSD and [VENDOR NAME] for [SERVICE]",
+                "Transportation / bus contracts in effect for school year [YEAR-YEAR]",
+                "Food service / cafeteria management contracts for school year [YEAR-YEAR]",
+                "Architect, engineer, and construction-management contracts for [PROJECT]",
+                "Insurance policies and broker agreements currently in effect",
+                "Shared services agreements with the Borough or other districts",
+            ],
+        },
+        "notes": "Contracts are 'immediate access' records under N.J.S.A. 47:1A-5. School-district contracts are also subject to N.J.S.A. 18A:18A (public school contracts law).",
     },
     "meetings": {
         "label": "Meeting Minutes & Resolutions",
-        "description": "Council minutes, resolutions, ordinances, agendas",
-        "example_records": [
-            "Borough Council meeting minutes from [DATE] to [DATE]",
-            "All resolutions adopted by the Borough Council in [YEAR]",
-            "Ordinances introduced and/or adopted in [YEAR]",
-            "Planning Board meeting minutes from [DATE RANGE]",
-            "Zoning Board of Adjustment meeting minutes from [DATE RANGE]",
-        ],
-        "notes": "Meeting minutes and resolutions are 'immediate access' records under N.J.S.A. 47:1A-5.",
+        "description": "Governing-body minutes, resolutions, ordinances, agendas",
+        "entities": ["borough", "school"],
+        "example_records": {
+            "borough": [
+                "Borough Council meeting minutes from [DATE] to [DATE]",
+                "All resolutions adopted by the Borough Council in [YEAR]",
+                "Ordinances introduced and/or adopted in [YEAR]",
+                "Planning Board meeting minutes from [DATE RANGE]",
+                "Zoning Board of Adjustment meeting minutes from [DATE RANGE]",
+            ],
+            "school": [
+                "Board of Education public meeting minutes from [DATE] to [DATE]",
+                "All Board of Education resolutions adopted in [YEAR]",
+                "Board agendas and packet materials for meetings from [DATE RANGE]",
+                "Closed/executive session resolutions (Rice notice) for meetings from [DATE RANGE]",
+                "Approved closed-session minutes that have been released for [DATE RANGE]",
+            ],
+        },
+        "notes": "Meeting minutes and resolutions are 'immediate access' records under N.J.S.A. 47:1A-5. Closed-session minutes are subject to release once the underlying need for confidentiality has expired (N.J.S.A. 10:4-14).",
     },
     "personnel": {
         "label": "Personnel & Salary Records",
         "description": "Employee names, titles, salaries, overtime (public portions only)",
-        "example_records": [
-            "Names, titles, and annual salaries of all current Borough employees",
-            "Overtime records for all departments from [DATE RANGE]",
-            "Dates of hire, separation, and length of service for [DEPARTMENT]",
-            "Position descriptions and salary ranges for all municipal positions",
-        ],
-        "notes": "Per N.J.S.A. 47:1A-10, name, title, position, salary, payroll record, length of service, date of separation, and reason for separation ARE public. General personnel files are exempt.",
+        "entities": ["borough", "school"],
+        "example_records": {
+            "borough": [
+                "Names, titles, and annual salaries of all current Borough employees",
+                "Overtime records for all departments from [DATE RANGE]",
+                "Dates of hire, separation, and length of service for [DEPARTMENT]",
+                "Position descriptions and salary ranges for all municipal positions",
+            ],
+            "school": [
+                "Names, titles, and annual salaries of all current HHRSD employees",
+                "Certificated staff roster with assignments for school year [YEAR-YEAR]",
+                "Administrative contracts for the Superintendent and Business Administrator",
+                "Salary guides for certificated and support staff for [YEAR-YEAR]",
+                "Stipends and extracurricular pay for school year [YEAR-YEAR]",
+            ],
+        },
+        "notes": "Per N.J.S.A. 47:1A-10, name, title, position, salary, payroll record, length of service, date of separation, and reason for separation ARE public. General personnel files are exempt. School employees additionally fall under N.J.S.A. 18A:6-7.1 / 7.2 (background-check information) which is non-public.",
+    },
+    "communications": {
+        "label": "Correspondence & Communications",
+        "description": "Official correspondence and emails on agency business",
+        "entities": ["borough", "school"],
+        "example_records": {
+            "borough": [
+                "All correspondence between the Borough and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
+                "Emails sent or received by [OFFICIAL TITLE] regarding [SUBJECT] from [DATE RANGE]",
+                "Written complaints received by [DEPARTMENT] regarding [SUBJECT] from [DATE RANGE]",
+            ],
+            "school": [
+                "All correspondence between HHRSD and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
+                "Emails sent or received by [OFFICIAL TITLE — e.g. Superintendent] regarding [SUBJECT] from [DATE RANGE]",
+                "Written communications between HHRSD and the NJ Department of Education regarding [TOPIC]",
+                "Communications with sending/receiving districts regarding the Sea Bright matter from [DATE RANGE]",
+            ],
+        },
+        "notes": "Advisory, consultative, or deliberative (ACD) material is exempt per N.J.S.A. 47:1A-1.1. Correspondence that constitutes final agency action or policy is generally public.",
     },
     "permits": {
         "label": "Permits & Applications",
         "description": "Building permits, zoning applications, construction permits",
-        "example_records": [
-            "All building permits issued for [ADDRESS or BLOCK/LOT]",
-            "Zoning applications and decisions for [ADDRESS or BLOCK/LOT] from [DATE RANGE]",
-            "Certificate of occupancy for [ADDRESS]",
-            "Construction permits and inspection reports for [ADDRESS]",
-        ],
+        "entities": ["borough"],
+        "example_records": {
+            "borough": [
+                "All building permits issued for [ADDRESS or BLOCK/LOT]",
+                "Zoning applications and decisions for [ADDRESS or BLOCK/LOT] from [DATE RANGE]",
+                "Certificate of occupancy for [ADDRESS]",
+                "Construction permits and inspection reports for [ADDRESS]",
+            ],
+        },
         "notes": "Permit records are generally public. Property-specific requests should include block and lot numbers when possible.",
     },
     "police": {
         "label": "Police/Public Safety Records",
         "description": "Incident reports, arrest records, call logs (non-exempt portions)",
-        "example_records": [
-            "Police incident report for [DATE] at [LOCATION] (report number [#] if known)",
-            "Police department call logs from [DATE] to [DATE]",
-            "Use of force reports from [DATE RANGE] (redacted per N.J.S.A. 47:1A-1.1)",
-            "Annual Uniform Crime Report data for [YEAR]",
-        ],
+        "entities": ["borough"],
+        "example_records": {
+            "borough": [
+                "Police incident report for [DATE] at [LOCATION] (report number [#] if known)",
+                "Police department call logs from [DATE] to [DATE]",
+                "Use of force reports from [DATE RANGE] (redacted per N.J.S.A. 47:1A-1.1)",
+                "Annual Uniform Crime Report data for [YEAR]",
+            ],
+        },
         "notes": "Criminal investigatory records are exempt per N.J.S.A. 47:1A-1.1. Incident reports (non-investigatory) and arrest information are generally public. Victims' information is exempt.",
     },
     "property": {
         "label": "Property/Tax Records",
         "description": "Tax records, assessments, liens, property information",
-        "example_records": [
-            "Tax assessment records for Block [#], Lot [#]",
-            "Property tax collection records for [ADDRESS] from [DATE RANGE]",
-            "Tax lien certificates for [YEAR]",
-            "Tax appeal records for Block [#], Lot [#]",
-        ],
+        "entities": ["borough"],
+        "example_records": {
+            "borough": [
+                "Tax assessment records for Block [#], Lot [#]",
+                "Property tax collection records for [ADDRESS] from [DATE RANGE]",
+                "Tax lien certificates for [YEAR]",
+                "Tax appeal records for Block [#], Lot [#]",
+            ],
+        },
         "notes": "Tax records are generally public. Some may be available directly from the tax assessor or collector without an OPRA request.",
     },
-    "communications": {
-        "label": "Correspondence & Communications",
-        "description": "Official correspondence, emails on municipal business",
-        "example_records": [
-            "All correspondence between the Borough and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
-            "Emails sent or received by [OFFICIAL TITLE] regarding [SUBJECT] from [DATE RANGE]",
-            "Written complaints received by [DEPARTMENT] regarding [SUBJECT] from [DATE RANGE]",
-        ],
-        "notes": "Advisory, consultative, or deliberative (ACD) material is exempt per N.J.S.A. 47:1A-1.1. Correspondence that constitutes final agency action or policy is generally public.",
+    "curriculum": {
+        "label": "Curriculum & Instruction",
+        "description": "Curriculum guides, course offerings, textbook and resource lists",
+        "entities": ["school"],
+        "example_records": {
+            "school": [
+                "Approved curriculum guides for [SUBJECT] grades [GRADES] for school year [YEAR-YEAR]",
+                "Adopted textbook and core instructional materials list for [GRADE/SUBJECT] for [YEAR-YEAR]",
+                "Course offerings / Program of Studies for school year [YEAR-YEAR]",
+                "NJSLA / NJGPA assessment results — district-aggregate (no PII) for [YEAR]",
+                "Approved Comprehensive Equity Plan or filings with NJDOE for [YEAR]",
+            ],
+        },
+        "notes": "Aggregate, district-level academic data is public. Any record containing personally-identifying student information is exempt under N.J.S.A. 47:1A-1.1 and FERPA — request only redacted/aggregate forms.",
+    },
+    "transportation": {
+        "label": "Transportation & Operations",
+        "description": "Bus routes, transportation contracts, facility/operations records",
+        "entities": ["school"],
+        "example_records": {
+            "school": [
+                "Transportation / bus contracts in effect for school year [YEAR-YEAR]",
+                "Approved bus routes and stops for school year [YEAR-YEAR] (redact any student-level info)",
+                "Long-Range Facilities Plan filings with NJDOE",
+                "Capital project approvals (QSAC / SDA) for [PROJECT/YEAR]",
+                "Energy / utility contracts in effect for [YEAR-YEAR]",
+            ],
+        },
+        "notes": "Route lists and stop addresses are public; rider lists are not. Capital project records held by the NJ Schools Development Authority may need to be requested separately from SDA.",
+    },
+    "boardpolicies": {
+        "label": "Board Policies & Bylaws",
+        "description": "Board of Education policy manual, regulations, and bylaws",
+        "entities": ["school"],
+        "example_records": {
+            "school": [
+                "Current Board of Education policy manual (or specific policy series)",
+                "Policy [NUMBER] (e.g., 5512 — Harassment, Intimidation, Bullying) and any related regulation",
+                "All Board policies adopted, revised, or rescinded between [DATE] and [DATE]",
+                "Public Comment / first/second reading materials for policy [NUMBER]",
+            ],
+        },
+        "notes": "Adopted policies are public. Drafts circulated solely as ACD material may be withheld until adopted.",
     },
     "custom": {
         "label": "Custom/Other Request",
         "description": "Describe the specific records you are seeking",
-        "example_records": [],
+        "entities": ["borough", "school"],
+        "example_records": {"borough": [], "school": []},
         "notes": "Be as specific as possible. Identify the department, date range, and type of document. Vague requests (e.g., 'any and all records') may be denied as overbroad.",
     },
 }
@@ -280,16 +412,21 @@ RECORD_CATEGORIES = {
 # ── Pydantic Models ──────────────────────────────────────────────────────────
 
 class OPRAGenerateRequest(BaseModel):
+    entity: Literal["borough", "school"] = "borough"
     category: str  # key from RECORD_CATEGORIES
     specific_records: str  # user's description of what they want
     date_range_start: Optional[str] = None
     date_range_end: Optional[str] = None
-    preferred_format: str = "electronic"  # "electronic", "copies", "inspect"
+    preferred_format: str = "electronic"  # "electronic", "copies", "inspect", "pickup", "mail", "fax"
     requestor_name: str = ""
     requestor_address: str = ""
     requestor_email: str = ""
     requestor_phone: str = ""
     additional_context: str = ""  # any extra details
+    # Certification answers (default to the safe / typical responses).
+    cert_no_indictable: bool = True   # "I HAVE NOT been convicted of an indictable offense"
+    cert_not_commercial: bool = True  # "I WILL NOT use these records for a commercial purpose"
+    cert_litigation: bool = False     # "I AM NOT seeking records in connection with a legal proceeding"
 
 
 class OPRAFactCheckRequest(BaseModel):
@@ -299,25 +436,54 @@ class OPRAFactCheckRequest(BaseModel):
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/categories")
-async def get_categories():
-    """Return available record categories with examples and legal notes."""
-    return {
-        key: {
+async def get_categories(entity: Literal["borough", "school"] = "borough"):
+    """Return record categories applicable to the given entity, with the
+    entity-appropriate example records."""
+    out = {}
+    for key, val in RECORD_CATEGORIES.items():
+        if entity not in val.get("entities", ["borough"]):
+            continue
+        examples = val.get("example_records", {})
+        # Tolerate the legacy flat-list shape too, in case old data ever
+        # round-trips through here.
+        if isinstance(examples, list):
+            examples_for_entity = examples
+        else:
+            examples_for_entity = examples.get(entity, [])
+        out[key] = {
             "label": val["label"],
             "description": val["description"],
-            "example_records": val["example_records"],
+            "example_records": examples_for_entity,
             "notes": val["notes"],
         }
-        for key, val in RECORD_CATEGORIES.items()
+    return out
+
+
+@router.get("/agencies")
+async def get_agencies():
+    """Return submission contact info for each supported entity. The web UI
+    uses this to render the right badge / submission link without hard-coding."""
+    return {
+        "borough": {
+            **PDF_AGENCY_INFO["borough"],
+            "govpilot_url": "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
+        },
+        "school": {
+            **PDF_AGENCY_INFO["school"],
+            "form_url": "https://4.files.edl.io/56c6/01/28/25/200645-0bbdba1d-23de-4c56-aa11-c30d114ac3f7.pdf",
+        },
     }
 
 
 @router.get("/regulations")
-async def get_regulations():
-    """Return the full OPRA regulatory reference text."""
+async def get_regulations(entity: Literal["borough", "school"] = "borough"):
+    """Return the full OPRA regulatory reference text plus the entity-specific
+    submission info block."""
     return {
         "regulations": OPRA_REGULATIONS,
+        "entity_info": ENTITY_INFO[entity],
         "atlantic_highlands_info": ATLANTIC_HIGHLANDS_INFO,
+        "hhrsd_info": HHRSD_INFO,
         "govpilot_url": "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
         "last_updated": "2024-09-03",
         "amendment": "P.L. 2024, c.16",
@@ -345,11 +511,19 @@ async def generate_opra_request(req: OPRAGenerateRequest):
     }
     format_text = format_map.get(req.preferred_format, format_map["electronic"])
 
+    entity_info_block = ENTITY_INFO[req.entity]
+    agency = PDF_AGENCY_INFO[req.entity]
+    custodian_address_line = (
+        f"{agency['custodian_name']}, {agency['custodian_title']}\n"
+        f"{agency['agency_name']}\n"
+        f"{agency['address_line']}"
+    )
+
     prompt = f"""{OPRA_REGULATIONS}
 
-{ATLANTIC_HIGHLANDS_INFO}
+{entity_info_block}
 
-You are an expert municipal records request drafter specializing in New Jersey OPRA law.
+You are an expert New Jersey records request drafter specializing in OPRA law.
 Generate a formal, legally compliant OPRA request letter for the following:
 
 REQUESTOR INFORMATION:
@@ -358,6 +532,9 @@ REQUESTOR INFORMATION:
 - Email: {req.requestor_email or '[REQUESTOR EMAIL]'}
 - Phone: {req.requestor_phone or '[REQUESTOR PHONE]'}
 
+ADDRESSEE (Records Custodian):
+{custodian_address_line}
+
 RECORD CATEGORY: {category_info['label']}
 SPECIFIC RECORDS REQUESTED: {req.specific_records}
 DATE RANGE: {date_range_text or 'Not specified'}
@@ -365,7 +542,7 @@ PREFERRED FORMAT: {format_text}
 ADDITIONAL CONTEXT: {req.additional_context or 'None'}
 
 INSTRUCTIONS FOR GENERATION:
-1. Format as a professional letter addressed to the Records Custodian, Borough of Atlantic Highlands
+1. Format as a professional letter addressed to the Records Custodian above (use the exact name, title, agency, and address shown)
 2. Include the proper legal citation (N.J.S.A. 47:1A-1 et seq.) in the opening
 3. Be SPECIFIC about what records are requested - avoid vague language
 4. Include the commercial purpose certification (certify this is NOT for commercial purpose)
@@ -536,10 +713,12 @@ Be meticulous - every citation must be verified against the actual statute text.
 @router.post("/generate-pdf-text")
 async def generate_pdf_text(req: OPRAGenerateRequest):
     """
-    Generate the OPRA request as structured data suitable for PDF generation.
-    Returns JSON with all fields needed for a formal OPRA request document.
+    Return the OPRA request as structured JSON. Kept for backward compat with
+    the previous text-based "Formal" download flow; new clients should call
+    /generate-pdf for an actual PDF.
     """
     category_info = RECORD_CATEGORIES.get(req.category, RECORD_CATEGORIES["custom"])
+    agency = PDF_AGENCY_INFO[req.entity]
 
     date_range_text = ""
     if req.date_range_start and req.date_range_end:
@@ -550,16 +729,18 @@ async def generate_pdf_text(req: OPRAGenerateRequest):
     format_labels = {
         "electronic": "Electronic copies via email",
         "copies": "Paper copies (statutory fee schedule applies)",
-        "inspect": "Inspection at municipal offices",
+        "inspect": "Inspection at agency offices",
     }
 
     return {
         "date": date.today().strftime("%B %d, %Y"),
         "to": {
-            "title": "Records Custodian",
-            "organization": "Borough of Atlantic Highlands",
-            "address": "100 First Avenue, Atlantic Highlands, NJ 07716",
-            "phone": "732-291-1444 x3103",
+            "title": agency["custodian_title"],
+            "name": agency["custodian_name"],
+            "organization": agency["agency_name"],
+            "address": agency["address_line"],
+            "phone": agency["phone"],
+            "email": agency["email"],
         },
         "from": {
             "name": req.requestor_name or "[REQUESTOR NAME]",
@@ -585,5 +766,33 @@ async def generate_pdf_text(req: OPRAGenerateRequest):
         },
         "additional_context": req.additional_context,
         "legal_notes": category_info["notes"],
-        "govpilot_url": "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
+        "submission_note": agency["submission_note"],
     }
+
+
+@router.post("/generate-pdf")
+async def generate_pdf(req: OPRAGenerateRequest):
+    """
+    Render the OPRA request as a formal, prefilled PDF that mirrors the NJ DCA
+    model OPRA request form (the same form Atlantic Highlands and HHRSD publish).
+
+    Long, structured requests overflow into a "Detailed Records Request"
+    attachment page rather than being crammed into the page-1 form box — a
+    custodian acts on a clean attachment faster than on a wall of text squeezed
+    into a 6-line field.
+    """
+    category_info = RECORD_CATEGORIES.get(req.category, RECORD_CATEGORIES["custom"])
+    payload = req.dict()
+    pdf_bytes = render_opra_pdf(
+        payload,
+        entity=req.entity,
+        category_label=category_info.get("label", "(unspecified)"),
+    )
+    agency_name = PDF_AGENCY_INFO[req.entity]["agency_name"]
+    safe_agency = "".join(c if c.isalnum() else "_" for c in agency_name).strip("_")
+    fname = f"OPRA-Request-{safe_agency}-{date.today().isoformat()}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )

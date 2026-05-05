@@ -60,6 +60,7 @@ S3_BUCKET = _get("S3_BUCKET", "atlantic-highlands-documents")
 # AI / LLM
 ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = _get("GEMINI_API_KEY")
+VOYAGE_API_KEY = _get("VOYAGE_API_KEY")  # for semantic embeddings; falls back to hash if missing
 
 # Auth
 JWT_SECRET = _get("JWT_SECRET", SECRET_KEY)

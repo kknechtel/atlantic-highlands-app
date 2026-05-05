@@ -6,13 +6,21 @@ import {
     CpuChipIcon,
     ClipboardIcon,
     CheckIcon,
-    ClockIcon,
     ExclamationCircleIcon,
     InformationCircleIcon,
     ArrowDownTrayIcon,
+    LightBulbIcon,
+    WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import EnhancedMarkdownRenderer from './EnhancedMarkdownRenderer';
 import TypingIndicator from './TypingIndicator';
+
+export type ToolActivity = {
+    name: string;
+    input?: Record<string, unknown>;
+    summary?: string;
+    status: 'started' | 'done' | 'error';
+};
 
 export interface ChatMessage {
     id: string;
@@ -21,6 +29,10 @@ export interface ChatMessage {
     timestamp: Date;
     isStreaming?: boolean;
     linkedDocs?: { id: string; filename: string }[];
+    /** Extended thinking status: 'started' while Claude is reasoning, 'done' once text begins. */
+    thinking?: 'started' | 'done';
+    /** Tool calls Claude made on this turn (search_chunks, read_document, etc.). */
+    toolActivity?: ToolActivity[];
 }
 
 interface EnhancedMessageComponentProps {
@@ -29,6 +41,49 @@ interface EnhancedMessageComponentProps {
     onCitationClick?: (info: { filename: string }) => void;
     onDocClick?: (docId: string, filename: string) => void;
     onDownload?: (content: string) => void;
+}
+
+const TOOL_LABEL: Record<string, string> = {
+    search_chunks: 'Searching passages',
+    search_documents: 'Searching documents',
+    read_document: 'Reading document',
+    get_financial_summary: 'Loading financials',
+    list_recent_documents: 'Listing recent documents',
+    web_search: 'Searching the web',
+};
+
+function ToolActivityList({ items, brandColor }: { items: ToolActivity[]; brandColor: string }) {
+    if (!items.length) return null;
+    return (
+        <div className="mt-2 space-y-1">
+            {items.map((t, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <WrenchScrewdriverIcon className="w-3 h-3 flex-shrink-0" style={{ color: brandColor }} />
+                    <span className="font-medium">{TOOL_LABEL[t.name] || t.name}</span>
+                    {t.status === 'started' && (
+                        <span className="flex gap-0.5">
+                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor }} />
+                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '120ms' }} />
+                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: brandColor, animationDelay: '240ms' }} />
+                        </span>
+                    )}
+                    {t.summary && t.status !== 'started' && (
+                        <span className="text-gray-400 truncate">— {t.summary}</span>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function ThinkingIndicator({ status, brandColor }: { status: 'started' | 'done'; brandColor: string }) {
+    if (status === 'done') return null;
+    return (
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-2">
+            <LightBulbIcon className="w-3.5 h-3.5 animate-pulse" style={{ color: brandColor }} />
+            <span className="italic">Thinking deeply…</span>
+        </div>
+    );
 }
 
 const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
@@ -65,8 +120,11 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
 
-    // Typing indicator for empty streaming messages
-    if (message.isStreaming && !message.content && message.role === 'assistant') {
+    // While we wait for the first content delta (could be thinking or tool use), show
+    // either a typing indicator or — if we have activity already — render the activity inside the bubble.
+    const hasEarlyActivity = (message.toolActivity && message.toolActivity.length > 0) || message.thinking === 'started';
+
+    if (message.isStreaming && !message.content && message.role === 'assistant' && !hasEarlyActivity) {
         return (
             <div className="flex justify-start mb-4">
                 <TypingIndicator brandColor={brandColor} message="Analyzing documents..." isVisible={isVisible} />
@@ -74,7 +132,6 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
         );
     }
 
-    // System messages
     if (message.role === 'system') {
         return (
             <div className={`flex justify-center mb-3 transition-all duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -86,7 +143,6 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
         );
     }
 
-    // Error messages
     if (message.role === 'error') {
         return (
             <div className={`flex justify-center mb-3 transition-all duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -106,33 +162,37 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
             className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 transition-all duration-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
         >
             <div className={`flex items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''} max-w-[85%]`}>
-                {/* Avatar */}
                 <div
                     className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0 shadow"
-                    style={{ backgroundColor: isUser ? brandColor : brandColor }}
+                    style={{ backgroundColor: brandColor }}
                 >
                     {isUser ? <UserIcon className="w-3.5 h-3.5" /> : <CpuChipIcon className="w-3.5 h-3.5" />}
                 </div>
 
-                {/* Bubble */}
                 <div className={`group relative rounded-2xl px-4 py-3 text-sm shadow-lg ${
                     isUser
                         ? 'text-white rounded-br-md'
                         : 'bg-white text-gray-800 border border-gray-200 rounded-bl-md'
                 }`} style={isUser ? { backgroundColor: brandColor } : {}}>
 
-                    {/* Content */}
-                    {isUser ? (
-                        <span className="whitespace-pre-wrap">{message.content}</span>
-                    ) : (
-                        <EnhancedMarkdownRenderer
-                            content={message.content}
-                            onCitationClick={onCitationClick}
-                            brandColor={brandColor}
-                        />
+                    {!isUser && message.thinking && <ThinkingIndicator status={message.thinking} brandColor={brandColor} />}
+
+                    {!isUser && message.toolActivity && message.toolActivity.length > 0 && (
+                        <ToolActivityList items={message.toolActivity} brandColor={brandColor} />
                     )}
 
-                    {/* Streaming indicator */}
+                    {isUser ? (
+                        <span className="whitespace-pre-wrap">{message.content}</span>
+                    ) : message.content ? (
+                        <div className={message.toolActivity?.length || message.thinking ? 'mt-2' : ''}>
+                            <EnhancedMarkdownRenderer
+                                content={message.content}
+                                onCitationClick={onCitationClick}
+                                brandColor={brandColor}
+                            />
+                        </div>
+                    ) : null}
+
                     {message.isStreaming && message.content && (
                         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
                             <div className="flex gap-1">
@@ -144,7 +204,6 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         </div>
                     )}
 
-                    {/* Action buttons */}
                     {!isUser && !message.isStreaming && message.content && (
                         <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
                             <button onClick={handleCopy} className="p-1 hover:bg-gray-100 rounded" title="Copy">
@@ -158,14 +217,12 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         </div>
                     )}
 
-                    {/* Timestamp */}
                     {!message.isStreaming && (
                         <div className="text-[10px] text-gray-400 mt-1.5">{formatTimestamp(message.timestamp)}</div>
                     )}
                 </div>
             </div>
 
-            {/* Linked docs */}
             {message.linkedDocs && message.linkedDocs.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1 ml-9">
                     {message.linkedDocs.map(ld => (

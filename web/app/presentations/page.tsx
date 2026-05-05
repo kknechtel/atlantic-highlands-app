@@ -1,0 +1,133 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/app/contexts/AuthContext';
+import { Plus, Trash2, Globe, FileText, Loader2 } from 'lucide-react';
+import {
+  type Presentation,
+  listPresentations,
+  createPresentation,
+  deletePresentation,
+} from '@/lib/presentationsApi';
+
+const brandColor = '#385854';
+
+export default function PresentationsListPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const [decks, setDecks] = useState<Presentation[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.push('/'); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listPresentations();
+        if (!cancelled) setDecks(list);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, authLoading, router]);
+
+  const handleCreate = async () => {
+    const title = newTitle.trim() || 'Untitled presentation';
+    setBusy(true);
+    try {
+      const p = await createPresentation(title);
+      router.push(`/presentations/${p.id}`);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to create');
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    await deletePresentation(id);
+    setDecks((decks || []).filter(d => d.id !== id));
+  };
+
+  if (authLoading || !user || decks === null) {
+    return <div className="p-6 flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Presentations</h1>
+          <p className="text-sm text-gray-500">Analytical decks and reports about Atlantic Highlands.</p>
+        </div>
+        <button onClick={() => setCreating(true)}
+          className="px-3 py-2 rounded text-white text-sm flex items-center gap-1.5 shadow"
+          style={{ backgroundColor: brandColor }}>
+          <Plus className="w-4 h-4" /> New presentation
+        </button>
+      </div>
+
+      {creating && (
+        <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-white">
+          <input
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            placeholder="Presentation title"
+            className="w-full text-base border-b border-gray-200 focus:outline-none focus:border-gray-400 pb-1 mb-3"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={busy} className="px-3 py-1.5 rounded text-white text-sm" style={{ backgroundColor: brandColor }}>
+              {busy ? 'Creating…' : 'Create'}
+            </button>
+            <button onClick={() => { setCreating(false); setNewTitle(''); }} className="px-3 py-1.5 rounded border border-gray-300 text-sm hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+
+      {decks.length === 0 ? (
+        <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-lg">
+          <FileText className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">No presentations yet.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {decks.map((d) => (
+            <div key={d.id} className="border border-gray-200 rounded-lg bg-white p-4 hover:shadow-md transition-shadow group">
+              <Link href={`/presentations/${d.id}`} className="block">
+                <h3 className="font-semibold text-gray-900 mb-1 truncate group-hover:underline">{d.title}</h3>
+                <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                  <span>{d.sections.length} section{d.sections.length === 1 ? '' : 's'}</span>
+                  <span>•</span>
+                  <span className={`uppercase tracking-wide ${
+                    d.status === 'published' ? 'text-emerald-600' : ''
+                  }`}>{d.status}</span>
+                  {d.public_slug && <Globe className="w-3 h-3 text-emerald-600" />}
+                </div>
+                <p className="text-[11px] text-gray-400">Updated {new Date(d.updated_at).toLocaleDateString()}</p>
+              </Link>
+              <button
+                onClick={() => handleDelete(d.id, d.title)}
+                className="mt-3 text-xs text-red-500 hover:text-red-700 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

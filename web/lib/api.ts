@@ -11,6 +11,12 @@ function getToken(): string | null {
   return localStorage.getItem("ah_token");
 }
 
+/** Public helper: returns Authorization header dict for direct fetch() calls. */
+export function getAuthToken(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {

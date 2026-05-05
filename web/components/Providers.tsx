@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/app/contexts/AuthContext";
 import Sidebar from "@/components/Sidebar";
@@ -144,6 +145,14 @@ function PendingApproval() {
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading, pendingApproval } = useAuth();
+  const pathname = usePathname();
+
+  // Public routes — published presentations under /p/{slug} and any future
+  // public-only pages. They render bare without the sidebar/mobile-nav chrome.
+  const isPublicRoute = pathname?.startsWith("/p/") ?? false;
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (

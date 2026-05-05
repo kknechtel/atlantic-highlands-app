@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, getDocumentViewUrl, getChatSessions, type Document } from "@/lib/api";
-import EnhancedMessageComponent, { type ChatMessage } from "@/components/EnhancedMessageComponent";
+import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import {
   XMarkIcon, PaperAirplaneIcon, SparklesIcon,
   MinusIcon, DocumentTextIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
   MagnifyingGlassIcon, LinkIcon, GlobeAltIcon,
   ArrowDownTrayIcon, ClockIcon, ArrowPathIcon,
+  LightBulbIcon, DocumentChartBarIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -22,11 +23,13 @@ export default function GlobalChat() {
   const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([{
     id: "welcome", role: "assistant", timestamp: new Date(),
-    content: "I'm the **Atlantic Highlands Expert**. I've indexed 860+ documents covering budgets, audits, minutes, ordinances, school board records, and more from 2004 to present.\n\nI have deep knowledge of the borough's finances, the school district regionalization, Superstorm Sandy recovery, and current issues.\n\nToggle the 🌐 button to enable **web search** for current news and real-time information.",
+    content: "I'm the **Atlantic Highlands Expert**. I have hybrid semantic + keyword search across 860+ indexed documents (2004-present): budgets, audits, council minutes, ordinances, school board records.\n\n**Toggles:**\n- 🔍 **Web** — supplement with current internet results\n- 💡 **Deep** — extended thinking (Opus 4.7) for hard cross-document questions\n- 📊 **Report** — formal analytical report with executive summary, findings, charts, and sources",
   }]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [deepThinking, setDeepThinking] = useState(false);
+  const [reportMode, setReportMode] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [splitDoc, setSplitDoc] = useState<{ url: string; filename: string } | null>(null);
   const [showDocPicker, setShowDocPicker] = useState(false);
@@ -47,7 +50,6 @@ export default function GlobalChat() {
     try {
       if (!docId && filename) {
         const r = await searchDocuments(filename);
-        // Prefer exact filename match over full-text-search ranking
         const exact = r.find((d) => d.filename === filename);
         const startsWith = r.find((d) => d.filename.toLowerCase().startsWith(filename.toLowerCase()));
         const contains = r.find((d) => d.filename.toLowerCase().includes(filename.toLowerCase()));
@@ -92,6 +94,15 @@ export default function GlobalChat() {
     handleViewDoc("", info.filename);
   };
 
+  /** Update one message in the list. */
+  const patchMessage = (id: string, patch: Partial<ChatMessage> | ((m: ChatMessage) => Partial<ChatMessage>)) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== id) return m;
+      const p = typeof patch === "function" ? patch(m) : patch;
+      return { ...m, ...p };
+    }));
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isStreaming) return;
@@ -103,12 +114,20 @@ export default function GlobalChat() {
     };
     const assistantMsg: ChatMessage = {
       id: (Date.now() + 1).toString(), role: "assistant", content: "", timestamp: new Date(), isStreaming: true,
+      toolActivity: [],
     };
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
 
     try {
-      const body: any = { query: text, model: webSearchEnabled ? "claude" : "gemini", session_id: sessionId, web_search: webSearchEnabled };
+      const body: Record<string, unknown> = {
+        query: text,
+        model: "claude",
+        session_id: sessionId,
+        web_search: webSearchEnabled,
+        deep_thinking: deepThinking,
+        report_mode: reportMode,
+      };
       if (selectedDoc) body.document_id = selectedDoc.id;
 
       const token = typeof window !== "undefined" ? localStorage.getItem("ah_token") : null;
@@ -120,27 +139,97 @@ export default function GlobalChat() {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let full = "";
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const line of decoder.decode(value, { stream: true }).split("\n")) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const d = JSON.parse(line.slice(6));
-              if (d.type === "delta") { full += d.content; setMessages(p => p.map(m => m.id === assistantMsg.id ? { ...m, content: full } : m)); }
-              else if (d.type === "done") setMessages(p => p.map(m => m.id === assistantMsg.id ? { ...m, isStreaming: false } : m));
-              else if (d.type === "error") setMessages(p => p.map(m => m.id === assistantMsg.id ? { ...m, content: full + "\nError: " + d.content, isStreaming: false, role: "error" as const } : m));
-            } catch {}
+      let pending = "";  // SSE frames can split across reads
+
+      if (!reader) throw new Error("No response stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        pending += decoder.decode(value, { stream: true });
+
+        // SSE frames separated by blank line
+        let sep: number;
+        while ((sep = pending.indexOf("\n\n")) !== -1) {
+          const frame = pending.slice(0, sep);
+          pending = pending.slice(sep + 2);
+          if (!frame.trim() || frame.startsWith(":")) continue;  // keepalive
+
+          // Frame may contain `event:` and one or more `data:` lines
+          let dataLine = "";
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("data: ")) dataLine += line.slice(6);
+            else if (line.startsWith("data:")) dataLine += line.slice(5);
+          }
+          if (!dataLine) continue;
+
+          let d: any;
+          try { d = JSON.parse(dataLine); } catch { continue; }
+
+          switch (d.type) {
+            case "session":
+              if (d.session_id) setSessionId(d.session_id);
+              break;
+
+            case "delta":
+              full += d.content || "";
+              patchMessage(assistantMsg.id, { content: full });
+              break;
+
+            case "thinking":
+              patchMessage(assistantMsg.id, {
+                thinking: d.status === "done" ? "done" : "started",
+              });
+              break;
+
+            case "tool_call":
+            case "tool_use": {
+              const name = d.name || (Array.isArray(d.tools) ? d.tools[0]?.name : "") || "tool";
+              const newEntry: ToolActivity = { name, input: d.input, status: "started" };
+              patchMessage(assistantMsg.id, m => ({
+                toolActivity: [...(m.toolActivity || []), newEntry],
+              }));
+              break;
+            }
+
+            case "tool_result":
+              patchMessage(assistantMsg.id, m => {
+                const acts = [...(m.toolActivity || [])];
+                // mark the last 'started' entry of this name as done
+                for (let i = acts.length - 1; i >= 0; i--) {
+                  if (acts[i].name === d.name && acts[i].status === "started") {
+                    acts[i] = { ...acts[i], status: "done", summary: d.summary };
+                    break;
+                  }
+                }
+                return { toolActivity: acts };
+              });
+              break;
+
+            case "done":
+              patchMessage(assistantMsg.id, { isStreaming: false });
+              break;
+
+            case "error":
+              patchMessage(assistantMsg.id, m => ({
+                content: (m.content || "") + (m.content ? "\n\n" : "") + "Error: " + (d.content || "Unknown error"),
+                isStreaming: false,
+                role: "error" as const,
+              }));
+              break;
           }
         }
       }
-    } catch (e: any) {
-      setMessages(p => p.map(m => m.id === assistantMsg.id ? { ...m, content: `Error: ${e.message}`, isStreaming: false, role: "error" as const } : m));
-    } finally { setIsStreaming(false); setSelectedDoc(null); }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      patchMessage(assistantMsg.id, { content: `Error: ${msg}`, isStreaming: false, role: "error" as const });
+    } finally {
+      setIsStreaming(false);
+      setSelectedDoc(null);
+    }
   };
 
-  // Closed state - FAB button (higher on mobile to avoid bottom nav)
+  // Closed state - FAB button
   if (!isOpen) return (
     <button onClick={() => setIsOpen(true)}
       className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white p-3.5 md:p-4 rounded-full shadow-xl hover:shadow-2xl transition-all hover:scale-105 group"
@@ -149,7 +238,6 @@ export default function GlobalChat() {
     </button>
   );
 
-  // Minimized state
   if (isMinimized) return (
     <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white rounded-full shadow-xl flex items-center gap-2 px-4 py-2.5 md:px-5 md:py-3 cursor-pointer hover:shadow-2xl"
       style={{ backgroundColor: brandColor }} onClick={() => setIsMinimized(false)}>
@@ -159,7 +247,6 @@ export default function GlobalChat() {
     </div>
   );
 
-  // Constrain widths so the chat always fits within the viewport
   const widthClass = isExpanded
     ? (splitDoc ? "md:w-[min(1100px,calc(100vw-3rem))]" : "md:w-[min(560px,calc(100vw-3rem))]")
     : splitDoc ? "md:w-[min(820px,calc(100vw-3rem))]" : "md:w-[min(420px,calc(100vw-3rem))]";
@@ -167,18 +254,18 @@ export default function GlobalChat() {
 
   return (
     <div className={`fixed z-50
-      /* Mobile: full screen */
       inset-0 md:inset-auto
-      /* Desktop: positioned bottom-right, never exceeds viewport */
       md:bottom-6 md:right-6 ${widthClass} ${heightClass}
       flex md:rounded-2xl shadow-2xl md:border md:border-gray-200 overflow-hidden transition-all duration-200`}>
       <div className={`${splitDoc ? "w-1/2" : "w-full"} bg-gray-50 flex flex-col min-w-0`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <SparklesIcon className="w-5 h-5" />
             <span className="font-semibold text-sm">Atlantic Highlands Expert</span>
             {webSearchEnabled && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Web</span>}
+            {deepThinking && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Deep</span>}
+            {reportMode && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Report</span>}
           </div>
           <div className="flex items-center gap-0.5">
             <button onClick={handleNewSession} className="p-1.5 hover:bg-white/20 rounded" title="New chat"><ArrowPathIcon className="w-4 h-4" /></button>
@@ -209,7 +296,6 @@ export default function GlobalChat() {
           </div>
         )}
 
-        {/* Selected doc badge */}
         {selectedDoc && (
           <div className="px-3 py-1.5 border-b border-gray-200 flex items-center gap-2 text-xs flex-shrink-0" style={{ backgroundColor: `${brandColor}10` }}>
             <LinkIcon className="w-3 h-3" style={{ color: brandColor }} />
@@ -233,7 +319,6 @@ export default function GlobalChat() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Doc picker */}
         {showDocPicker && (
           <div className="border-t border-gray-200 bg-white px-3 py-2 max-h-48 overflow-y-auto flex-shrink-0">
             <div className="relative mb-2">
@@ -258,12 +343,26 @@ export default function GlobalChat() {
             </button>
             <button onClick={() => setWebSearchEnabled(!webSearchEnabled)}
               className={`p-2 rounded-lg border transition-colors ${webSearchEnabled ? "bg-blue-50 border-blue-300 text-blue-600" : "border-gray-300 text-gray-400 hover:text-gray-600"}`}
-              title={webSearchEnabled ? "Web search ON (uses Claude)" : "Enable web search"}>
+              title={webSearchEnabled ? "Web search ON" : "Enable web search"}>
               <GlobeAltIcon className="w-4 h-4" />
+            </button>
+            <button onClick={() => setDeepThinking(!deepThinking)}
+              className={`p-2 rounded-lg border transition-colors ${deepThinking ? "bg-amber-50 border-amber-300 text-amber-700" : "border-gray-300 text-gray-400 hover:text-gray-600"}`}
+              title={deepThinking ? "Deep thinking ON (Opus 4.7)" : "Enable extended thinking"}>
+              <LightBulbIcon className="w-4 h-4" />
+            </button>
+            <button onClick={() => setReportMode(!reportMode)}
+              className={`p-2 rounded-lg border transition-colors ${reportMode ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "border-gray-300 text-gray-400 hover:text-gray-600"}`}
+              title={reportMode ? "Report mode ON" : "Format as a structured report"}>
+              <DocumentChartBarIcon className="w-4 h-4" />
             </button>
             <input type="text" value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder={selectedDoc ? `Ask about ${selectedDoc.filename}...` : webSearchEnabled ? "Ask anything (+ web search)..." : "Ask about AH documents..."}
+              placeholder={selectedDoc ? `Ask about ${selectedDoc.filename}...`
+                : reportMode ? "Request a report..."
+                : deepThinking ? "Ask a deep analytical question..."
+                : webSearchEnabled ? "Ask anything (+ web search)..."
+                : "Ask about AH documents..."}
               className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:border-transparent"
               style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
               disabled={isStreaming} />
@@ -276,7 +375,6 @@ export default function GlobalChat() {
         </div>
       </div>
 
-      {/* Split document viewer */}
       {splitDoc && (
         <div className="w-1/2 border-l border-gray-200 flex flex-col bg-white">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">

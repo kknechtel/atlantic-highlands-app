@@ -4,3 +4,4 @@ from .user import User
 from .financial import FinancialStatement, FinancialLineItem, FinancialAnalysis
 from .presentation import Presentation, PresentationComment
 from .contract import Vendor, Contract, Payment
+from .parcel import Parcel

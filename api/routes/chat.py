@@ -64,6 +64,11 @@ class ChatRequest(BaseModel):
     web_search: bool = False
     deep_thinking: bool = False
     report_mode: bool = False
+    # Deck-mode: when set, the chat is bound to a specific presentation. The
+    # backend exposes a `propose_section` tool whose input is forwarded to
+    # the frontend as a `proposal` SSE event for the user to accept/reject.
+    presentation_id: Optional[str] = None
+    presentation_summary: Optional[str] = None
 
 
 # ─── System prompts ──────────────────────────────────────────────────────────
@@ -357,6 +362,42 @@ def _tool_defs() -> list[dict]:
             },
         },
     ]
+
+
+def _propose_section_tool() -> dict:
+    """Deck-mode only: lets Claude propose a new or rewritten section.
+    The chat panel renders the proposal as an accept/reject card; the
+    user applies it to the active presentation in one click."""
+    return {
+        "name": "propose_section",
+        "description": (
+            "DECK MODE ONLY. Propose a new section for the active presentation, or a rewrite "
+            "of an existing one. The user accepts or rejects from the chat panel. Use this when "
+            "the user asks you to draft, expand, or rewrite content for the deck they're editing."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "If rewriting an existing section, its id (e.g. 'sec_abc123'). Omit to propose a new section.",
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["narrative", "table", "react_component"],
+                    "description": "Section kind. Narrative = markdown prose with citations. Table = structured rows. react_component = sandboxed TSX (Recharts/Lucide).",
+                },
+                "title": {"type": "string"},
+                "body": {"type": "string", "description": "Markdown body for narrative sections. Use [source: filename.pdf] citations."},
+                "headers": {"type": "array", "items": {"type": "string"}},
+                "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+                "caption": {"type": "string"},
+                "tsx": {"type": "string", "description": "TSX source for react_component sections — see deck_chat_service for the curated scope."},
+                "rationale": {"type": "string", "description": "1-2 sentences explaining the proposal — shown to the user on the accept card."},
+            },
+            "required": ["kind", "title"],
+        },
+    }
 
 
 def _web_search_tool() -> dict:
@@ -680,6 +721,11 @@ def _execute_tool(name: str, args: dict, db: Session) -> dict:
             # streaming loop (see _stream_claude). The tool result is just an
             # ack so Claude continues with the actual work.
             return {"ok": True, "ack": "Plan recorded. Now executing it."}
+        if name == "propose_section":
+            # Same pattern as share_plan — the proposal payload is forwarded
+            # via a dedicated SSE event; the tool result is a plain ack so
+            # the model can narrate around it without echoing the full body.
+            return {"ok": True, "ack": "Proposal sent to the deck editor."}
         if name == "search_documents":
             return _exec_search_documents(db, args)
         if name == "search_chunks":
@@ -913,6 +959,8 @@ async def _stream_claude(
     tools = _tool_defs()
     if req.web_search:
         tools.append(_web_search_tool())
+    if req.presentation_id:
+        tools.append(_propose_section_tool())
 
     messages: list[dict] = list(history[-30:])
     messages.append({"role": "user", "content": req.query})
@@ -1073,15 +1121,17 @@ async def _stream_claude(
 
                 results = []
                 for tb in tool_blocks:
-                    # share_plan is special — emit a dedicated `plan` event the
-                    # UI renders as a checklist, and skip the generic tool_call
-                    # spinner row (the plan IS the indicator).
+                    # share_plan / propose_section are special — emit dedicated
+                    # SSE events and don't render the generic tool_call spinner.
                     if tb.name == "share_plan":
                         plan_input = dict(tb.input or {})
                         yield _sse("plan", {
                             "steps": plan_input.get("steps") or [],
                             "rationale": plan_input.get("rationale") or "",
                         })
+                    elif tb.name == "propose_section":
+                        prop_input = dict(tb.input or {})
+                        yield _sse("proposal", {"input": prop_input})
                     else:
                         yield _sse("tool_call", {
                             "name": tb.name,
@@ -1089,7 +1139,7 @@ async def _stream_claude(
                             "description": _describe_tool_call(tb.name, dict(tb.input or {})),
                         })
                     res = await asyncio.to_thread(run_tool, tb.name, tb.input)
-                    if tb.name != "share_plan":
+                    if tb.name not in ("share_plan", "propose_section"):
                         summary = _summarize_tool_result(tb.name, res)
                         yield _sse("tool_result", {"name": tb.name, "summary": summary})
                     payload = json.dumps(res)

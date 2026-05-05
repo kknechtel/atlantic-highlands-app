@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, getDocumentViewUrl, getChatSessions, type Document } from "@/lib/api";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
+import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
 import {
   XMarkIcon, PaperAirplaneIcon, SparklesIcon,
   MinusIcon, DocumentTextIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
@@ -42,6 +43,12 @@ export default function GlobalChat() {
     return localStorage.getItem(DISMISSED_KEY) === "1";
   });
   const hiddenRef = useHiddenRef(isOpen, isMinimized, dismissed);
+  // Deck-mode: when a presentation editor is mounted, the chat sends an
+  // additional `presentation_id` flag and the backend exposes deck-aware
+  // tools (propose_section). Proposals come back as SSE events that the
+  // chat renders as accept-or-reject cards.
+  const deckChat = useDeckChat();
+  const activeDeck = deckChat.activeDeck;
 
   // Persist dismissed state. Also wire a Cmd/Ctrl+/ shortcut to summon back.
   useEffect(() => {
@@ -161,6 +168,30 @@ export default function GlobalChat() {
     handleViewDoc("", info.filename);
   };
 
+  /** Apply a deck proposal: dispatch through DeckChatContext, then mark
+   *  the proposal as applied/dismissed on the message so the UI updates. */
+  const handleApplyProposal = async (messageId: string, idx: number) => {
+    const msg = messages.find(m => m.id === messageId);
+    const proposal = msg?.proposals?.[idx];
+    if (!proposal) return;
+    const ok = await deckChat.applyProposal(proposal);
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      const ps = [...(m.proposals || [])];
+      ps[idx] = { ...ps[idx], applied: ok ? "applied" : "dismissed" };
+      return { ...m, proposals: ps };
+    }));
+  };
+
+  const handleDismissProposal = (messageId: string, idx: number) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      const ps = [...(m.proposals || [])];
+      ps[idx] = { ...ps[idx], applied: "dismissed" };
+      return { ...m, proposals: ps };
+    }));
+  };
+
   /** Update one message in the list. */
   const patchMessage = (id: string, patch: Partial<ChatMessage> | ((m: ChatMessage) => Partial<ChatMessage>)) => {
     setMessages(prev => prev.map(m => {
@@ -197,6 +228,11 @@ export default function GlobalChat() {
         report_mode: reportMode,
       };
       if (selectedDoc) body.document_id = selectedDoc.id;
+      // Deck-mode hint to the backend so it adds propose_section to the tool surface.
+      if (activeDeck) {
+        body.presentation_id = activeDeck.id;
+        body.presentation_summary = activeDeck.summary;
+      }
 
       const token = typeof window !== "undefined" ? localStorage.getItem("ah_token") : null;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -255,6 +291,17 @@ export default function GlobalChat() {
                 statusText: undefined,
               });
               break;
+
+            case "proposal": {
+              // Deck-mode: Claude proposed a section change. Show as an
+              // accept/reject card. The proposal can be applied to the active
+              // deck via DeckChatContext.applyProposal.
+              const proposal = (d.input as DeckProposal) || (d as DeckProposal);
+              patchMessage(assistantMsg.id, m => ({
+                proposals: [...(m.proposals || []), proposal],
+              }));
+              break;
+            }
 
             case "continuation":
               // Backend auto-resumed after hitting max_tokens. Tracked for UI.
@@ -398,6 +445,11 @@ export default function GlobalChat() {
           <div className="flex items-center gap-2 flex-wrap">
             <SparklesIcon className="w-5 h-5" />
             <span className="font-semibold text-sm">Atlantic Highlands Expert</span>
+            {activeDeck && (
+              <span className="text-[10px] bg-amber-300/90 text-[#1a2e2c] px-1.5 py-0.5 rounded font-semibold" title={activeDeck.title}>
+                Deck mode
+              </span>
+            )}
             {webSearchEnabled && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Web</span>}
             {deepThinking && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Deep</span>}
             {reportMode && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Report</span>}
@@ -456,6 +508,8 @@ export default function GlobalChat() {
               onCitationClick={handleCitationClick}
               onDocClick={handleViewDoc}
               onDownload={handleDownloadMessage}
+              onApplyProposal={activeDeck ? handleApplyProposal : undefined}
+              onDismissProposal={activeDeck ? handleDismissProposal : undefined}
             />
           ))}
           <div ref={messagesEndRef} />

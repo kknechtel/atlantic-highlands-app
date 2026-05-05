@@ -38,6 +38,22 @@ export interface ChatCost {
     tool_calls_made?: number;
 }
 
+/** Deck-mode proposal shape — duplicated here to avoid a circular import
+ *  with DeckChatContext. Keep in sync with DeckProposal there. */
+export interface DeckProposalLite {
+    section_id?: string;
+    kind: "narrative" | "table" | "attachment" | "react_component";
+    title?: string;
+    body?: string;
+    headers?: string[];
+    rows?: string[][];
+    caption?: string;
+    tsx?: string;
+    rationale?: string;
+    /** Local UI status — set when the user clicks Apply/Dismiss. */
+    applied?: "pending" | "applied" | "dismissed";
+}
+
 export interface ChatMessage {
     id: string;
     role: 'user' | 'assistant' | 'error' | 'system';
@@ -57,6 +73,8 @@ export interface ChatMessage {
     cost?: ChatCost;
     /** Number of seamless continuations after a max_tokens cut. */
     continuations?: number;
+    /** Deck-mode proposals from Claude (when chat is bound to an active presentation). */
+    proposals?: DeckProposalLite[];
 }
 
 interface EnhancedMessageComponentProps {
@@ -65,6 +83,10 @@ interface EnhancedMessageComponentProps {
     onCitationClick?: (info: { filename: string }) => void;
     onDocClick?: (docId: string, filename: string) => void;
     onDownload?: (content: string) => void;
+    /** When in deck-mode, called with the proposal index when the user clicks Apply. */
+    onApplyProposal?: (messageId: string, proposalIndex: number) => void;
+    /** Called when the user clicks Dismiss on a proposal. */
+    onDismissProposal?: (messageId: string, proposalIndex: number) => void;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -199,12 +221,80 @@ function CostFooter({ cost }: { cost: ChatCost }) {
     );
 }
 
+function ProposalCard({
+    p, idx, brandColor, onApply, onDismiss,
+}: {
+    p: DeckProposalLite; idx: number; brandColor: string;
+    onApply?: () => void; onDismiss?: () => void;
+}) {
+    const isApplied = p.applied === "applied";
+    const isDismissed = p.applied === "dismissed";
+    return (
+        <div
+            className={`mt-2 rounded-lg border p-2.5 ${
+                isApplied ? "bg-emerald-50 border-emerald-300"
+                    : isDismissed ? "bg-gray-50 border-gray-200 opacity-60"
+                    : "bg-amber-50 border-amber-300"
+            }`}
+        >
+            <div className="flex items-center justify-between gap-2 mb-1">
+                <span className={`text-[10px] font-semibold uppercase tracking-wide ${
+                    isApplied ? "text-emerald-700"
+                        : isDismissed ? "text-gray-500"
+                        : "text-amber-700"
+                }`}>
+                    {isApplied ? "Applied" : isDismissed ? "Dismissed" : "Proposal"}
+                    {" — "}{p.kind}{p.section_id ? " (rewrite)" : " (new)"}
+                </span>
+                {!isApplied && !isDismissed && onApply && (
+                    <div className="flex gap-1">
+                        <button
+                            onClick={onApply}
+                            className="text-[11px] px-2 py-0.5 rounded text-white"
+                            style={{ backgroundColor: brandColor }}
+                        >
+                            Apply
+                        </button>
+                        {onDismiss && (
+                            <button
+                                onClick={onDismiss}
+                                className="text-[11px] px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 text-gray-600"
+                            >
+                                Dismiss
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+            {p.title && <p className="text-xs font-semibold text-gray-800">{p.title}</p>}
+            {p.rationale && <p className="text-[11px] text-gray-600 italic mt-0.5">{p.rationale}</p>}
+            {p.kind === "narrative" && p.body && (
+                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">
+                    {p.body.slice(0, 600)}{p.body.length > 600 ? "…" : ""}
+                </pre>
+            )}
+            {p.kind === "table" && p.headers && (
+                <div className="text-[11px] text-gray-700 mt-1">
+                    {p.headers.length} cols × {(p.rows || []).length} rows
+                </div>
+            )}
+            {p.kind === "react_component" && p.tsx && (
+                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-mono mt-1 max-h-32 overflow-y-auto">
+                    {p.tsx.slice(0, 600)}{p.tsx.length > 600 ? "…" : ""}
+                </pre>
+            )}
+        </div>
+    );
+}
+
 const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     message,
     brandColor,
     onCitationClick,
     onDocClick,
     onDownload,
+    onApplyProposal,
+    onDismissProposal,
 }) => {
     const [copied, setCopied] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
@@ -345,6 +435,21 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                                     <ArrowDownTrayIcon className="w-3 h-3 text-gray-400" />
                                 </button>
                             )}
+                        </div>
+                    )}
+
+                    {!isUser && message.proposals && message.proposals.length > 0 && (
+                        <div>
+                            {message.proposals.map((p, i) => (
+                                <ProposalCard
+                                    key={i}
+                                    p={p}
+                                    idx={i}
+                                    brandColor={brandColor}
+                                    onApply={onApplyProposal ? () => onApplyProposal(message.id, i) : undefined}
+                                    onDismiss={onDismissProposal ? () => onDismissProposal(message.id, i) : undefined}
+                                />
+                            ))}
                         </div>
                     )}
 

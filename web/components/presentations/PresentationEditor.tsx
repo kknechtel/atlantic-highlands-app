@@ -4,13 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus, Trash2, ChevronUp, ChevronDown, Sparkles, ShieldCheck,
-  Globe, Lock, Unlock, Copy, ExternalLink, Loader2, ArrowLeft,
+  Globe, Lock, Unlock, Copy, ExternalLink, Loader2, ArrowLeft, Download, Wand2,
 } from 'lucide-react';
 import {
   type Presentation, type DeckSection, type DeckAttachment,
   getPresentation, updatePresentation, addSection, patchSection, deleteSection,
   publishPresentation, unpublishPresentation, setPublicPassword,
 } from '@/lib/presentationsApi';
+import { useDeckChat, type DeckProposal } from '@/app/contexts/DeckChatContext';
 import NarrativeBlock from './NarrativeBlock';
 import TableBlock from './TableBlock';
 import AttachmentBlock from './AttachmentBlock';
@@ -37,6 +38,8 @@ export default function PresentationEditor({ presentationId }: Props) {
   const [pwEditing, setPwEditing] = useState(false);
   const [pwDraft, setPwDraft] = useState('');
   const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
+  const [exporting, setExporting] = useState<null | 'pptx' | 'docx'>(null);
+  const deckChat = useDeckChat();
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +53,31 @@ export default function PresentationEditor({ presentationId }: Props) {
     })();
     return () => { cancelled = true; };
   }, [presentationId]);
+
+  // Bind this deck into the global DeckChatContext so the FAB chat can
+  // propose sections directly into it. Unbind on unmount.
+  useEffect(() => {
+    if (!deck) return;
+    const summary = [
+      `Title: ${deck.title}`,
+      `Sections: ${(deck.sections || []).length}`,
+      ...(deck.sections || []).slice(0, 12).map((s, i) =>
+        `  ${i + 1}. [${s.id}] ${s.kind}: ${s.title || '(untitled)'}`
+      ),
+    ].join('\n');
+
+    deckChat.bindActiveDeck({
+      id: deck.id,
+      title: deck.title,
+      summary,
+      applyProposal: async (p: DeckProposal) => {
+        await handleAcceptProposal(p);
+        return true;
+      },
+    });
+    return () => deckChat.bindActiveDeck(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deck?.id, deck?.title, deck?.sections?.length]);
 
   if (error) {
     return (
@@ -121,6 +149,46 @@ export default function PresentationEditor({ presentationId }: Props) {
     }
   };
 
+  const handleExport = async (format: 'pptx' | 'docx') => {
+    setExporting(format);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ah_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/presentations/${presentationId}/export?format=${format}`, { headers });
+      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename="([^"]+)"/);
+      const filename = m ? m[1] : `${deck?.title || 'presentation'}.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      alert(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleAIEdit = async (sectionId: string, action: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ah_token') : null;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`/api/presentations/${presentationId}/ai-edit`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ section_id: sectionId, action }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(`AI edit failed: ${err.detail || res.statusText}`);
+      return;
+    }
+    const updated = await res.json();
+    setDeck(updated);
+  };
+
   const togglePublish = async () => {
     const updated = deck.public_slug ? await unpublishPresentation(presentationId) : await publishPresentation(presentationId);
     setDeck(updated);
@@ -186,6 +254,22 @@ export default function PresentationEditor({ presentationId }: Props) {
               <ShieldCheck className="w-3.5 h-3.5" /> Fact-check
             </button>
             <button
+              onClick={() => handleExport('pptx')}
+              disabled={exporting !== null}
+              className="px-2.5 py-1.5 rounded text-xs flex items-center gap-1 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              title="Download as PowerPoint"
+            >
+              {exporting === 'pptx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} PPTX
+            </button>
+            <button
+              onClick={() => handleExport('docx')}
+              disabled={exporting !== null}
+              className="px-2.5 py-1.5 rounded text-xs flex items-center gap-1 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              title="Download as Word"
+            >
+              {exporting === 'docx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} DOCX
+            </button>
+            <button
               onClick={togglePublish}
               className={`px-2.5 py-1.5 rounded text-xs flex items-center gap-1 ${deck.public_slug ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
             >
@@ -239,6 +323,12 @@ export default function PresentationEditor({ presentationId }: Props) {
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
+
+                {s.kind === 'narrative' && (
+                  <div className="absolute right-2 top-2 hidden md:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <SectionAIMenu sectionId={s.id} onEdit={handleAIEdit} brandColor={brandColor} />
+                  </div>
+                )}
 
                 {s.kind === 'narrative' && (
                   <NarrativeBlock section={s} editable onSave={(p) => handlePatch(s.id, p)} brandColor={brandColor} />
@@ -299,6 +389,59 @@ export default function PresentationEditor({ presentationId }: Props) {
           filename={preview.filename}
           onClose={() => setPreview(null)}
         />
+      )}
+    </div>
+  );
+}
+
+
+/** Per-section dropdown that fires the AI-edit endpoint for the chosen action. */
+function SectionAIMenu({
+  sectionId, onEdit, brandColor,
+}: {
+  sectionId: string;
+  onEdit: (sectionId: string, action: string) => void;
+  brandColor: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  const fire = async (action: string) => {
+    setOpen(false);
+    setRunning(true);
+    try { await onEdit(sectionId, action); }
+    finally { setRunning(false); }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={running}
+        className="px-2 py-1 text-[11px] rounded border border-gray-300 hover:bg-gray-100 flex items-center gap-1 text-gray-700 disabled:opacity-50"
+        title="AI edit"
+      >
+        {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" style={{ color: brandColor }} />}
+        AI
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-44 rounded-md shadow-lg bg-white border border-gray-200 z-10 text-xs overflow-hidden">
+          {[
+            ['rewrite_tighter', 'Rewrite tighter'],
+            ['expand', 'Expand with detail'],
+            ['fact_polish', 'Polish facts'],
+            ['translate_plain', 'Plain English'],
+            ['summarize', 'Summarize as bullets'],
+          ].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => fire(k)}
+              className="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-gray-800"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

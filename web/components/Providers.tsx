@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/app/contexts/AuthContext";
+import { DeckChatProvider } from "@/app/contexts/DeckChatContext";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
 import GlobalChat from "@/components/GlobalChat";
@@ -203,7 +204,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AuthGate>{children}</AuthGate>
+        <DeckChatProvider>
+          <AuthGate>{children}</AuthGate>
+        </DeckChatProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

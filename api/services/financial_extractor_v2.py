@@ -465,12 +465,23 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
         stmt.status = "processing"
         db.commit()
 
-        # Both S3 + PDF parse are sync I/O+CPU — run in thread pool so the
-        # async event loop stays responsive (otherwise gunicorn master kills
-        # the worker as unresponsive and the background task dies).
-        loop = asyncio.get_event_loop()
-        content = await loop.run_in_executor(None, s3.download_file, s3_key)
-        markdown = await pdf_to_markdown(content)
+        # Prefer the document's already-OCR'd text over re-running pymupdf.
+        # The document.extracted_text column is populated by the OCR pipeline
+        # (ocr_all.py) which falls back to Gemini for scanned PDFs — those
+        # PDFs would fail pymupdf4llm here ("pdf->markdown failed") even though
+        # we already have good OCR markdown for them.
+        from models.document import Document
+        doc = db.query(Document).filter(Document.id == stmt.document_id).first()
+        markdown = None
+        if doc and doc.extracted_text and len(doc.extracted_text) > 1000:
+            markdown = doc.extracted_text
+            logger.info("using cached OCR text (%d chars) for stmt %s",
+                        len(markdown), statement_id)
+        else:
+            # No cached OCR — run pymupdf4llm against the S3 PDF.
+            loop = asyncio.get_event_loop()
+            content = await loop.run_in_executor(None, s3.download_file, s3_key)
+            markdown = await pdf_to_markdown(content)
         if not markdown:
             stmt.status = "error"
             stmt.notes = "pdf->markdown failed"

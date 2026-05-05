@@ -42,26 +42,27 @@ NJ_PARCELS_FS = (
     "/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0"
 )
 
-# MOD-IV uses these field names (sample). Names vary slightly across snapshots;
-# the loader looks up multiple aliases per logical field.
+# Field aliases mapped to NJGIN MOD-IV Composite Parcels feature service
+# (https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0).
+# Multiple aliases per logical field tolerate snapshot drift.
 FIELD_ALIASES = {
-    "county_code":   ["COUNTY", "CO_CODE", "CO"],
-    "muni_code":     ["MUN", "MUN_CODE", "MUNICIPALITY"],
-    "block":         ["BLOCK", "BLOCK_"],
-    "lot":           ["LOT", "LOT_"],
-    "qualifier":     ["QUAL", "QUALIFIER", "QCODE"],
-    "pams_pin":      ["PAMS_PIN", "PIN"],
-    "property_location": ["PROP_LOC", "PROPLOC", "PROPERTY_LOCATION", "ADDRESS"],
-    "property_class":    ["PROP_CLASS", "PROPCLASS", "PROPERTY_CLASS"],
-    "owner_name":        ["OWNER_NAME", "OWNERS_NAME", "OWNER"],
-    "owner_street":      ["OWNERS_STREET", "OWN_STREET"],
-    "owner_city_state_zip": ["OWNERS_CITY_STATE_ZIP", "OWN_CITY_STATE_ZIP", "OWN_CSZ"],
-    "land_value":        ["LAND_VAL", "LANDVAL", "LAND_VALUE"],
-    "improvement_value": ["IMPRVT_VAL", "IMPRVTVAL", "IMPROVEMENT_VALUE"],
-    "total_assessment":  ["TOT_ASSMNT", "NET_VALUE", "ASSESSMENT_TOTAL", "ASSMNT"],
+    "county_code":   ["COUNTY", "CO_CODE"],
+    "muni_code":     ["PCL_MUN", "MUN", "MUN_CODE"],
+    "block":         ["PCLBLOCK", "BLOCK"],
+    "lot":           ["PCLLOT", "LOT"],
+    "qualifier":     ["PCLQCODE", "QUAL", "QCODE"],
+    "pams_pin":      ["PAMS_PIN", "PIN", "GIS_PIN"],
+    "property_location": ["PROP_LOC", "PROPLOC", "PROPERTY_LOCATION"],
+    "property_class":    ["PROP_CLASS", "PROPCLASS"],
+    "owner_name":        ["OWNER_NAME", "OWNERS_NAME"],
+    "owner_street":      ["ST_ADDRESS", "OWNERS_STREET", "OWN_STREET"],
+    "owner_city_state_zip": ["CITY_STATE", "OWNERS_CITY_STATE_ZIP", "OWN_CSZ"],
+    "land_value":        ["LAND_VAL", "LANDVAL"],
+    "improvement_value": ["IMPRVT_VAL", "IMPRVTVAL"],
+    "total_assessment":  ["NET_VALUE", "TOT_ASSMNT"],
     "tax_amount":        ["LAST_YR_TX", "TAX_AMOUNT"],
-    "lot_size_acres":    ["CALC_ACRE", "ACREAGE", "ACRES"],
-    "year_built":        ["YR_CONSTR", "YEAR_BUILT", "BLDG_YR"],
+    "lot_size_acres":    ["CALC_ACRE", "ACREAGE"],
+    "year_built":        ["YR_CONSTR", "YEAR_BUILT"],
     "living_sqft":       ["BLDG_AREA", "LIVING_AREA"],
     "last_sale_date":    ["LST_DEED_D", "LAST_SALE_DATE", "SALE_DATE"],
     "last_sale_price":   ["SALE_PRICE", "LST_SLE_PR"],
@@ -108,9 +109,15 @@ def _to_date(v) -> Optional[date]:
         return None
 
 
-def fetch_features(county: str, muni: str, page_size: int = 2000) -> Iterator[dict]:
-    """Yield feature attribute dicts for the (county, muni) filter, paginated."""
-    where = f"COUNTY='{county}' AND MUN='{muni}'"
+def fetch_features(county: str, muni_name: str, page_size: int = 2000) -> Iterator[dict]:
+    """Yield feature attribute dicts for the muni filter, paginated.
+
+    The NJGIN composite uses MUN_NAME (string, e.g. 'ATLANTIC HIGHLANDS BORO')
+    rather than a numeric muni_code. We pass the MUN_NAME directly.
+    """
+    where = f"MUN_NAME='{muni_name}'"
+    if county:
+        where = f"COUNTY='{county}' AND " + where
     offset = 0
     sess = requests.Session()
     sess.headers["User-Agent"] = "ah-app/parcels-ingest"
@@ -195,8 +202,10 @@ def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--county", default="13", help="NJ county code (13=Monmouth)")
-    p.add_argument("--muni", default="1303", help="NJ muni code (1303=Atlantic Highlands)")
+    p.add_argument("--county", default="MONMOUTH",
+                   help="NJ county name string (NJGIN uses uppercase: MONMOUTH, BERGEN, etc.)")
+    p.add_argument("--muni-name", default="ATLANTIC HIGHLANDS BORO",
+                   help="NJ MUN_NAME string (case-sensitive in the NJGIN feature)")
     p.add_argument("--source-label", default=f"NJGIN_MOD-IV_{datetime.utcnow():%Y-%m}",
                    help="String stored in parcels.data_source")
     args = p.parse_args()
@@ -204,7 +213,7 @@ def main():
     db = SessionLocal()
     n_total = n_upserted = 0
     try:
-        for attrs in fetch_features(args.county, args.muni):
+        for attrs in fetch_features(args.county, args.muni_name):
             n_total += 1
             if upsert_parcel(db, attrs, args.source_label):
                 n_upserted += 1
@@ -216,7 +225,7 @@ def main():
         db.close()
 
     logger.info(f"Done: {n_upserted}/{n_total} parcels upserted "
-                f"(county={args.county}, muni={args.muni})")
+                f"(county={args.county}, muni={args.muni_name})")
 
 
 if __name__ == "__main__":

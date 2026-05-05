@@ -93,6 +93,8 @@ interface EnhancedMessageComponentProps {
     onSendMessageToDeck?: (message: ChatMessage) => void;
     /** Title of the active deck, used to label the Send-to-Deck button. */
     activeDeckTitle?: string;
+    /** When NOT in deck-mode, called to spin up a brand new presentation from this single message. */
+    onMessageToNewPresentation?: (message: ChatMessage) => void;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -303,6 +305,7 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     onDismissProposal,
     onSendMessageToDeck,
     activeDeckTitle,
+    onMessageToNewPresentation,
 }) => {
     const [copied, setCopied] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
@@ -448,17 +451,30 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         </div>
                     )}
 
-                    {!isUser && !message.isStreaming && message.content && onSendMessageToDeck && (
-                        <div className="mt-2">
-                            <button
-                                onClick={() => onSendMessageToDeck(message)}
-                                className="text-[11px] px-2.5 py-1 rounded-full border hover:opacity-90 inline-flex items-center gap-1.5"
-                                style={{ borderColor: `${brandColor}50`, color: brandColor, backgroundColor: `${brandColor}08` }}
-                                title={activeDeckTitle ? `Add this answer as a new section in ${activeDeckTitle}` : 'Add to active deck'}
-                            >
-                                <PlusIcon className="w-3 h-3" />
-                                Send to deck{activeDeckTitle ? ` (${activeDeckTitle})` : ''}
-                            </button>
+                    {!isUser && !message.isStreaming && message.content && (onSendMessageToDeck || onMessageToNewPresentation) && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            {onSendMessageToDeck && (
+                                <button
+                                    onClick={() => onSendMessageToDeck(message)}
+                                    className="text-[11px] px-2.5 py-1 rounded-full border hover:opacity-90 inline-flex items-center gap-1.5"
+                                    style={{ borderColor: `${brandColor}50`, color: brandColor, backgroundColor: `${brandColor}08` }}
+                                    title={activeDeckTitle ? `Add this answer as a new section in ${activeDeckTitle}` : 'Add to active deck'}
+                                >
+                                    <PlusIcon className="w-3 h-3" />
+                                    Send to deck{activeDeckTitle ? ` (${activeDeckTitle})` : ''}
+                                </button>
+                            )}
+                            {!onSendMessageToDeck && onMessageToNewPresentation && (
+                                <button
+                                    onClick={() => onMessageToNewPresentation(message)}
+                                    className="text-[11px] px-2.5 py-1 rounded-full border hover:opacity-90 inline-flex items-center gap-1.5"
+                                    style={{ borderColor: `${brandColor}50`, color: brandColor, backgroundColor: `${brandColor}08` }}
+                                    title="Make a new presentation from this answer"
+                                >
+                                    <PlusIcon className="w-3 h-3" />
+                                    New presentation
+                                </button>
+                            )}
                         </div>
                     )}
 

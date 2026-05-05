@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, getDocumentViewUrl, getChatSessions, getChatHistory, type Document } from "@/lib/api";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
+import { createPresentationFromChat } from "@/lib/presentationsApi";
 import {
   XMarkIcon, PaperAirplaneIcon, SparklesIcon,
   MinusIcon, DocumentTextIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
@@ -47,10 +49,12 @@ function useHiddenRef(isOpen: boolean, isMinimized: boolean, dismissed: boolean)
 const DISMISSED_KEY = "ah_chat_dismissed";
 
 export default function GlobalChat() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [convertingDeck, setConvertingDeck] = useState(false);
   // Fully dismissed = no FAB, no panel. Re-summon via Cmd/Ctrl+/ keyboard
   // shortcut. Persisted across reloads via localStorage so a user who hides
   // the chat doesn't see it pop back on every navigation.
@@ -267,6 +271,58 @@ export default function GlobalChat() {
       ps[idx] = { ...ps[idx], applied: ok ? "applied" : "dismissed" };
       return { ...m, proposals: ps };
     }));
+  };
+
+  /** Convert the entire current conversation into a NEW presentation. Claude
+   *  structures the messages into 4-8 sections with citations preserved. */
+  const handleChatToPresentation = async () => {
+    if (convertingDeck) return;
+    const transcript = messages
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && (m.content || '').trim())
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+    if (transcript.length === 0) return;
+    const firstUser = transcript.find(m => m.role === 'user')?.content || 'Chat presentation';
+    const titleHint = firstUser.split(/[.\n]/)[0].slice(0, 80);
+    setConvertingDeck(true);
+    try {
+      const deck = await createPresentationFromChat(transcript, titleHint);
+      router.push(`/presentations/${deck.id}`);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : 'Unknown error';
+      setMessages(prev => [...prev, {
+        id: `e_${Date.now()}`, role: 'error', timestamp: new Date(),
+        content: `Couldn't build a presentation from this chat: ${detail}`,
+      }]);
+    } finally {
+      setConvertingDeck(false);
+    }
+  };
+
+  /** Convert a single assistant message into a NEW one-section presentation
+   *  (used when there's no active deck — gives the user a starting point). */
+  const handleMessageToNewPresentation = async (msg: ChatMessage) => {
+    if (convertingDeck) return;
+    const body = (msg.content || '').trim();
+    if (!body) return;
+    const firstHeading = body.match(/^#{1,3}\s+(.+)$/m)?.[1];
+    const firstSentence = body.split(/[.\n]/)[0];
+    const titleHint = (firstHeading || firstSentence || 'From chat').trim().slice(0, 80);
+    setConvertingDeck(true);
+    try {
+      const deck = await createPresentationFromChat(
+        [{ role: 'assistant', content: body }],
+        titleHint,
+      );
+      router.push(`/presentations/${deck.id}`);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : 'Unknown error';
+      setMessages(prev => [...prev, {
+        id: `e_${Date.now()}`, role: 'error', timestamp: new Date(),
+        content: `Couldn't build a presentation: ${detail}`,
+      }]);
+    } finally {
+      setConvertingDeck(false);
+    }
   };
 
   /** Send an assistant message body to the active deck as a new narrative section. */
@@ -586,6 +642,17 @@ export default function GlobalChat() {
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {messages.length > 1 && <CopyChatButton messages={messages} />}
+            {messages.filter(m => m.role === 'assistant' && (m.content || '').trim()).length > 0 && (
+              <button
+                onClick={handleChatToPresentation}
+                disabled={convertingDeck}
+                title="Turn this conversation into a new presentation"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 disabled:opacity-50 transition"
+              >
+                <DocumentChartBarIcon className="w-3.5 h-3.5" />
+                <span>{convertingDeck ? "Building…" : "Presentation"}</span>
+              </button>
+            )}
             <button
               onClick={handleNewSession}
               title="New chat"
@@ -700,6 +767,7 @@ export default function GlobalChat() {
               onDismissProposal={activeDeck ? handleDismissProposal : undefined}
               onSendMessageToDeck={activeDeck ? handleSendMessageToDeck : undefined}
               activeDeckTitle={activeDeck?.title}
+              onMessageToNewPresentation={!activeDeck && !convertingDeck ? handleMessageToNewPresentation : undefined}
             />
           ))}
           <div ref={messagesEndRef} />

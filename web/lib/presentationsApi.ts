@@ -85,6 +85,17 @@ export const getPresentation = (id: string) => request<Presentation>(`/api/prese
 export const createPresentation = (title: string) =>
   request<Presentation>("/api/presentations", { method: "POST", body: JSON.stringify({ title }) });
 
+/** Build a new presentation from a chat transcript (assistant structures it
+ *  into 4-8 sections, preserving citations). */
+export const createPresentationFromChat = (
+  messages: { role: string; content: string }[],
+  title_hint?: string,
+) =>
+  request<Presentation>("/api/presentations/from-chat", {
+    method: "POST",
+    body: JSON.stringify({ messages, title_hint }),
+  });
+
 export const updatePresentation = (id: string, patch: Partial<Pick<Presentation, "title" | "sections" | "attachments" | "theme">>) =>
   request<Presentation>(`/api/presentations/${id}`, { method: "PUT", body: JSON.stringify(patch) });
 

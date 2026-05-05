@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Trash2, ChevronUp, ChevronDown, Sparkles, ShieldCheck,
+  Plus, Trash2, ChevronUp, ChevronDown, ShieldCheck,
   Globe, Lock, Unlock, Copy, ExternalLink, Loader2, ArrowLeft, Download, Wand2,
 } from 'lucide-react';
 import {
@@ -16,8 +16,9 @@ import NarrativeBlock from './NarrativeBlock';
 import TableBlock from './TableBlock';
 import AttachmentBlock from './AttachmentBlock';
 import ReactComponentBlock from './ReactComponentBlock';
-import AskAIPanel from './AskAIPanel';
 import FactCheckPanel from './FactCheckPanel';
+// AskAIPanel removed: the global AI Analyst chat handles AI proposals via
+// DeckChatContext when this editor mounts. One chat surface, not two.
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { getDocumentViewUrl } from '@/lib/api';
 
@@ -31,7 +32,6 @@ export default function PresentationEditor({ presentationId }: Props) {
   const router = useRouter();
   const [deck, setDeck] = useState<Presentation | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAI, setShowAI] = useState(true);
   const [showFactCheck, setShowFactCheck] = useState(false);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -242,13 +242,7 @@ export default function PresentationEditor({ presentationId }: Props) {
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => { setShowAI(!showAI); if (!showAI) setShowFactCheck(false); }}
-              className={`px-2.5 py-1.5 rounded text-xs flex items-center gap-1 ${showAI ? 'bg-amber-50 text-amber-700 border border-amber-300' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-            >
-              <Sparkles className="w-3.5 h-3.5" /> AI
-            </button>
-            <button
-              onClick={() => { setShowFactCheck(!showFactCheck); if (!showFactCheck) setShowAI(false); }}
+              onClick={() => setShowFactCheck(!showFactCheck)}
               className={`px-2.5 py-1.5 rounded text-xs flex items-center gap-1 ${showFactCheck ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
             >
               <ShieldCheck className="w-3.5 h-3.5" /> Fact-check
@@ -363,15 +357,6 @@ export default function PresentationEditor({ presentationId }: Props) {
         </div>
       </div>
 
-      {showAI && !showFactCheck && (
-        <div className="w-[340px] flex-shrink-0">
-          <AskAIPanel
-            presentationId={presentationId}
-            onAcceptProposal={handleAcceptProposal}
-            onClose={() => setShowAI(false)}
-          />
-        </div>
-      )}
       {showFactCheck && (
         <div className="w-[340px] flex-shrink-0">
           <FactCheckPanel

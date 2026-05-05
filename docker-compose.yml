@@ -1,8 +1,9 @@
-version: "3.8"
-
 services:
   db:
-    image: postgres:16-alpine
+    # Official pgvector image — Postgres 16 with the `vector` extension
+    # available (we still need to CREATE EXTENSION on first start, which
+    # database.py:_migrate() does on app boot).
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: atlantic_highlands
       POSTGRES_USER: postgres
@@ -11,6 +12,11 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d atlantic_highlands"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
     build: ./api

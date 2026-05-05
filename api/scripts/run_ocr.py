@@ -16,8 +16,8 @@ Usage:
 Env vars:
   AH_API     base URL              (default http://localhost:8000)
   AH_TOKEN   admin JWT             (required)
-  AH_BATCH   docs per call         (default 5 — OCR is slow per-doc)
-  AH_SLEEP   seconds between calls (default 2)
+  AH_BATCH   docs per call         (default 20 — Tesseract is fast)
+  AH_SLEEP   seconds between calls (default 1)
 """
 import os
 import sys
@@ -28,8 +28,8 @@ import requests
 
 API_BASE = os.environ.get("AH_API", "http://localhost:8000").rstrip("/")
 TOKEN = os.environ.get("AH_TOKEN")
-BATCH = int(os.environ.get("AH_BATCH", "5"))
-SLEEP_BETWEEN = float(os.environ.get("AH_SLEEP", "2"))
+BATCH = int(os.environ.get("AH_BATCH", "20"))
+SLEEP_BETWEEN = float(os.environ.get("AH_SLEEP", "1"))
 
 if not TOKEN:
     print("ERROR: set AH_TOKEN to an admin JWT", file=sys.stderr)

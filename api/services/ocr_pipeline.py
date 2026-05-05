@@ -1,15 +1,15 @@
 """
-OCR pipeline cascade.
+OCR pipeline cascade. Tuned for speed over perfection.
 
-Two-tier strategy for converting a PDF's bytes into clean markdown text:
+Three-tier strategy for converting a PDF's bytes into markdown text:
 
   1. pdfplumber          — instant, free, native text-layer extraction
-  2. Gemini Vision OCR   — pages → PNG → Gemini Flash 2.5 vision
+  2. Tesseract (local)   — pages → PNG → pytesseract, parallel ThreadPool
+  3. Gemini Vision OCR   — fallback if Tesseract fails (paid, network)
 
-Falls forward to the next tier when the previous tier returns no/short
-text. The bank-processor has a 3rd Textract tier; we omit it for now —
-Gemini Vision covers virtually all municipal scanned PDFs and avoids
-the Lambda + Textract infra setup. Easy to add later if needed.
+Tesseract was added as the primary OCR tier because it's local, free,
+parallel, and "good enough" for keyword + semantic search. Gemini Vision
+sticks around as a fallback for the docs Tesseract can't crack.
 
 Adapted from bank-processor/api/services/pipeline/ocr.py.
 """
@@ -30,7 +30,7 @@ class OCRResult:
     success: bool
     markdown: str = ""
     page_count: int = 0
-    tier: str = ""              # "pdfplumber" | "gemini_vision" | "none"
+    tier: str = ""              # "pdfplumber" | "tesseract" | "gemini_vision" | "none"
     processing_time_ms: float = 0
     estimated_cost: float = 0.0
     error: Optional[str] = None
@@ -91,7 +91,34 @@ async def extract_pdf_to_markdown(
     except Exception as exc:
         logger.warning("[OCR:%s] pdfplumber error: %s", filename, exc)
 
-    # ── Tier 2: Gemini Vision ─────────────────────────────────────────
+    # ── Tier 2: Tesseract (local, free, fast) ─────────────────────────
+    try:
+        from services.tesseract_ocr import extract_from_pdf as tesseract_extract, is_tesseract_available
+        if is_tesseract_available():
+            import asyncio
+            result = await asyncio.to_thread(tesseract_extract, pdf_bytes)
+            elapsed = (time.time() - start) * 1000
+            if result.success and result.markdown and len(result.markdown) >= MIN_USEFUL_CHARS:
+                logger.info(
+                    "[OCR:%s] Tesseract: %d pages, %d chars, %d failed, %.0fms (free)",
+                    filename, result.page_count, len(result.markdown), result.pages_ocr_failed, elapsed,
+                )
+                return OCRResult(
+                    success=True,
+                    markdown=result.markdown,
+                    page_count=result.page_count,
+                    tier="tesseract",
+                    processing_time_ms=elapsed,
+                    estimated_cost=0.0,
+                )
+            logger.info("[OCR:%s] Tesseract returned %d chars — falling through to Gemini Vision",
+                        filename, len(result.markdown) if result.markdown else 0)
+        else:
+            logger.debug("[OCR:%s] Tesseract not available, skipping to Gemini", filename)
+    except Exception as exc:
+        logger.warning("[OCR:%s] Tesseract error: %s, falling through to Gemini", filename, exc)
+
+    # ── Tier 3: Gemini Vision (paid, slower, rate-limited) ────────────
     try:
         from services.gemini_vision_ocr import get_gemini_vision_ocr
         gemini = get_gemini_vision_ocr()
@@ -112,7 +139,6 @@ async def extract_pdf_to_markdown(
             )
         logger.warning("[OCR:%s] Gemini returned no usable text: %s", filename, result.error)
     except ValueError as exc:
-        # GEMINI_API_KEY not configured — clear error for the operator
         logger.error("[OCR:%s] Gemini Vision unavailable: %s", filename, exc)
         return OCRResult(success=False, tier="none",
                          processing_time_ms=(time.time() - start) * 1000,

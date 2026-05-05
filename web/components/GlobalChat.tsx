@@ -15,8 +15,17 @@ import {
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
-// Use relative URLs in browser so Next.js rewrite proxy handles it (avoids HTTPS/HTTP mixed content)
+// Non-streaming requests use the relative URL (Amplify proxy → backend).
+// Streaming SSE requests bypass Amplify and hit the FastAPI box directly via
+// the api.* HTTPS endpoint, because Amplify's SSR Compute has a hard 30s
+// response timeout that kills long Claude streams. NEXT_PUBLIC_API_DIRECT_URL
+// is set to https://api.ahnj.info in Amplify env (mirrors bank-processor's
+// API_DIRECT pattern).
 const API_BASE = "";
+const API_DIRECT =
+  process.env.NEXT_PUBLIC_API_DIRECT_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "";
 
 // Panel widths — matches bank-processor's RKCAIChatPanel.
 const CHAT_WIDTH_DEFAULT = 480;
@@ -124,10 +133,7 @@ export default function GlobalChat() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
-  const [messages, setMessages] = useState<ChatMessage[]>([{
-    id: "welcome", role: "assistant", timestamp: new Date(),
-    content: "I'm the **Atlantic Highlands Expert**. I have hybrid semantic + keyword search across 860+ indexed documents (2004-present): budgets, audits, council minutes, ordinances, school board records.\n\n**Toggles:**\n- 🔍 **Web** — supplement with current internet results\n- 💡 **Deep** — extended thinking (Opus 4.7) for hard cross-document questions\n- 📊 **Report** — formal analytical report with executive summary, findings, charts, and sources",
-  }]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -291,7 +297,11 @@ export default function GlobalChat() {
       const token = typeof window !== "undefined" ? localStorage.getItem("ah_token") : null;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      // Use the direct HTTPS endpoint so Amplify's 30s SSR timeout doesn't
+      // kill long streams. Falls back to the relative URL when API_DIRECT
+      // isn't configured (local dev).
+      const streamUrl = `${API_DIRECT || API_BASE}/api/chat/stream`;
+      const response = await fetch(streamUrl, {
         method: "POST", headers, body: JSON.stringify(body),
       });
       const reader = response.body?.getReader();

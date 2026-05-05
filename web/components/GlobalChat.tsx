@@ -19,20 +19,49 @@ const API_BASE = "";
 /** Stable ref to "is the chat panel currently visible to the user".
  *  Read inside the streaming reader so the 'done' handler can decide
  *  whether to flag unread + fire a browser notification. */
-function useHiddenRef(isOpen: boolean, isMinimized: boolean) {
+function useHiddenRef(isOpen: boolean, isMinimized: boolean, dismissed: boolean) {
   const ref = useRef(false);
   useEffect(() => {
-    ref.current = !isOpen || isMinimized;
-  }, [isOpen, isMinimized]);
+    ref.current = dismissed || !isOpen || isMinimized;
+  }, [isOpen, isMinimized, dismissed]);
   return ref;
 }
+
+const DISMISSED_KEY = "ah_chat_dismissed";
 
 export default function GlobalChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [unread, setUnread] = useState(0);
-  const hiddenRef = useHiddenRef(isOpen, isMinimized);
+  // Fully dismissed = no FAB, no panel. Re-summon via Cmd/Ctrl+/ keyboard
+  // shortcut. Persisted across reloads via localStorage so a user who hides
+  // the chat doesn't see it pop back on every navigation.
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(DISMISSED_KEY) === "1";
+  });
+  const hiddenRef = useHiddenRef(isOpen, isMinimized, dismissed);
+
+  // Persist dismissed state. Also wire a Cmd/Ctrl+/ shortcut to summon back.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (dismissed) localStorage.setItem(DISMISSED_KEY, "1");
+    else localStorage.removeItem(DISMISSED_KEY);
+  }, [dismissed]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+        e.preventDefault();
+        setDismissed(false);
+        setIsOpen(true);
+        setIsMinimized(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([{
     id: "welcome", role: "assistant", timestamp: new Date(),
@@ -215,6 +244,25 @@ export default function GlobalChat() {
               patchMessage(assistantMsg.id, { statusText: d.text || undefined });
               break;
 
+            case "plan":
+              // Claude announced its plan via share_plan. Render as a checklist.
+              patchMessage(assistantMsg.id, {
+                plan: {
+                  steps: Array.isArray(d.steps) ? d.steps : [],
+                  rationale: d.rationale || undefined,
+                  completed: 0,
+                },
+                statusText: undefined,
+              });
+              break;
+
+            case "continuation":
+              // Backend auto-resumed after hitting max_tokens. Tracked for UI.
+              patchMessage(assistantMsg.id, m => ({
+                continuations: (m.continuations || 0) + 1,
+              }));
+              break;
+
             case "delta":
               full += d.content || "";
               patchMessage(assistantMsg.id, { content: full, statusText: undefined });
@@ -237,6 +285,8 @@ export default function GlobalChat() {
               };
               patchMessage(assistantMsg.id, m => ({
                 toolActivity: [...(m.toolActivity || []), newEntry],
+                // Each non-plan tool call advances one plan step (visual proxy).
+                plan: m.plan ? { ...m.plan, completed: Math.min((m.plan.completed || 0) + 1, m.plan.steps.length) } : m.plan,
               }));
               break;
             }
@@ -244,7 +294,6 @@ export default function GlobalChat() {
             case "tool_result":
               patchMessage(assistantMsg.id, m => {
                 const acts = [...(m.toolActivity || [])];
-                // mark the last 'started' entry of this name as done
                 for (let i = acts.length - 1; i >= 0; i--) {
                   if (acts[i].name === d.name && acts[i].status === "started") {
                     acts[i] = { ...acts[i], status: "done", summary: d.summary };
@@ -256,7 +305,18 @@ export default function GlobalChat() {
               break;
 
             case "done":
-              patchMessage(assistantMsg.id, { isStreaming: false, statusText: undefined });
+              patchMessage(assistantMsg.id, m => ({
+                isStreaming: false,
+                statusText: undefined,
+                cost: {
+                  input_tokens: d.input_tokens,
+                  output_tokens: d.output_tokens,
+                  estimated_cost_usd: d.estimated_cost_usd,
+                  tool_calls_made: d.tool_calls_made,
+                },
+                // Mark all plan steps complete on success.
+                plan: m.plan ? { ...m.plan, completed: m.plan.steps.length } : m.plan,
+              }));
               if (hiddenRef.current) {
                 setUnread(u => u + 1);
                 fireDoneNotification(full || "Response ready");
@@ -282,6 +342,10 @@ export default function GlobalChat() {
       setSelectedDoc(null);
     }
   };
+
+  // Fully dismissed — no FAB, no panel. Streams continue running in the background;
+  // a browser notification still fires when they complete. Press Cmd/Ctrl+/ to summon back.
+  if (dismissed) return null;
 
   // Closed state - FAB button. Streaming pulse on the right; unread count on top-left.
   if (!isOpen) return (
@@ -344,7 +408,14 @@ export default function GlobalChat() {
             <button onClick={handleDownloadChat} className="p-1.5 hover:bg-white/20 rounded" title="Download chat"><ArrowDownTrayIcon className="w-4 h-4" /></button>
             <button onClick={() => setIsExpanded(!isExpanded)} className="p-1.5 hover:bg-white/20 rounded">{isExpanded ? <ArrowsPointingInIcon className="w-4 h-4" /> : <ArrowsPointingOutIcon className="w-4 h-4" />}</button>
             <button onClick={() => setIsMinimized(true)} className="p-1.5 hover:bg-white/20 rounded"><MinusIcon className="w-4 h-4" /></button>
-            <button onClick={() => { setIsOpen(false); setSplitDoc(null); }} className="p-1.5 hover:bg-white/20 rounded"><XMarkIcon className="w-4 h-4" /></button>
+            <button
+              onClick={() => { setIsOpen(false); setSplitDoc(null); }}
+              onContextMenu={(e) => { e.preventDefault(); setDismissed(true); setIsOpen(false); setSplitDoc(null); }}
+              className="p-1.5 hover:bg-white/20 rounded"
+              title="Close (right-click to fully dismiss; Cmd+/ to summon)"
+            >
+              <XMarkIcon className="w-4 h-4" />
+            </button>
           </div>
         </div>
 

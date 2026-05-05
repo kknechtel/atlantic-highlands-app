@@ -24,6 +24,20 @@ export type ToolActivity = {
     status: 'started' | 'done' | 'error';
 };
 
+export interface ChatPlan {
+    steps: string[];
+    rationale?: string;
+    /** Number of plan steps already executed. We tick these off as tool_call events arrive. */
+    completed?: number;
+}
+
+export interface ChatCost {
+    input_tokens?: number;
+    output_tokens?: number;
+    estimated_cost_usd?: number;
+    tool_calls_made?: number;
+}
+
 export interface ChatMessage {
     id: string;
     role: 'user' | 'assistant' | 'error' | 'system';
@@ -37,6 +51,12 @@ export interface ChatMessage {
     toolActivity?: ToolActivity[];
     /** Latest progress line emitted by the backend (e.g. "Calling Claude…"). */
     statusText?: string;
+    /** Plan announced via the share_plan tool — rendered as a checklist. */
+    plan?: ChatPlan;
+    /** Token + cost summary emitted with the `done` event. */
+    cost?: ChatCost;
+    /** Number of seamless continuations after a max_tokens cut. */
+    continuations?: number;
 }
 
 interface EnhancedMessageComponentProps {
@@ -125,6 +145,60 @@ function ThinkingIndicator({ status, brandColor }: { status: 'started' | 'done';
     );
 }
 
+function PlanChecklist({ plan, brandColor }: { plan: ChatPlan; brandColor: string }) {
+    if (!plan.steps?.length) return null;
+    const completed = plan.completed ?? 0;
+    return (
+        <div className="mb-2 rounded-md border border-gray-200 bg-gray-50/70 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-1.5">
+                Plan
+            </div>
+            <ol className="space-y-1">
+                {plan.steps.map((step, i) => {
+                    const done = i < completed;
+                    const active = i === completed;
+                    return (
+                        <li key={i} className="flex items-start gap-2 text-[12px]">
+                            <span className={`mt-0.5 inline-flex w-4 h-4 items-center justify-center rounded-full text-[9px] font-bold flex-shrink-0
+                                ${done ? 'text-white' : active ? 'border-2' : 'border border-gray-300 text-gray-400'}`}
+                                style={done ? { backgroundColor: brandColor }
+                                    : active ? { borderColor: brandColor, color: brandColor }
+                                    : {}}
+                            >
+                                {done ? '✓' : i + 1}
+                            </span>
+                            <span className={done ? 'text-gray-500 line-through decoration-gray-300' : active ? 'text-gray-900' : 'text-gray-700'}>
+                                {step}
+                            </span>
+                        </li>
+                    );
+                })}
+            </ol>
+            {plan.rationale && (
+                <div className="text-[10px] italic text-gray-500 mt-2 pt-1.5 border-t border-gray-200">
+                    {plan.rationale}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CostFooter({ cost }: { cost: ChatCost }) {
+    const tok = (cost.input_tokens ?? 0) + (cost.output_tokens ?? 0);
+    if (!tok && !cost.estimated_cost_usd) return null;
+    const tokStr = tok >= 1000 ? `${(tok / 1000).toFixed(1)}K` : String(tok);
+    const usd = cost.estimated_cost_usd ?? 0;
+    return (
+        <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+            {cost.tool_calls_made != null && cost.tool_calls_made > 0 && (
+                <span>{cost.tool_calls_made} tool {cost.tool_calls_made === 1 ? 'call' : 'calls'}</span>
+            )}
+            {tok > 0 && <span>{tokStr} tokens</span>}
+            {usd > 0 && <span>${usd.toFixed(4)}</span>}
+        </div>
+    );
+}
+
 const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     message,
     brandColor,
@@ -160,12 +234,13 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     };
 
     // While we wait for the first content delta we may still have status text,
-    // tool activity, or thinking already populated — render those inside the bubble
+    // tool activity, plan, or thinking already populated — render those inside the bubble
     // rather than the generic typing indicator.
     const hasEarlyActivity = (
         (message.toolActivity && message.toolActivity.length > 0) ||
         message.thinking === 'started' ||
-        Boolean(message.statusText)
+        Boolean(message.statusText) ||
+        Boolean(message.plan?.steps?.length)
     );
 
     if (message.isStreaming && !message.content && message.role === 'assistant' && !hasEarlyActivity) {
@@ -221,6 +296,8 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
 
                     {!isUser && message.thinking && <ThinkingIndicator status={message.thinking} brandColor={brandColor} />}
 
+                    {!isUser && message.plan && <PlanChecklist plan={message.plan} brandColor={brandColor} />}
+
                     {!isUser && message.statusText && message.isStreaming && !message.content && (
                         <StatusIndicator text={message.statusText} brandColor={brandColor} />
                     )}
@@ -270,6 +347,8 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                             )}
                         </div>
                     )}
+
+                    {!isUser && !message.isStreaming && message.cost && <CostFooter cost={message.cost} />}
 
                     {!message.isStreaming && (
                         <div className="text-[10px] text-gray-400 mt-1.5">{formatTimestamp(message.timestamp)}</div>

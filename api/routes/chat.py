@@ -103,6 +103,23 @@ WORKING_INSTRUCTIONS = """## How to answer
 
 You have powerful tools. USE THEM. Do not say "I cannot find" without calling at least two tools first.
 
+## STEP 0: ANNOUNCE YOUR PLAN FIRST
+
+On EVERY user turn, before any other tool call, you MUST call the `share_plan` tool. Pass:
+  - `steps`: an ordered list of short imperative actions you'll take next (1-8 items).
+    Examples:
+      "Search for FY24 budget passages"
+      "Read the AHES audit and pull instructional spend"
+      "Compare YoY enrollment 2020-2024"
+      "Draft executive summary"
+  - `rationale`: 1-2 sentences on why this plan answers the question.
+
+This is mandatory even for simple questions (single-step plans are fine). The user sees your plan as a checklist that ticks off as you work — skipping share_plan leaves them in the dark.
+
+After share_plan, follow the plan: call the search/read tools, then write the final response.
+
+## Tool usage
+
 For every non-trivial question:
 1. Call `search_chunks` with the user's question (verbatim or rephrased) — this returns the most relevant passages from across the entire document corpus.
 2. If the chunks point to a document worth reading in full, call `read_document` with that document's ID.
@@ -181,6 +198,35 @@ After thinking, the user only sees your final response — make it crisp."""
 
 def _tool_defs() -> list[dict]:
     return [
+        {
+            "name": "share_plan",
+            "description": (
+                "Announce your plan BEFORE any other tool. Call this EXACTLY ONCE at the start "
+                "of each user turn. The user sees the plan as a checklist that ticks off as you "
+                "work. Required — do not skip even for simple questions."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 8,
+                        "description": (
+                            "Ordered list of short imperative phrases describing what you'll do. "
+                            "Examples: 'Search for FY24 budget passages', 'Read the AHES audit', "
+                            "'Compare YoY enrollment'."
+                        ),
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": "1-2 sentences on why this plan answers the question.",
+                    },
+                },
+                "required": ["steps"],
+            },
+        },
         {
             "name": "search_documents",
             "description": "Search the document library by topic. Returns ranked documents with metadata and AI summaries. Use this when you need to know which documents exist on a topic.",
@@ -629,6 +675,11 @@ def _exec_web_search(args: dict) -> dict:
 
 def _execute_tool(name: str, args: dict, db: Session) -> dict:
     try:
+        if name == "share_plan":
+            # The plan is forwarded to the user as its own SSE event in the
+            # streaming loop (see _stream_claude). The tool result is just an
+            # ack so Claude continues with the actual work.
+            return {"ok": True, "ack": "Plan recorded. Now executing it."}
         if name == "search_documents":
             return _exec_search_documents(db, args)
         if name == "search_chunks":
@@ -868,6 +919,10 @@ async def _stream_claude(
 
     accumulated_text = ""
     tool_calls_made = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
+    continuation_count = 0
+    max_continuations = 3
 
     # Deep thinking pumps the budget/model up; cheap mode keeps sonnet-4-6 fast.
     if req.deep_thinking:
@@ -900,6 +955,9 @@ async def _stream_claude(
                 "system": system_prompt,
                 "tools": tools,
                 "messages": messages,
+                # 1M-token context window beta. Tiered pricing — first 200K at
+                # standard rate, the rest at premium. Anthropic's policy.
+                "extra_headers": {"anthropic-beta": "context-1m-2025-08-07"},
             }
             if thinking_cfg:
                 api_kwargs["thinking"] = thinking_cfg
@@ -946,8 +1004,40 @@ async def _stream_claude(
                 if thinking_active:
                     yield _sse("thinking", {"status": "done"})
 
+                # Accumulate token usage across iterations.
+                if getattr(final_message, "usage", None):
+                    total_input_tokens += getattr(final_message.usage, "input_tokens", 0) or 0
+                    total_output_tokens += getattr(final_message.usage, "output_tokens", 0) or 0
+
                 stop_reason = final_message.stop_reason
                 tool_blocks = [b for b in final_message.content if getattr(b, "type", None) == "tool_use"]
+
+                # Auto-continue: if Claude hit max_tokens during plain text
+                # generation (no pending tool_use), feed the partial response
+                # back and let it resume seamlessly. We bound this to
+                # max_continuations to avoid runaway loops.
+                if stop_reason == "max_tokens":
+                    has_tool_use = any(
+                        getattr(b, "type", None) == "tool_use" for b in final_message.content
+                    )
+                    if (iter_text and not has_tool_use
+                            and continuation_count < max_continuations):
+                        continuation_count += 1
+                        messages.append({"role": "assistant", "content": iter_text})
+                        messages.append({
+                            "role": "user",
+                            "content": "Continue exactly where you left off. Do not repeat or summarize what you've already written.",
+                        })
+                        yield _sse("continuation", {
+                            "count": continuation_count,
+                            "max": max_continuations,
+                        })
+                        continue
+                    # Out of continuations or had a pending tool_use — wrap up.
+                    if iter_text:
+                        truncation_note = "\n\n---\n\n*Response reached the token limit. Ask a follow-up to continue, or open a new chat for more depth.*"
+                        accumulated_text += truncation_note
+                        yield _sse("delta", {"content": truncation_note, "session_id": session_id})
 
                 if not tool_blocks or stop_reason != "tool_use":
                     # Final answer reached.
@@ -957,9 +1047,13 @@ async def _stream_claude(
                                       req.scope_type, req.scope_id)
                     finally:
                         save_db.close()
+                    cost = _estimate_cost(model, total_input_tokens, total_output_tokens)
                     yield _sse("done", {"session_id": session_id,
                                         "tool_calls_made": tool_calls_made,
-                                        "stop_reason": stop_reason})
+                                        "stop_reason": stop_reason,
+                                        "input_tokens": total_input_tokens,
+                                        "output_tokens": total_output_tokens,
+                                        "estimated_cost_usd": round(cost, 4)})
                     return
 
                 tool_calls_made += len(tool_blocks)
@@ -979,14 +1073,25 @@ async def _stream_claude(
 
                 results = []
                 for tb in tool_blocks:
-                    yield _sse("tool_call", {
-                        "name": tb.name,
-                        "input": tb.input,
-                        "description": _describe_tool_call(tb.name, dict(tb.input or {})),
-                    })
+                    # share_plan is special — emit a dedicated `plan` event the
+                    # UI renders as a checklist, and skip the generic tool_call
+                    # spinner row (the plan IS the indicator).
+                    if tb.name == "share_plan":
+                        plan_input = dict(tb.input or {})
+                        yield _sse("plan", {
+                            "steps": plan_input.get("steps") or [],
+                            "rationale": plan_input.get("rationale") or "",
+                        })
+                    else:
+                        yield _sse("tool_call", {
+                            "name": tb.name,
+                            "input": tb.input,
+                            "description": _describe_tool_call(tb.name, dict(tb.input or {})),
+                        })
                     res = await asyncio.to_thread(run_tool, tb.name, tb.input)
-                    summary = _summarize_tool_result(tb.name, res)
-                    yield _sse("tool_result", {"name": tb.name, "summary": summary})
+                    if tb.name != "share_plan":
+                        summary = _summarize_tool_result(tb.name, res)
+                        yield _sse("tool_result", {"name": tb.name, "summary": summary})
                     payload = json.dumps(res)
                     if len(payload) > 30000:
                         payload = payload[:30000] + '"}'
@@ -1006,9 +1111,13 @@ async def _stream_claude(
                           req.scope_type, req.scope_id)
         finally:
             save_db.close()
+        cost = _estimate_cost(model, total_input_tokens, total_output_tokens)
         yield _sse("done", {"session_id": session_id,
                             "tool_calls_made": tool_calls_made,
-                            "stop_reason": "iteration_limit"})
+                            "stop_reason": "iteration_limit",
+                            "input_tokens": total_input_tokens,
+                            "output_tokens": total_output_tokens,
+                            "estimated_cost_usd": round(cost, 4)})
 
     except anthropic.APIStatusError as exc:
         logger.error("Anthropic API error: %s", exc)
@@ -1023,6 +1132,17 @@ async def _stream_claude(
     except Exception as exc:
         logger.exception("chat_stream failed")
         yield _sse("error", {"content": str(exc)[:300]})
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """Per-million pricing for the two models we use. Approximate, USD."""
+    # Sonnet 4.6: $3/Mtok input, $15/Mtok output
+    # Opus 4.7:   $15/Mtok input, $75/Mtok output
+    if "opus" in model.lower():
+        in_rate, out_rate = 15.0, 75.0
+    else:
+        in_rate, out_rate = 3.0, 15.0
+    return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
 
 
 def _summarize_tool_result(name: str, res: dict) -> str:

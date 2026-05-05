@@ -43,6 +43,7 @@ from routes.opra import router as opra_router
 from routes.ingestion import router as ingestion_router
 from routes.presentations import router as presentations_router
 from routes.contracts import router as contracts_router
+from routes.extraction import router as extraction_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -61,11 +62,24 @@ app.include_router(opra_router, prefix="/api/opra", tags=["opra"])
 app.include_router(ingestion_router, prefix="/api/ingestion", tags=["ingestion"])
 app.include_router(presentations_router, prefix="/api/presentations", tags=["presentations"])
 app.include_router(contracts_router, prefix="/api/contracts", tags=["contracts"])
+app.include_router(extraction_router, prefix="/api/extraction", tags=["extraction"])
 
 
 @app.on_event("startup")
 async def startup():
     init_db()
+    # One-shot maintenance pass: clean junk fiscal_year values left behind by the
+    # old regex (e.g. "2026-07" extracted from a resolution number). Idempotent;
+    # only mutates rows whose value isn't already a clean YYYY or YYYY-YY(YY).
+    try:
+        from database import SessionLocal
+        from routes.documents import filename_year_backfill
+        with SessionLocal() as db:
+            stats = filename_year_backfill(db)
+            if stats["cleaned"] or stats["filled"]:
+                logger.info(f"fiscal_year backfill: cleaned={stats['cleaned']} filled={stats['filled']}")
+    except Exception as e:
+        logger.warning(f"fiscal_year backfill skipped: {e}")
     logger.info(f"{APP_NAME} started")
 
 

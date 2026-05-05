@@ -29,6 +29,9 @@ pgvector>=0.3.0
 # PDF Processing
 pymupdf==1.24.10
 pymupdf4llm==0.0.17
+pdfplumber>=0.11.0
+pdf2image>=1.17.0
+Pillow>=10.0.0
 
 # Data
 pandas==2.2.2

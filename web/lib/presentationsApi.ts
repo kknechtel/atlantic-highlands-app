@@ -169,3 +169,14 @@ export async function fetchPublicDeck(slug: string, password?: string): Promise<
   if (!res.ok) throw new Error("Not found");
   return res.json();
 }
+
+/** Resolve a [source: filename.pdf] citation in a published deck to a signed
+ *  S3 URL. Only filenames cited in the deck (or in attachments) are resolvable. */
+export async function fetchPublicCitation(slug: string, filename: string, password?: string): Promise<{ url: string; filename: string }> {
+  const headers: Record<string, string> = {};
+  if (password) headers["X-Deck-Password"] = password;
+  const qs = new URLSearchParams({ filename }).toString();
+  const res = await fetch(`${API_BASE}/api/presentations/public/${slug}/citation?${qs}`, { headers });
+  if (!res.ok) throw new Error(`Citation lookup failed: ${res.status}`);
+  return res.json();
+}

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Lock, Loader2 } from 'lucide-react';
 import {
   type DeckSection, type DeckAttachment,
-  fetchPublicMeta, fetchPublicDeck,
+  fetchPublicMeta, fetchPublicDeck, fetchPublicCitation,
 } from '@/lib/presentationsApi';
 import PresentationViewer from '@/components/presentations/PresentationViewer';
 
@@ -104,7 +104,15 @@ export default function PublicPresentationPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <PresentationViewer title={deck.title} sections={deck.sections} attachments={deck.attachments} />
+      <PresentationViewer
+        title={deck.title}
+        sections={deck.sections}
+        attachments={deck.attachments}
+        onResolveCitation={(filename) => {
+          const pw = typeof window !== 'undefined' ? sessionStorage.getItem(`deck-pw-${slug}`) : null;
+          return fetchPublicCitation(slug, filename, pw || undefined);
+        }}
+      />
     </div>
   );
 }

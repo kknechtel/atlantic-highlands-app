@@ -501,18 +501,23 @@ Output ONLY a JSON object of this shape:
 {{
   "title": "<concise deck title>",
   "sections": [
-    {{ "kind": "narrative", "title": "<heading>", "body": "<markdown body with citations>" }},
+    {{ "kind": "narrative", "title": "<heading>", "body": "<markdown body with citations and embedded chart fences>" }},
     ...
   ]
 }}
 
 RULES:
-- 4-8 sections. Group related findings together. Don't make one section per chat turn.
+- 6-10 sections. Group related findings together. Don't make one section per chat turn.
 - Each narrative body should be 2-6 paragraphs of substantive content.
 - PRESERVE every [source: filename.pdf] citation from the assistant turns — do not drop them.
-- If the assistant produced a clear table or list, you MAY use a "table" section:
-    {{ "kind": "table", "title": "...", "headers": ["..."], "rows": [["..."]], "caption": "..." }}
-- Bring forward any markdown tables and bullet structure verbatim (don't paraphrase numbers).
+- PRESERVE every ```chart ... ``` fenced block VERBATIM inside the narrative body it belongs to.
+  The frontend renders these as live Chart.js charts; dropping them loses information.
+- PRESERVE every markdown table inside the narrative body. Don't convert to "table" sections
+  unless the table is the entire point of a section — narrative sections render markdown
+  tables natively, including the chart fences.
+- DO NOT paraphrase or round numbers. Copy figures, dollar amounts, percentages, dates,
+  and proper nouns verbatim from the assistant's output.
+- DO NOT summarize away findings. If the chat covered 8 topics, the deck should cover all 8.
 - If the user typed a clear prompt at the top, weave it into a section 1 "Background" or "Question".
 - title_hint, if provided, is a strong suggestion for the deck title.
 
@@ -533,11 +538,14 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
     if title_hint:
         prompt += f"\n\ntitle_hint: {title_hint}"
 
+    # 1M-context beta header — chat transcripts with 10+ tool calls easily push
+    # past 200K tokens, and without this the call truncates input or 400s.
     resp = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=12000,
+        max_tokens=24000,
         system=prompt,
         messages=[{"role": "user", "content": f"TRANSCRIPT:\n\n{transcript}"}],
+        extra_headers={"anthropic-beta": "context-1m-2025-08-07"},
     )
     text = ""
     for block in resp.content:
@@ -712,3 +720,52 @@ def public_view(slug: str,
         "theme": p.theme or {},
         "published_at": p.published_at.isoformat() if p.published_at else None,
     }
+
+
+@router.get("/public/{slug}/citation")
+def public_citation_view(
+    slug: str,
+    filename: str = Query(...),
+    x_deck_password: Optional[str] = Header(None, alias="X-Deck-Password"),
+    db: Session = Depends(get_db),
+):
+    """Resolve a [source: filename.pdf] citation in a published deck to a
+    short-lived signed S3 URL. Only documents whose filename appears as a
+    citation in this deck (or as an attachment) can be resolved — the slug
+    acts as the access token."""
+    from models.document import Document
+    from services.s3_service import S3Service
+    import re as _re
+
+    p = db.query(Presentation).filter(Presentation.public_slug == slug).first()
+    if not p or p.status != "published":
+        raise HTTPException(404, "Not found")
+    if p.public_password_hash:
+        if not x_deck_password or not bcrypt.checkpw(
+            x_deck_password.encode(), p.public_password_hash.encode()
+        ):
+            raise HTTPException(401, "Password required or incorrect")
+
+    # Build the set of filenames cited anywhere in the deck (sections + attachments).
+    allowed: set[str] = set()
+    for s in (p.sections or []):
+        body = (s.get("body") or "")
+        for m in _re.findall(r"\[source:\s*([^\]]+)\]", body):
+            for fn in _re.split(r"\s*[,|;]\s*", m):
+                fn = fn.strip()
+                if fn:
+                    allowed.add(fn)
+    for att in (p.attachments or []):
+        if att.get("filename"):
+            allowed.add(att["filename"])
+
+    if filename not in allowed:
+        raise HTTPException(404, "Citation not in this deck")
+
+    doc = db.query(Document).filter(Document.filename == filename).first()
+    if not doc or not doc.s3_key:
+        raise HTTPException(404, "Document not found")
+
+    s3 = S3Service()
+    url = s3.get_presigned_url(doc.s3_key, expires_in=900)
+    return {"url": url, "filename": doc.filename}

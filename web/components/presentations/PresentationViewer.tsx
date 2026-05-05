@@ -15,12 +15,15 @@ interface Props {
   attachments: DeckAttachment[];
   /** When provided, attachment previews fetch from this base URL (used by public viewer). */
   publicAttachmentBase?: string;
+  /** When provided, [source: filename] citations resolve through this callback
+   *  (returns a signed URL the viewer opens in FilePreviewModal). */
+  onResolveCitation?: (filename: string) => Promise<{ url: string; filename: string }>;
 }
 
 const brandColor = '#385854';
 
 /** Read-only renderer used by both public viewer and authenticated preview. */
-export default function PresentationViewer({ title, sections, attachments, publicAttachmentBase }: Props) {
+export default function PresentationViewer({ title, sections, attachments, publicAttachmentBase, onResolveCitation }: Props) {
   const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
 
   const previewAttachment = (att: DeckAttachment) => {
@@ -30,6 +33,16 @@ export default function PresentationViewer({ title, sections, attachments, publi
       // Editor uses authenticated /api/documents/{id}/view-url — but this read-only
       // viewer is also used by the public flow, so we just no-op without a base.
       console.warn('No attachment preview base configured');
+    }
+  };
+
+  const handleCitationClick = async (info: { filename: string }) => {
+    if (!onResolveCitation) return;
+    try {
+      const { url, filename } = await onResolveCitation(info.filename);
+      setPreview({ url, filename });
+    } catch (e) {
+      console.warn('Citation lookup failed', e);
     }
   };
 
@@ -52,7 +65,10 @@ export default function PresentationViewer({ title, sections, attachments, publi
         {sections.map((s) => (
           <div key={s.id} className="bg-white rounded-lg border border-gray-200 p-5">
             {s.kind === 'narrative' && (
-              <NarrativeBlock section={s} editable={false} onSave={() => {}} brandColor={brandColor} />
+              <NarrativeBlock
+                section={s} editable={false} onSave={() => {}} brandColor={brandColor}
+                onCitationClick={onResolveCitation ? handleCitationClick : undefined}
+              />
             )}
             {s.kind === 'table' && (
               <TableBlock section={s} editable={false} onSave={() => {}} brandColor={brandColor} />
@@ -73,7 +89,7 @@ export default function PresentationViewer({ title, sections, attachments, publi
           url={preview.url}
           filename={preview.filename}
           onClose={() => setPreview(null)}
-          noAuth={!!publicAttachmentBase}
+          noAuth
         />
       )}
     </div>

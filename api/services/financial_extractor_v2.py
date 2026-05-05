@@ -339,11 +339,11 @@ def _parse_json(text: str) -> Optional[Dict]:
 
 # ─── PDF → markdown ──────────────────────────────────────────────────────────
 
-async def pdf_to_markdown(content: bytes) -> Optional[str]:
+def _pdf_to_markdown_sync(content: bytes) -> Optional[str]:
+    """CPU-heavy work — runs in thread pool, must NOT be awaited directly."""
     try:
         import pymupdf
         import pymupdf4llm
-
         doc = pymupdf.open(stream=content, filetype="pdf")
         md = pymupdf4llm.to_markdown(doc)
         doc.close()
@@ -351,6 +351,15 @@ async def pdf_to_markdown(content: bytes) -> Optional[str]:
     except Exception as exc:
         logger.error("pdf->md failed: %s", exc)
         return None
+
+
+async def pdf_to_markdown(content: bytes) -> Optional[str]:
+    """Run pymupdf parsing in a worker thread. Calling pymupdf directly from an
+    async function blocks the uvicorn event loop for the duration of the parse
+    (often 30-60s on a 100+ page PDF) — gunicorn master sees the worker as
+    unresponsive and sends SIGTERM. Threadpool keeps the loop alive."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _pdf_to_markdown_sync, content)
 
 
 # ─── Main entry point ────────────────────────────────────────────────────────
@@ -376,7 +385,11 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
         stmt.status = "processing"
         db.commit()
 
-        content = s3.download_file(s3_key)
+        # Both S3 + PDF parse are sync I/O+CPU — run in thread pool so the
+        # async event loop stays responsive (otherwise gunicorn master kills
+        # the worker as unresponsive and the background task dies).
+        loop = asyncio.get_event_loop()
+        content = await loop.run_in_executor(None, s3.download_file, s3_key)
         markdown = await pdf_to_markdown(content)
         if not markdown:
             stmt.status = "error"

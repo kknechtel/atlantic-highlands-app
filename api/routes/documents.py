@@ -636,6 +636,93 @@ def filename_year_backfill(db: Session) -> dict:
     return {"cleaned": cleaned, "filled": filled}
 
 
+async def ai_year_inference_pass(
+    batch_size: int = 25,
+    max_per_run: int = 200,
+    delay: float = 0.5,
+):
+    """Background pass: LLM-infer fiscal_year for docs that have extracted text but no year.
+
+    Fires after startup as a fire-and-forget asyncio task. Idempotent across
+    restarts:
+      - Successes write the year.
+      - LLM responded but couldn't find a year → marked metadata.ai_year_attempted
+        so we don't keep asking the same question.
+      - LLM call raised (network, rate limit) → not marked, will retry next time.
+    Capped at max_per_run per process so each restart's AI cost is bounded; the
+    next restart picks up the remaining backlog.
+    """
+    import asyncio
+    from sqlalchemy import func, or_
+    from sqlalchemy.orm.attributes import flag_modified
+    from services.document_processor import analyze_document
+    from database import SessionLocal
+
+    processed = 0
+    total_filled = 0
+    while processed < max_per_run:
+        with SessionLocal() as db:
+            docs = (
+                db.query(Document)
+                .filter(Document.fiscal_year.is_(None))
+                .filter(Document.extracted_text.isnot(None))
+                .filter(func.length(Document.extracted_text) > 200)
+                .filter(
+                    or_(
+                        Document.metadata_["ai_year_attempted"].astext.is_(None),
+                        Document.metadata_["ai_year_attempted"].astext != "true",
+                    )
+                )
+                .limit(batch_size)
+                .all()
+            )
+            if not docs:
+                logger.info(
+                    f"ai_year_inference_pass: done (processed={processed} filled={total_filled})"
+                )
+                return
+
+            batch_filled = 0
+            for doc in docs:
+                if processed >= max_per_run:
+                    break
+                try:
+                    analysis = await analyze_document(doc.extracted_text, doc.filename)
+                except Exception as e:
+                    # Likely transient — leave the doc unmarked so it retries later.
+                    logger.warning(f"ai_year_inference_pass: {doc.filename}: {e}")
+                    await asyncio.sleep(delay)
+                    continue
+
+                if analysis is None:
+                    # All providers failed — also treat as transient.
+                    await asyncio.sleep(delay)
+                    continue
+
+                candidate = analysis.get("fiscal_year")
+                if candidate and _looks_like_clean_year(candidate):
+                    doc.fiscal_year = candidate
+                    batch_filled += 1
+                    total_filled += 1
+
+                # LLM answered (even if "no year") — mark attempted to skip next time.
+                doc.metadata_ = {**(doc.metadata_ or {}), "ai_year_attempted": "true"}
+                flag_modified(doc, "metadata_")
+                processed += 1
+                await asyncio.sleep(delay)
+
+            db.commit()
+            logger.info(
+                f"ai_year_inference_pass batch: filled={batch_filled}/{len(docs)} "
+                f"(running totals: processed={processed} filled={total_filled})"
+            )
+
+    logger.info(
+        f"ai_year_inference_pass: hit per-run cap ({max_per_run}); "
+        f"filled={total_filled} this run"
+    )
+
+
 @router.get("/{document_id}/view-url")
 def get_view_url(
     document_id: str,

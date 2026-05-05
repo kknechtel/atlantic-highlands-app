@@ -67,17 +67,22 @@ app.include_router(extraction_router, prefix="/api/extraction", tags=["extractio
 
 @app.on_event("startup")
 async def startup():
+    import asyncio
     init_db()
     # One-shot maintenance pass: clean junk fiscal_year values left behind by the
     # old regex (e.g. "2026-07" extracted from a resolution number). Idempotent;
     # only mutates rows whose value isn't already a clean YYYY or YYYY-YY(YY).
     try:
         from database import SessionLocal
-        from routes.documents import filename_year_backfill
+        from routes.documents import filename_year_backfill, ai_year_inference_pass
         with SessionLocal() as db:
             stats = filename_year_backfill(db)
             if stats["cleaned"] or stats["filled"]:
                 logger.info(f"fiscal_year backfill: cleaned={stats['cleaned']} filled={stats['filled']}")
+        # Fire-and-forget AI year-inference for docs that have extracted_text
+        # but still no fiscal_year. Throttled (~200 docs/run, 0.5s between calls)
+        # so the API stays responsive; remaining backlog picks up next restart.
+        asyncio.create_task(ai_year_inference_pass())
     except Exception as e:
         logger.warning(f"fiscal_year backfill skipped: {e}")
     logger.info(f"{APP_NAME} started")

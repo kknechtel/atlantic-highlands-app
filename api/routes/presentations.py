@@ -540,17 +540,18 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
 
     # 1M-context beta header — chat transcripts with 10+ tool calls easily push
     # past 200K tokens, and without this the call truncates input or 400s.
-    resp = client.messages.create(
+    # Anthropic SDK refuses non-streaming for long requests (>10min projected),
+    # so we stream and accumulate text.
+    text = ""
+    with client.messages.stream(
         model="claude-sonnet-4-6",
-        max_tokens=24000,
+        max_tokens=16000,
         system=prompt,
         messages=[{"role": "user", "content": f"TRANSCRIPT:\n\n{transcript}"}],
         extra_headers={"anthropic-beta": "context-1m-2025-08-07"},
-    )
-    text = ""
-    for block in resp.content:
-        if getattr(block, "type", None) == "text":
-            text += block.text or ""
+    ) as stream:
+        for chunk in stream.text_stream:
+            text += chunk
     text = text.strip().removeprefix("```json").removeprefix("```").strip().removesuffix("```").strip()
     try:
         return json.loads(text)

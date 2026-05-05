@@ -245,6 +245,50 @@ Output ONLY valid JSON. Use null for missing fields. All numbers as bare numbers
 """
 
 
+TABLE_ROW_PROMPT = """Extract EVERY data row from this NJ government financial document.
+
+The document is dominated by markdown tables (no section headings). It is most
+likely a User-Friendly Budget (UFB), Annual Financial Statement (AFS), Annual
+Debt Statement, or scanned town budget. Each meaningful row has a category
+label, a description, possibly an account code, and one or more dollar amounts.
+
+Return ONLY JSON:
+{{
+  "line_items": [
+    {{
+      "section": "Use the row's 'Budget Category', 'Fund', or first column header as the section. Common values: 'General Fund Revenues', 'General Fund Appropriations', 'Special Revenue Fund', 'Debt Service Fund', 'Capital Outlay', 'Current Fund', 'Water/Sewer Utility', 'Harbor Commission'.",
+      "subsection": "Sub-category if present (e.g. 'Local Sources', 'State Aid', 'Regular Programs - Instruction')",
+      "line_name": "EXACT description text from the row",
+      "account_code": "NJ COA code from the row if present (e.g. '10-1210', '11-130-100-101'), else null",
+      "amount": <most recent year's amount, or null>,
+      "prior_year_amount": <prior year amount, or null>,
+      "budget_amount": <budget/proposed amount, or null>,
+      "is_total_row": <true for 'Total', 'Subtotal', 'Grand Total' rows>,
+      "line_order": <integer>
+    }}
+  ]
+}}
+
+RULES:
+1. Extract EVERY row with a numeric value. Do not skip rows just because the
+   description is repetitive.
+2. Strip $, commas, parentheses; preserve sign — (1,234) → -1234.
+3. If a row spans multiple years (e.g. UFB has Actual/Revised/Proposed):
+   - amount = most recent / proposed
+   - prior_year_amount = older actual
+   - budget_amount = the budget/revised column if distinct from amount
+4. If section column is blank for a row but adjacent rows have a section,
+   inherit that section.
+5. Skip enrollment counts, demographic tables, and narrative — only financial
+   rows (rows with a dollar/account code).
+
+DOCUMENT TEXT:
+{section_text}
+
+Output ONLY the JSON object, no commentary or code fences.
+"""
+
+
 SECTION_PROMPT = """Extract EVERY line item from this section of a NJ government financial statement.
 Section: {section_name}
 
@@ -520,8 +564,28 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
         sections = segment_by_sections(markdown)
         logger.info("extractor v2: %d sections for statement %s", len(sections), statement_id)
 
+        # If section detection collapsed (only 1 generic chunk) and the markdown
+        # is mostly tables (heavy use of `|` row separators), use the table-row
+        # prompt instead of the section prompt — UFB-format budgets and old
+        # scanned AFS docs have no section headings, just tables.
+        is_table_only = (
+            len(sections) == 1
+            and sections[0][0].startswith("Document")
+            and markdown.count("|") > 200
+            and (markdown.count("|") / max(len(markdown), 1)) > 0.005
+        )
+        if is_table_only:
+            logger.info(
+                "stmt %s using TABLE_ROW_PROMPT (table-only doc, %d pipes, no headings)",
+                statement_id, markdown.count("|"),
+            )
+
         async def extract_section(name: str, text: str) -> List[Dict]:
-            prompt = SECTION_PROMPT.format(section_name=name, section_text=text)
+            prompt_template = TABLE_ROW_PROMPT if is_table_only else SECTION_PROMPT
+            if is_table_only:
+                prompt = prompt_template.format(section_text=text)
+            else:
+                prompt = prompt_template.format(section_name=name, section_text=text)
             # Retry-with-other-provider on empty results — a single Gemini "[]"
             # for a dense table page used to silently drop the entire section.
             # max_output=60000 covers UFB-style budgets where the whole doc is

@@ -25,16 +25,22 @@ class S3Service:
 
         try:
             import boto3
+            from botocore.config import Config as BotoConfig
+            # Force SigV4 for presigned URLs. Buckets created post-2020 (and
+            # certain regions) reject SigV2 query auth (`AWSAccessKeyId=...&Signature=...`)
+            # with 400 Bad Request. SigV4 emits `X-Amz-Algorithm=AWS4-HMAC-SHA256...`.
+            boto_cfg = BotoConfig(signature_version="s3v4", region_name=AWS_REGION)
             if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
                 self.client = boto3.client(
                     "s3",
                     region_name=AWS_REGION,
                     aws_access_key_id=AWS_ACCESS_KEY_ID,
                     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                    config=boto_cfg,
                 )
             else:
                 # Use default credential chain (IAM role, ~/.aws/credentials, etc.)
-                self.client = boto3.client("s3", region_name=AWS_REGION)
+                self.client = boto3.client("s3", region_name=AWS_REGION, config=boto_cfg)
             # Test connection
             self.client.head_bucket(Bucket=self.bucket)
             logger.info(f"S3Service initialized: bucket={self.bucket}, region={AWS_REGION}")

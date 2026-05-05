@@ -431,14 +431,27 @@ export async function getSearchFacets(projectId?: string): Promise<SearchFacets>
 
 // ─── Scraper ──────────────────────────────────────────────────────────
 
+export interface SiteStats {
+  status: "pending" | "running" | "done" | "error";
+  documents_found: number;
+  documents_uploaded: number;
+  documents_skipped: number;
+  errors: number;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface ScraperStatus {
   running: boolean; current_site: string | null;
   documents_found: number; documents_uploaded: number; documents_skipped: number;
   errors: string[]; started_at: string | null; completed_at: string | null;
+  per_site?: Record<string, SiteStats>;
+  sites_planned?: string[];
+  sites_completed?: string[];
 }
 
 export async function startScraper(sites?: string[], projectId?: string, dryRun?: boolean) {
-  return request<{ detail: string }>("/api/scraper/run", { method: "POST", body: JSON.stringify({ sites, project_id: projectId, dry_run: dryRun }) });
+  return request<{ detail: string; status?: ScraperStatus }>("/api/scraper/run", { method: "POST", body: JSON.stringify({ sites, project_id: projectId, dry_run: dryRun }) });
 }
 
 export async function getScraperStatus(): Promise<ScraperStatus> {

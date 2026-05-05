@@ -29,17 +29,55 @@ logger = logging.getLogger(__name__)
 # ─── Section detection ───────────────────────────────────────────────────────
 
 # Headings that mark a financial section. Order matters — earlier patterns win.
-# Each entry: (regex, normalized_section_name)
+# Each entry: (regex, normalized_section_name).
+#
+# We accept three heading styles because OCR'd ACFRs vary:
+#   1. Markdown ATX:   "## Revenues"
+#   2. Bolded caps:    "**REVENUES**"   (Gemini and pymupdf4llm both produce this)
+#   3. Plain ALL-CAPS line:  "REVENUES"  (no formatting at all)
+# The keyword set is the same; only the heading-style prefix differs.
+def _section_re(*keywords: str) -> re.Pattern:
+    """Build a regex matching any of `keywords` as a heading line. Allows
+    markdown-ATX (#+), bold-double-asterisk, or just an isolated UPPERCASE line."""
+    kw_alt = "|".join(keywords)
+    pattern = (
+        r"(?:"
+        r"^\s*#+\s*(?:" + kw_alt + r")\b"          # ## Revenues
+        r"|^\s*\*\*\s*(?:" + kw_alt + r")\b"       # **Revenues
+        r"|^[ \t]*(?:" + kw_alt + r")[ \t]*$"      # bare REVENUES line
+        r")"
+    )
+    return re.compile(pattern, re.I | re.M)
+
 SECTION_PATTERNS: List[Tuple[re.Pattern, str]] = [
-    (re.compile(r"^\s*#+\s*(?:revenue[s]?|anticipated revenues?|estimated revenues?)\b", re.I | re.M), "Revenue"),
-    (re.compile(r"^\s*#+\s*(?:expenditure[s]?|appropriations?|operating expenditures?)\b", re.I | re.M), "Expenditures"),
-    (re.compile(r"^\s*#+\s*(?:debt service|long[-\s]term debt|bonds payable)\b", re.I | re.M), "Debt Service"),
-    (re.compile(r"^\s*#+\s*(?:fund balance[s]?|net position|equity)\b", re.I | re.M), "Fund Balance"),
-    (re.compile(r"^\s*#+\s*(?:assets?|statement of net position)\b", re.I | re.M), "Assets"),
-    (re.compile(r"^\s*#+\s*(?:liabilities|deferred inflows)\b", re.I | re.M), "Liabilities"),
-    (re.compile(r"^\s*#+\s*(?:capital outlay|capital projects?)\b", re.I | re.M), "Capital"),
-    (re.compile(r"^\s*#+\s*(?:state aid|federal aid|grants?)\b", re.I | re.M), "Aid"),
-    (re.compile(r"^\s*#+\s*(?:salaries?|personnel|compensation)\b", re.I | re.M), "Personnel"),
+    (_section_re("revenues?", "anticipated revenues?", "estimated revenues?",
+                 "statement of revenues, expenditures",
+                 "statements of revenues, expenditures"), "Revenue"),
+    (_section_re("expenditures?", "appropriations?", "operating expenditures?",
+                 "statement of activities", "statements of activities"), "Expenditures"),
+    (_section_re("debt service", "long[-\\s]term debt", "bonds payable",
+                 "schedule of bond", "schedule of debt"), "Debt Service"),
+    (_section_re("fund balances?", "net position", "equity",
+                 "changes in fund balance"), "Fund Balance"),
+    (_section_re("assets?", "statement of net position",
+                 "statements of net position", "balance sheet"), "Assets"),
+    (_section_re("liabilities", "deferred inflows"), "Liabilities"),
+    (_section_re("capital outlay", "capital projects?", "capital assets?"), "Capital"),
+    (_section_re("state aid", "federal aid", "grants?",
+                 "intergovernmental"), "Aid"),
+    (_section_re("salaries?", "personnel", "compensation"), "Personnel"),
+    # NJ ACFR Exhibit codes — every standard exhibit maps to a known section.
+    # Match "Exhibit B-1", "EXHIBIT C-2", "Schedule J-1" anywhere on a line.
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+A-1\b", re.M), "Assets"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+A-2\b", re.M), "Expenditures"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+B-1\b", re.M), "Assets"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+B-2\b", re.M), "Revenue"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+B-3\b", re.M), "Fund Balance"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+C-1\b", re.M), "Assets"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+C-2\b", re.M), "Revenue"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+C-3\b", re.M), "Fund Balance"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+I-\d+\b", re.M), "Debt Service"),
+    (re.compile(r"\b(?:Exhibit|EXHIBIT|Schedule|SCHEDULE)\s+J-\d+\b", re.M), "Statistical"),
 ]
 
 # How big a section can be before we further split it (chars). Roughly 60-80K tokens.
@@ -308,6 +346,48 @@ async def _call_llm(prompt: str, max_output: int = 32000) -> Optional[Dict]:
     return await _call_claude(prompt, max_output=min(max_output, 16000))
 
 
+def _result_is_empty_or_useless(out: Optional[Dict], expected_key: str = "line_items") -> bool:
+    """An LLM response counts as 'useless' if it's None, empty dict, or contains
+    only zeros/nulls under the expected key. Used by retry-with-other-model logic
+    so that a Gemini hallucination of '[]' doesn't kill the section."""
+    if not out:
+        return True
+    items = out.get(expected_key)
+    if items is None:
+        # Header pass — useless if entity_name/fiscal_year both null
+        if expected_key == "line_items":
+            return True
+        return False
+    if not items:
+        return True
+    # Items exist — sanity-check at least one has a usable amount
+    real = [
+        i for i in items
+        if isinstance(i, dict) and (i.get("amount") not in (None, 0, "0", "", "null"))
+    ]
+    return len(real) == 0
+
+
+async def _call_llm_with_retry(
+    prompt: str,
+    max_output: int = 32000,
+    expected_key: str = "line_items",
+    label: str = "",
+) -> Optional[Dict]:
+    """Call _call_llm. If the result is null/empty/all-zero, retry once with
+    the OTHER provider — Gemini sometimes returns "[]" for tables it should
+    have parsed; Claude sometimes does the inverse on dense ACFR pages."""
+    first = await _call_llm(prompt, max_output=max_output)
+    if not _result_is_empty_or_useless(first, expected_key):
+        return first
+    logger.info("retry-with-claude (%s): primary returned empty/null", label or "section")
+    second = await _call_claude(prompt, max_output=min(max_output, 16000))
+    if not _result_is_empty_or_useless(second, expected_key):
+        return second
+    # Fall back to whichever is non-None even if "useless" so caller sees structure
+    return first or second
+
+
 def _parse_json(text: str) -> Optional[Dict]:
     if not text:
         return None
@@ -397,9 +477,20 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
             db.commit()
             return
 
-        # Pass 1: header
+        # Pass 1: header. Retry-with-other-provider if entity_name + fiscal_year
+        # both come back null — that's the failure mode that left 15 statements
+        # in `processing` with `fiscal_year=Unknown` after the May 5 ingest.
         head_text = markdown[:40_000]
         header = await _call_llm(HEADER_PROMPT.format(markdown=head_text), max_output=8000)
+        header_useless = (
+            not header
+            or (not header.get("entity_name") and not header.get("fiscal_year"))
+        )
+        if header_useless:
+            logger.info("header retry: primary LLM returned no entity/year for stmt %s", statement_id)
+            retry = await _call_claude(HEADER_PROMPT.format(markdown=head_text), max_output=8000)
+            if retry and (retry.get("entity_name") or retry.get("fiscal_year")):
+                header = retry
         if header:
             summary = header.get("summary") or {}
             stmt.entity_name = header.get("entity_name") or stmt.entity_name
@@ -420,7 +511,13 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
 
         async def extract_section(name: str, text: str) -> List[Dict]:
             prompt = SECTION_PROMPT.format(section_name=name, section_text=text)
-            data = await _call_llm(prompt, max_output=32000)
+            # Retry-with-other-provider on empty results — a single Gemini "[]"
+            # for a dense table page used to silently drop the entire section.
+            # max_output=60000 covers UFB-style budgets where the whole doc is
+            # one giant markdown table (a 200-row table can produce ~30K JSON).
+            data = await _call_llm_with_retry(
+                prompt, max_output=60000, expected_key="line_items", label=name,
+            )
             if not data:
                 return []
             items = data.get("line_items") or []
@@ -505,7 +602,16 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
         flags = detect_anomalies_for_statement(stmt, db)
         stmt.anomaly_flags = flags
 
-        stmt.status = "extracted"
+        # Yield check — fewer than 5 line items from a budget/audit/financial
+        # statement usually means PDF→markdown produced near-empty output (e.g.
+        # scanned PDF with no text layer) or section detection collapsed the
+        # whole doc into one heading. Mark as `needs_reprocess` so the caller
+        # can retry with a different segmentation strategy or OCR upgrade.
+        stmt.status = "needs_reprocess" if order < 5 else "extracted"
+        if stmt.status == "needs_reprocess":
+            note = f"low_yield: only {order} line items extracted from {len(sections)} sections"
+            stmt.notes = (stmt.notes + "; " if stmt.notes else "") + note
+            logger.warning("statement %s flagged needs_reprocess: %s", statement_id, note)
         stmt.extraction_pass = 5
         db.commit()
 

@@ -638,12 +638,72 @@ async def _run_in_session(label: str, statement_id: str, build_inputs, prompt_te
         db.close()
 
 
-def _build_revenue_inputs(stmt, db):
+_REVENUE_SECTION_NAMES = (
+    "Revenue", "Aid", "Revenues",
+    "Anticipated Revenue", "Realized Revenue",
+)
+_REVENUE_KEYWORDS = (
+    "revenue", "tax levy", " aid", "grant", "fee", "license", "permit",
+    "fines", "interest income", "rental", "anticipated revenue",
+    "fund balance utilized", "miscellaneous revenue",
+)
+
+_EXPENDITURE_SECTION_NAMES = (
+    "Expenditures", "Personnel", "Capital",
+    "Operations", "Salaries", "Benefits", "Operating Appropriations",
+)
+_EXPENDITURE_KEYWORDS = (
+    "salar", "wages", "benefit", "expenditure", "appropriation",
+    "operations", "instruction", "support service", "maintenance",
+    "utilit", "supplies", "insurance",
+)
+
+
+def _query_lines_with_fallback(
+    db, stmt_id, canonical_sections, keywords,
+) -> list:
+    """Look up line items first by canonical section names. If that returns
+    empty (likely because the doc uses NJ-regulatory or fund-named sections),
+    fall back to a keyword match on line_name. Last resort: return ALL line
+    items for the statement so the LLM can do the classification itself.
+
+    This is the "agents are smarter when detail is null" path: each layer of
+    fallback is logged so we can see when sections didn't match upstream."""
     from models.financial import FinancialLineItem
-    items = (db.query(FinancialLineItem)
-             .filter(FinancialLineItem.statement_id == stmt.id,
-                     FinancialLineItem.section.in_(["Revenue", "Aid"]))
-             .all())
+
+    base = db.query(FinancialLineItem).filter(FinancialLineItem.statement_id == stmt_id)
+
+    items = base.filter(FinancialLineItem.section.in_(canonical_sections)).all()
+    if items:
+        return items
+
+    if keywords:
+        kw_filter = None
+        for kw in keywords:
+            cond = FinancialLineItem.line_name.ilike(f"%{kw}%")
+            kw_filter = cond if kw_filter is None else (kw_filter | cond)
+        items = base.filter(kw_filter).all()
+        if items:
+            logger.info(
+                "drill fallback: section match empty for stmt %s, keyword match returned %d items",
+                stmt_id, len(items),
+            )
+            return items
+
+    # Total fallback — give the LLM all line items and let it sort
+    items = base.all()
+    if items:
+        logger.info(
+            "drill fallback: returning ALL %d line items for stmt %s (section + keyword empty)",
+            len(items), stmt_id,
+        )
+    return items
+
+
+def _build_revenue_inputs(stmt, db):
+    items = _query_lines_with_fallback(
+        db, stmt.id, _REVENUE_SECTION_NAMES, _REVENUE_KEYWORDS,
+    )
     return dict(
         entity_name=stmt.entity_name or "?",
         fiscal_year=stmt.fiscal_year, statement_type=stmt.statement_type,
@@ -654,11 +714,9 @@ def _build_revenue_inputs(stmt, db):
 
 
 def _build_expenditure_inputs(stmt, db):
-    from models.financial import FinancialLineItem
-    items = (db.query(FinancialLineItem)
-             .filter(FinancialLineItem.statement_id == stmt.id,
-                     FinancialLineItem.section.in_(["Expenditures", "Personnel", "Capital"]))
-             .all())
+    items = _query_lines_with_fallback(
+        db, stmt.id, _EXPENDITURE_SECTION_NAMES, _EXPENDITURE_KEYWORDS,
+    )
     return dict(
         entity_type=stmt.entity_type, entity_name=stmt.entity_name or "?",
         fiscal_year=stmt.fiscal_year,

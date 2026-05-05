@@ -119,6 +119,11 @@ def source_to_entity_type(source_name: str) -> str:
     """Map scraper source name to entity type."""
     if source_name == "tridistrict":
         return "school"
+    if source_name in ("highlands_borough", "highlands_meetings"):
+        # Highlands Borough is a constituent town of HHRSD, not Atlantic Highlands;
+        # tag as "town" so it groups with municipal records. The source_site metadata
+        # preserves which town it came from.
+        return "town"
     return "town"
 
 
@@ -131,7 +136,12 @@ def detect_doc_type_from_name(filename: str) -> str:
         return "minutes"
     if "budget" in lower:
         return "budget"
-    if "audit" in lower or "amr" in lower:
+    # AMR = Auditor's Management Report — supplementary cap/findings worksheet,
+    # NOT a full ACFR. Distinguish so the financial dashboard doesn't try to
+    # surface its handful of Excess Surplus lines as the "audit" for the year.
+    if re.search(r'\bamr\b', lower) or "auditor's management" in lower or "auditors management" in lower:
+        return "audit_management_report"
+    if "audit" in lower:
         return "audit"
     if any(kw in lower for kw in ["financial statement", "comprehensive financial", " fs", "cafr"]):
         return "financial_statement"
@@ -155,12 +165,24 @@ def detect_doc_type_from_name(filename: str) -> str:
 
 
 def detect_fiscal_year(filename: str) -> str | None:
-    """Extract a fiscal year from a filename."""
-    # Match patterns like 2024-2025, 2024-25, 2024
-    m = re.search(r'(20\d{2})[-/](20\d{2}|\d{2})', filename)
-    if m:
-        return m.group(0)
-    m = re.search(r'(20\d{2})', filename)
+    """Extract a fiscal year from a filename.
+
+    Accepts 2024, 2024-2025, or 2024-25 — but only when the second half is
+    actually the next year (so "2026-071 Payment of Bills" doesn't get
+    mis-tagged as a "2026-07" school year).
+    """
+    # School-year YYYY-YYYY (must be year+1)
+    for m in re.finditer(r'(20\d{2})[-/](20\d{2})', filename):
+        y1, y2 = int(m.group(1)), int(m.group(2))
+        if y2 == y1 + 1:
+            return f"{y1}-{y2}"
+    # School-year YYYY-YY (must be last two digits of year+1)
+    for m in re.finditer(r'(20\d{2})[-/](\d{2})(?!\d)', filename):
+        y1, suffix = int(m.group(1)), int(m.group(2))
+        if suffix == (y1 + 1) % 100:
+            return f"{y1}-{m.group(2)}"
+    # Single 4-digit year, with non-digit boundary so "2026071" doesn't match
+    m = re.search(r'(?<!\d)(20\d{2})(?!\d)', filename)
     if m:
         return m.group(1)
     return None

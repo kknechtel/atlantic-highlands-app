@@ -11,16 +11,23 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 
-const SITES = [
-  { key: "ahnj", name: "ahnj.com", desc: "Borough website — Planning Board, Council Archives, Budgets, Ordinances" },
-  { key: "ecode", name: "ecode360.com", desc: "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets" },
-  { key: "tri", name: "tridistrict.org", desc: "School district — BOE Minutes, Archives, District Reports" },
-  { key: "nj_state", name: "NJ State / Courts", desc: "ACFR school finance, Sea Bright court opinions, Master Plan, Housing Plan" },
-  { key: "opra", name: "OPRAmachine", desc: "Crowdsourced OPRA public records requests for Atlantic Highlands" },
-  { key: "police", name: "Police / Crime", desc: "SpotCrime, CrimeMapping, Nixle alerts, AHPD blotter" },
-  { key: "fire", name: "Fire / EMS", desc: "PulsePoint, Monmouth County OEM, Fire Dept reports" },
-  { key: "county", name: "Monmouth County", desc: "County clerk archives, property records, tax data" },
-  { key: "census", name: "Census ACS", desc: "Demographics, income, housing, poverty data via Census API" },
+type Site = { key: string; name: string; desc: string; siteId: string; note?: string };
+
+// `siteId` is the human-readable site name the backend uses as the per_site key
+// (e.g. "ahnj.com", "highlands-nj.municodemeetings.com"). Use it to look up
+// per-site progress in status.per_site.
+const SITES: Site[] = [
+  { key: "ahnj", siteId: "ahnj.com", name: "ahnj.com", desc: "Borough website — Planning Board, Council Archives, Budgets, Ordinances, Annual Audits" },
+  { key: "ecode", siteId: "ecode360.com", name: "ecode360.com", desc: "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets" },
+  { key: "tri", siteId: "tridistrict.org", name: "tridistrict.org", desc: "HHRSD + AHES + HES + HHRS — BOE Agendas/Minutes, Budget, Curriculum, Performance Reports" },
+  { key: "nj_state", siteId: "NJ State / Courts", name: "NJ State / Courts", desc: "ACFR school finance (0130, 2120, 2160), Sea Bright court opinions, Master Plan, DCA UFB" },
+  { key: "highlands_borough", siteId: "highlandsnj.gov", name: "highlandsnj.gov", desc: "Borough of Highlands — regionalization, council letters, public docs" },
+  { key: "highlands_meetings", siteId: "highlands-nj.municodemeetings.com", name: "Highlands Council (Municode)", desc: "Highlands Borough Council meeting agendas + packets" },
+  { key: "opra", siteId: "OPRAmachine", name: "OPRAmachine", desc: "Crowdsourced OPRA public records requests for Atlantic Highlands" },
+  { key: "police", siteId: "Police/Crime Data", name: "Police / Crime", desc: "SpotCrime, CrimeMapping, Nixle, AHPD page", note: "Limited — these are mostly interactive maps, not document repositories." },
+  { key: "fire", siteId: "Fire/EMS Data", name: "Fire / EMS", desc: "PulsePoint, Monmouth County OEM, Fire Dept reports", note: "Limited — interactive feeds." },
+  { key: "county", siteId: "Monmouth County", name: "Monmouth County", desc: "County clerk archives, property records, tax data" },
+  { key: "census", siteId: "Census ACS Data", name: "Census ACS", desc: "Demographics, income, housing, poverty data via Census API" },
 ];
 
 export default function ScraperPage() {
@@ -42,11 +49,19 @@ export default function ScraperPage() {
     }
   }, [status?.running]);
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   const startMutation = useMutation({
     mutationFn: () => startScraper(selectedSites.length > 0 ? selectedSites : undefined),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Backend returns "Scraper is already running" when a previous run is still active.
+      // Surface that to the user so the click doesn't appear to do nothing.
+      setNotice(data.detail || null);
       setPolling(true);
       refetch();
+    },
+    onError: (err: Error) => {
+      setNotice(err.message);
     },
   });
 
@@ -73,25 +88,55 @@ export default function ScraperPage() {
       <div className="bg-white rounded-xl shadow p-6 mb-6">
         <h2 className="font-semibold text-gray-900 mb-4">Sources</h2>
         <div className="space-y-3">
-          {SITES.map((site) => (
-            <label
-              key={site.key}
-              className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={selectedSites.includes(site.key)}
-                onChange={() => toggleSite(site.key)}
-                disabled={isRunning}
-                className="rounded"
-              />
-              <GlobeAltIcon className="w-5 h-5 text-gray-400" />
-              <div>
-                <p className="text-sm font-medium text-gray-900">{site.name}</p>
-                <p className="text-xs text-gray-500">{site.desc}</p>
-              </div>
-            </label>
-          ))}
+          {SITES.map((site) => {
+            const stats = status?.per_site?.[site.siteId];
+            return (
+              <label
+                key={site.key}
+                className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedSites.includes(site.key)}
+                  onChange={() => toggleSite(site.key)}
+                  disabled={isRunning}
+                  className="rounded"
+                />
+                <GlobeAltIcon className="w-5 h-5 text-gray-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-900">{site.name}</p>
+                    {stats && (
+                      <span
+                        className={
+                          "text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide " +
+                          (stats.status === "running"
+                            ? "bg-blue-100 text-blue-700"
+                            : stats.status === "done"
+                            ? "bg-green-100 text-green-700"
+                            : stats.status === "error"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-600")
+                        }
+                      >
+                        {stats.status}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">{site.desc}</p>
+                  {site.note && (
+                    <p className="text-xs text-amber-600 mt-0.5">{site.note}</p>
+                  )}
+                  {stats && (
+                    <p className="text-xs text-gray-600 mt-1">
+                      {stats.documents_found} found · {stats.documents_uploaded} uploaded · {stats.documents_skipped} skipped
+                      {stats.errors > 0 && ` · ${stats.errors} errors`}
+                    </p>
+                  )}
+                </div>
+              </label>
+            );
+          })}
         </div>
 
         <button
@@ -110,8 +155,15 @@ export default function ScraperPage() {
           )}
         </button>
 
-        {startMutation.isError && (
-          <p className="mt-2 text-sm text-red-500">{(startMutation.error as Error).message}</p>
+        {notice && (
+          <p
+            className={
+              "mt-2 text-sm " +
+              (startMutation.isError ? "text-red-500" : "text-blue-600")
+            }
+          >
+            {notice}
+          </p>
         )}
       </div>
 

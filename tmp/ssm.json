@@ -1,0 +1,22 @@
+{
+    "CommandId": "b8175003-aa5b-4e79-935a-aeabecfddd3e",
+    "InstanceId": "i-06424a799368c7d6d",
+    "Comment": "",
+    "DocumentName": "AWS-RunShellScript",
+    "DocumentVersion": "$DEFAULT",
+    "PluginName": "aws:runShellScript",
+    "ResponseCode": 0,
+    "ExecutionStartDateTime": "2026-05-05T04:17:01.281Z",
+    "ExecutionElapsedTime": "PT0.341S",
+    "ExecutionEndDateTime": "2026-05-05T04:17:01.281Z",
+    "Status": "Success",
+    "StatusDetails": "Success",
+    "StandardOutputContent": "---NGINX---\nactive\n---NGINXCONF---\nah\nserver {\n    server_name api.ahnj.info _;\n    client_max_body_size 100M;\n    location / {\n        proxy_pass http://127.0.0.1:8000;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_read_timeout 300s;\n        proxy_buffering off;\n    }\n\n    listen 443 ssl; # managed by Certbot\n    ssl_certificate /etc/letsencrypt/live/api.ahnj.info/fullchain.pem; # managed by Certbot\n    ssl_certificate_key /etc/letsencrypt/live/api.ahnj.info/privkey.pem; # managed by Certbot\n    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot\n    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot\n\n}\nserver {\n    if ($host = api.ahnj.info) {\n        return 301 https://$host$request_uri;\n    } # managed by Certbot\n\n\n    listen 80;\n    server_name api.ahnj.info _;\n    return 404; # managed by Certbot\n\n\n---GUNICORN---\nLISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:((\"nginx\",pid=100483,fd=6),(\"nginx\",pid=100482,fd=6),(\"nginx\",pid=3568,fd=6))   \nLISTEN 0      511          0.0.0.0:443       0.0.0.0:*    users:((\"nginx\",pid=100483,fd=12),(\"nginx\",pid=100482,fd=12),(\"nginx\",pid=3568,fd=12))\nLISTEN 0      2048         0.0.0.0:8000      0.0.0.0:*    users:((\"gunicorn\",pid=98637,fd=5),(\"gunicorn\",pid=98635,fd=5))                       \n---AHAPI---\nactive\nroot       98635  0.0  1.3  37420 27080 ?        Ss   03:29   0:00 /opt/atlantic-highlands/api/venv/bin/python3 /opt/atlantic-highlands/api/venv/bin/gunicorn main:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 300\nroot       98637 10.1 44.7 1446308 880084 ?      Sl   03:29   4:48 /opt/atlantic-highlands/api/venv/bin/python3 /opt/atlantic-highlands/api/venv/bin/gunicorn main:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 300\n",
+    "StandardOutputUrl": "",
+    "StandardErrorContent": "",
+    "StandardErrorUrl": "",
+    "CloudWatchOutputConfig": {
+        "CloudWatchLogGroupName": "",
+        "CloudWatchOutputEnabled": false
+    }
+}

@@ -72,33 +72,33 @@ class AHNJCrawler:
         all_docs = []
         scraper = self._get_scraper()
         visited = set()
+        # Two-level deep crawl from each seed: many AH archive trees nest
+        # /Archive/<Year>/<Month-Day>/<file>.pdf, so depth=1 misses most PDFs.
+        max_pages = 250
+
+        def _crawl(url: str, depth: int):
+            if url in visited or len(visited) >= max_pages:
+                return
+            visited.add(url)
+            soup = scraper.fetch_page(url)
+            if not soup:
+                return
+            docs = self.basic.find_document_links(soup, url)
+            if docs:
+                all_docs.extend(docs)
+                logger.info(f"  Found {len(docs)} documents on {url}")
+            if depth <= 0:
+                return
+            subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
+            # Cap fanout per page so we don't explode on side-nav menus
+            for subpage in subpages[:30]:
+                if len(visited) >= max_pages:
+                    break
+                _crawl(subpage, depth - 1)
 
         for page_path in self.config["pages_to_crawl"]:
             url = self.config["base_url"] + page_path
-            if url in visited:
-                continue
-            visited.add(url)
-
-            soup = scraper.fetch_page(url)
-            if not soup:
-                continue
-
-            docs = self.basic.find_document_links(soup, url)
-            all_docs.extend(docs)
-            if docs:
-                logger.info(f"  Found {len(docs)} documents on {page_path}")
-
-            subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
-            for subpage in subpages[:20]:
-                if subpage in visited:
-                    continue
-                visited.add(subpage)
-                sub_soup = scraper.fetch_page(subpage)
-                if sub_soup:
-                    sub_docs = self.basic.find_document_links(sub_soup, subpage)
-                    all_docs.extend(sub_docs)
-                    if sub_docs:
-                        logger.info(f"  Found {len(sub_docs)} documents on {subpage}")
+            _crawl(url, depth=2)
 
         self._cleanup()
         return _deduplicate_docs(all_docs)
@@ -339,6 +339,73 @@ class FireCrawler:
         pass
 
 
+class HighlandsBoroughCrawler:
+    """Crawler for highlandsnj.gov (HHRSD constituent town).
+    The borough WordPress site has a small number of direct PDFs plus a
+    Municode meetings portal that's handled separately."""
+
+    def __init__(self):
+        self.source_name = "highlands_borough"
+        self.config = SOURCES.get("highlands_borough", {})
+        self.basic = BasicScraper()
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        # Direct downloads — known stable URLs (court letters, regionalization decisions)
+        for url in self.config.get("direct_downloads", []):
+            all_docs.append({
+                "url": url,
+                "title": url.split("/")[-1],
+                "source_page": url,
+                "category": "highlands_borough",
+            })
+        for path in self.config.get("pages_to_crawl", []):
+            url = self.config["base_url"] + path if path.startswith("/") else path
+            try:
+                soup = self.basic.fetch_page(url)
+                if soup:
+                    docs = self.basic.find_document_links(soup, url)
+                    all_docs.extend(docs)
+                    if docs:
+                        logger.info(f"  Highlands Borough: found {len(docs)} documents on {url}")
+            except Exception as e:
+                logger.warning(f"Highlands Borough scrape failed for {url}: {e}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
+class HighlandsMeetingsCrawler:
+    """Crawler for highlands-nj.municodemeetings.com (Highlands Borough Council
+    meeting agendas + packets, hosted on Microsoft Azure blob storage)."""
+
+    def __init__(self):
+        self.source_name = "highlands_meetings"
+        self.config = SOURCES.get("highlands_meetings", {})
+        self.basic = BasicScraper()
+
+    def find_documents(self) -> list[dict]:
+        all_docs = []
+        for path in self.config.get("pages_to_crawl", []):
+            url = self.config["base_url"] + path if path.startswith("/") else path
+            try:
+                soup = self.basic.fetch_page(url)
+                if not soup:
+                    continue
+                # Municode meetings portal links to mccmeetings.blob.core.usgovcloudapi.net PDFs
+                docs = self.basic.find_document_links(soup, url)
+                all_docs.extend(docs)
+                if docs:
+                    logger.info(f"  Highlands Meetings portal: found {len(docs)} documents")
+            except Exception as e:
+                logger.warning(f"Highlands Meetings scrape failed for {url}: {e}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
 class CountyCrawler:
     """Crawler for Monmouth County records."""
 
@@ -476,14 +543,28 @@ class TriDistrictCrawler:
         scraper = self._get_scraper()
         visited = set()
 
-        seed_urls = [self.config["base_url"] + "/"]
+        # Seed with: main domain root + explicit pages_to_crawl + school_sites + school_pages
+        # The explicit pages_to_crawl entries (BOE 25-26, 24-25, archive, budget, etc.) are
+        # high-PDF-yield landing pages that must be hit even if depth-bounded discovery misses them.
+        seed_urls: list[str] = []
+        seed_urls.append(self.config["base_url"] + "/")
+        for path in self.config.get("pages_to_crawl", []):
+            if path.startswith("http"):
+                seed_urls.append(path)
+            elif path == "/":
+                continue
+            else:
+                seed_urls.append(self.config["base_url"] + path)
         for school_url in self.config.get("school_sites", []):
             seed_urls.append(school_url)
+        for sp in self.config.get("school_pages", []):
+            seed_urls.append(sp)
 
-        to_crawl = list(seed_urls)
+        # Direct fetch of every seed first (single-level), then expand discovered subpages.
+        to_crawl = list(dict.fromkeys(seed_urls))
         depth = 0
         max_depth = 2
-        max_pages = 80
+        max_pages = 200
 
         while to_crawl and depth <= max_depth and len(visited) < max_pages:
             next_round = []

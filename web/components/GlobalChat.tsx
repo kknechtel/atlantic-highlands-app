@@ -243,6 +243,29 @@ export default function GlobalChat() {
     }));
   };
 
+  /** Send an assistant message body to the active deck as a new narrative section. */
+  const handleSendMessageToDeck = async (msg: ChatMessage) => {
+    if (!activeDeck) return;
+    const body = (msg.content || "").trim();
+    if (!body) return;
+    // Pull a title from the first heading or first sentence.
+    const firstHeading = body.match(/^#{1,3}\s+(.+)$/m)?.[1];
+    const firstSentence = body.split(/[.\n]/)[0];
+    const title = (firstHeading || firstSentence || "From chat").trim().slice(0, 80);
+    const ok = await deckChat.applyProposal({
+      kind: "narrative",
+      title,
+      body,
+      rationale: "Sent from chat",
+    });
+    if (!ok) {
+      setMessages(prev => [...prev, {
+        id: `n_${Date.now()}`, role: "system", timestamp: new Date(),
+        content: "Couldn't add to deck — open a presentation first.",
+      }]);
+    }
+  };
+
   const handleDismissProposal = (messageId: string, idx: number) => {
     setMessages(prev => prev.map(m => {
       if (m.id !== messageId) return m;
@@ -649,6 +672,8 @@ export default function GlobalChat() {
               onDownload={handleDownloadMessage}
               onApplyProposal={activeDeck ? handleApplyProposal : undefined}
               onDismissProposal={activeDeck ? handleDismissProposal : undefined}
+              onSendMessageToDeck={activeDeck ? handleSendMessageToDeck : undefined}
+              activeDeckTitle={activeDeck?.title}
             />
           ))}
           <div ref={messagesEndRef} />

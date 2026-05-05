@@ -8,13 +8,27 @@ import mimetypes
 from datetime import datetime
 from typing import Optional
 
-from .crawlers import AHNJCrawler, ECode360Crawler, TriDistrictCrawler, NJStateCrawler, OPRACrawler, PoliceCrawler, FireCrawler, CountyCrawler, CensusCrawler
+from .crawlers import (
+    AHNJCrawler,
+    ECode360Crawler,
+    TriDistrictCrawler,
+    NJStateCrawler,
+    OPRACrawler,
+    PoliceCrawler,
+    FireCrawler,
+    CountyCrawler,
+    CensusCrawler,
+    HighlandsBoroughCrawler,
+    HighlandsMeetingsCrawler,
+)
 from .scraper import BasicScraper
 from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, detect_doc_type_from_name, detect_fiscal_year
 
 logger = logging.getLogger("ah_scraper")
 
-# Global state for tracking scraper progress
+# Global state for tracking scraper progress.
+# `per_site` is keyed by site_name and contains a sub-dict of the same metric set
+# so the UI can render a per-source progress strip ("ahnj.com: 312 found, 287 uploaded, 25 skipped").
 _scraper_status = {
     "running": False,
     "current_site": None,
@@ -24,11 +38,29 @@ _scraper_status = {
     "errors": [],
     "started_at": None,
     "completed_at": None,
+    "per_site": {},
+    "sites_planned": [],
+    "sites_completed": [],
 }
 
 
+def _empty_site_stats() -> dict:
+    return {
+        "status": "pending",   # pending | running | done | error
+        "documents_found": 0,
+        "documents_uploaded": 0,
+        "documents_skipped": 0,
+        "errors": 0,
+        "started_at": None,
+        "completed_at": None,
+    }
+
+
 def get_scraper_status() -> dict:
-    return dict(_scraper_status)
+    # Shallow copy + deep-copy per_site so callers can't mutate live state.
+    s = dict(_scraper_status)
+    s["per_site"] = {k: dict(v) for k, v in _scraper_status.get("per_site", {}).items()}
+    return s
 
 
 async def run_scraper(
@@ -55,6 +87,9 @@ async def run_scraper(
         "errors": [],
         "started_at": datetime.utcnow().isoformat(),
         "completed_at": None,
+        "per_site": {},
+        "sites_planned": [],
+        "sites_completed": [],
     }
 
     db = SessionLocal()
@@ -91,7 +126,11 @@ async def run_scraper(
         for (fn,) in existing_fn_docs:
             existing_filenames.add(fn.lower())
 
-        all_sites = sites or ["ahnj", "ecode", "tri", "nj_state", "opra", "police", "fire", "county", "census"]
+        all_sites = sites or [
+            "ahnj", "ecode", "tri", "nj_state", "opra",
+            "police", "fire", "county", "census",
+            "highlands_borough", "highlands_meetings",
+        ]
         all_uploaded = []
 
         # ── Crawl each site ───────────────────────────────────────
@@ -105,7 +144,18 @@ async def run_scraper(
             "fire": ("Fire/EMS Data", FireCrawler),
             "county": ("Monmouth County", CountyCrawler),
             "census": ("Census ACS Data", CensusCrawler),
+            "highlands_borough": ("highlandsnj.gov", HighlandsBoroughCrawler),
+            "highlands_meetings": ("highlands-nj.municodemeetings.com", HighlandsMeetingsCrawler),
         }
+
+        # Pre-populate the planned site list so the UI can render the full list
+        # of sites (and their pending status) before any of them start.
+        _scraper_status["sites_planned"] = [
+            crawlers[k][0] for k in all_sites if k in crawlers
+        ]
+        for sk in all_sites:
+            if sk in crawlers:
+                _scraper_status["per_site"][crawlers[sk][0]] = _empty_site_stats()
 
         for site_key in all_sites:
             if site_key not in crawlers:
@@ -113,16 +163,23 @@ async def run_scraper(
 
             site_name, CrawlerClass = crawlers[site_key]
             _scraper_status["current_site"] = site_name
+            site_stats = _scraper_status["per_site"][site_name]
+            site_stats["status"] = "running"
+            site_stats["started_at"] = datetime.utcnow().isoformat()
             logger.info(f"\n--- Crawling: {site_name} ---")
 
             try:
                 crawler = CrawlerClass()
                 docs = crawler.find_documents()
                 _scraper_status["documents_found"] += len(docs)
+                site_stats["documents_found"] = len(docs)
                 logger.info(f"  Found {len(docs)} documents on {site_name}")
 
                 if dry_run:
                     logger.info(f"  [DRY RUN] Would download {len(docs)} files")
+                    site_stats["status"] = "done"
+                    site_stats["completed_at"] = datetime.utcnow().isoformat()
+                    _scraper_status["sites_completed"].append(site_name)
                     continue
 
                 # Download and upload each document
@@ -140,6 +197,7 @@ async def run_scraper(
                         if (descriptive_name.lower() in existing_filenames
                                 or raw_filename.lower() in existing_filenames):
                             _scraper_status["documents_skipped"] += 1
+                            site_stats["documents_skipped"] += 1
                             continue
 
                         # Download file content
@@ -156,6 +214,7 @@ async def run_scraper(
 
                         if s3_key in existing_keys:
                             _scraper_status["documents_skipped"] += 1
+                            site_stats["documents_skipped"] += 1
                             continue
 
                         # Upload to S3
@@ -189,6 +248,7 @@ async def run_scraper(
                         existing_filenames.add(raw_filename.lower())
                         existing_keys.add(s3_key)
                         _scraper_status["documents_uploaded"] += 1
+                        site_stats["documents_uploaded"] += 1
                         all_uploaded.append({
                             "filename": descriptive_name,
                             "source": crawler.source_name,
@@ -201,14 +261,21 @@ async def run_scraper(
                         err = f"Error processing {doc_info.get('url', '?')}: {e}"
                         logger.error(err)
                         _scraper_status["errors"].append(err)
+                        site_stats["errors"] += 1
 
                 # Commit after each site
                 db.commit()
+                site_stats["status"] = "done"
+                site_stats["completed_at"] = datetime.utcnow().isoformat()
+                _scraper_status["sites_completed"].append(site_name)
 
             except Exception as e:
                 err = f"Error crawling {site_name}: {e}"
                 logger.error(err, exc_info=True)
                 _scraper_status["errors"].append(err)
+                site_stats["status"] = "error"
+                site_stats["errors"] += 1
+                site_stats["completed_at"] = datetime.utcnow().isoformat()
 
         _scraper_status["current_site"] = None
         _scraper_status["running"] = False

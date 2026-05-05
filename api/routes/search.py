@@ -185,14 +185,28 @@ _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 
 
 def _normalize_year(raw: Optional[str]) -> Optional[str]:
-    """Return a clean 'YYYY' or 'YYYY-YYYY' (school year), or None if no year found."""
+    """Return a clean 'YYYY' or 'YYYY-YY(YY)' school year, or None.
+
+    School-year ranges only validate when the second half is year+1 —
+    otherwise junk values like "2026-07" (extracted from a resolution
+    number, not an actual year span) end up in the dropdown.
+    """
     if not raw:
         return None
     s = str(raw).strip()
-    # School-year format like "2024-2025" or "2024-25" — keep as-is if both parts parse
-    m = re.match(r"^(19|20)\d{2}\s*[-–/]\s*(?:(19|20))?\d{2,4}$", s)
+    # YYYY-YYYY school year (4-digit second half)
+    m = re.match(r"^((?:19|20)\d{2})\s*[-–/]\s*((?:19|20)\d{2})$", s)
     if m:
-        return s
+        y1, y2 = int(m.group(1)), int(m.group(2))
+        if y2 == y1 + 1:
+            return f"{y1}-{y2}"
+    # YYYY-YY school year (2-digit second half)
+    m = re.match(r"^((?:19|20)\d{2})\s*[-–/]\s*(\d{2})$", s)
+    if m:
+        y1, suffix = int(m.group(1)), int(m.group(2))
+        if suffix == (y1 + 1) % 100:
+            return f"{y1}-{m.group(2)}"
+    # Fall back to the first 4-digit year we can find
     m = _YEAR_RE.search(s)
     if m:
         return m.group(0)

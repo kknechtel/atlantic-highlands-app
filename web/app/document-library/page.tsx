@@ -51,6 +51,23 @@ interface GroupNode {
   children: Map<string, GroupNode>;
 }
 
+/**
+ * Display fiscal_year defensively. The DB still has legacy junk like "2026-07"
+ * (a regex mis-match against a resolution number — see backfill endpoint).
+ * Until that data is cleaned, hide values that aren't a valid YYYY or
+ * YYYY-(YY|YYYY) school year ending in year+1.
+ */
+function displayFiscalYear(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (/^(19|20)\d{2}$/.test(s)) return s;
+  const m4 = s.match(/^((?:19|20)\d{2})-((?:19|20)\d{2})$/);
+  if (m4 && parseInt(m4[2], 10) === parseInt(m4[1], 10) + 1) return s;
+  const m2 = s.match(/^((?:19|20)\d{2})-(\d{2})$/);
+  if (m2 && parseInt(m2[2], 10) === (parseInt(m2[1], 10) + 1) % 100) return s;
+  return null;
+}
+
 export default function DocumentLibraryPage() {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
@@ -164,6 +181,8 @@ export default function DocumentLibraryPage() {
     [facets],
   );
 
+  const hasActiveFilters = !!(categoryFilter || docTypeFilter || yearFilter || deptFilter);
+
   // Build hierarchy: Entity (town/school/other) > Doc Type > Documents
   const hierarchy = useMemo(() => {
     const root = new Map<string, GroupNode>();
@@ -204,12 +223,12 @@ export default function DocumentLibraryPage() {
       entityNode.children.get(docType)!.docs.push(doc);
     }
 
-    // Sort docs within each group by fiscal year desc, then filename
+    // Sort docs within each group by (cleaned) fiscal year desc, then filename
     root.forEach((entityNode) => {
       entityNode.children.forEach((typeNode) => {
         typeNode.docs.sort((a, b) => {
-          const ya = a.fiscal_year || "";
-          const yb = b.fiscal_year || "";
+          const ya = displayFiscalYear(a.fiscal_year) || "";
+          const yb = displayFiscalYear(b.fiscal_year) || "";
           if (ya !== yb) return yb.localeCompare(ya);
           return a.filename.localeCompare(b.filename);
         });
@@ -270,33 +289,36 @@ export default function DocumentLibraryPage() {
       {/* Left: Document list (hidden on mobile when doc selected) */}
       <div className={`${selectedDoc ? "hidden md:flex w-[420px]" : "flex-1"} flex flex-col border-r border-gray-200 bg-white transition-all min-w-0`}>
         {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-lg font-semibold text-gray-900">Documents</h1>
-            <div className="flex items-center gap-1.5">
-              <button onClick={collapseAll}
-                className="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200" title="Collapse all">
-                Collapse
-              </button>
-              <button onClick={expandAll}
-                className="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600 rounded hover:bg-gray-200" title="Expand all">
-                Expand
-              </button>
-              <button onClick={() => setShowUpload(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:opacity-90 text-white text-xs font-medium shadow-sm" style={{ backgroundColor: brandColor }}>
-                <ArrowUpTrayIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Upload</span>
-              </button>
+        <div className="px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-lg font-semibold text-gray-900">Documents</h1>
+              <span className="text-xs text-gray-500">
+                {hasActiveFilters || isSearching
+                  ? `${displayDocs.length.toLocaleString()} of ${(documents?.length || 0).toLocaleString()}`
+                  : `${(documents?.length || 0).toLocaleString()}`}
+              </span>
             </div>
+            <button onClick={() => setShowUpload(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:opacity-90 text-white text-xs font-medium shadow-sm" style={{ backgroundColor: brandColor }}>
+              <ArrowUpTrayIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Upload</span>
+            </button>
           </div>
 
           {/* Search — supports "quoted phrases", AND, OR, -exclusion (Postgres websearch_to_tsquery) */}
-          <div className="relative mb-1">
+          <div className="relative mb-2">
             <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder='Search content — use "quotes" for exact phrase'
-              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent bg-white"
+              className="w-full pl-9 pr-8 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:border-transparent bg-white"
               style={{ "--tw-ring-color": brandColor } as React.CSSProperties} />
+            {search && (
+              <button onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            )}
           </div>
           {isSearching && (
             <div className="text-[10px] text-gray-400 mb-2 px-1">
@@ -304,35 +326,59 @@ export default function DocumentLibraryPage() {
             </div>
           )}
 
-          {/* Filters */}
-          <div className="grid grid-cols-2 md:grid-cols-2 gap-1.5 mb-1">
+          {/* Filters — compact one-row layout, more readable than 2x2 */}
+          <div className="grid grid-cols-2 gap-1.5">
             <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
-              <option value="">All Entities</option>
+              className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All entities</option>
               <option value="town">Town</option>
               <option value="school">School</option>
             </select>
             <select value={docTypeFilter} onChange={(e) => setDocTypeFilter(e.target.value)}
-              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
-              <option value="">All Types</option>
+              className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All types</option>
               {facets && Object.keys(facets.doc_types).sort().map((k) => (
-                <option key={k} value={k === "unclassified" ? "" : k}>{k}</option>
+                <option key={k} value={k === "unclassified" ? "" : k}>{k.replace(/_/g, " ")}</option>
               ))}
             </select>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
             <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}
-              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
-              <option value="">All Years</option>
-              {availableYears.map((y) => <option key={y} value={y}>FY {y}</option>)}
+              className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All years</option>
+              {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
             <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}
-              className="px-1.5 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
-              <option value="">All Departments</option>
+              className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
+              <option value="">All departments</option>
               {availableDepts.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
-          <div className="text-[11px] text-gray-400 mt-1">{displayDocs.length} documents</div>
+
+          {/* Active filter chips — quick visual + one-click clear */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {categoryFilter && (
+                <FilterChip label={categoryFilter === "town" ? "Town" : "School"} onClear={() => setCategoryFilter("")} />
+              )}
+              {docTypeFilter && (
+                <FilterChip label={docTypeFilter.replace(/_/g, " ")} onClear={() => setDocTypeFilter("")} />
+              )}
+              {yearFilter && <FilterChip label={`FY ${yearFilter}`} onClear={() => setYearFilter("")} />}
+              {deptFilter && <FilterChip label={deptFilter} onClear={() => setDeptFilter("")} />}
+              <button onClick={() => { setCategoryFilter(""); setDocTypeFilter(""); setYearFilter(""); setDeptFilter(""); }}
+                className="text-[10px] text-gray-500 hover:text-gray-800 underline ml-1">
+                Clear all
+              </button>
+            </div>
+          )}
+
+          {/* Tree controls (subtle, only when not searching) */}
+          {!isSearching && (
+            <div className="flex items-center justify-end gap-2 mt-2 text-[10px] text-gray-400">
+              <button onClick={collapseAll} className="hover:text-gray-700">Collapse all</button>
+              <span className="text-gray-300">·</span>
+              <button onClick={expandAll} className="hover:text-gray-700">Expand all</button>
+            </div>
+          )}
         </div>
 
         {/* Document hierarchy */}
@@ -458,9 +504,9 @@ export default function DocumentLibraryPage() {
                       {selectedDoc.category}
                     </span>
                   )}
-                  {selectedDoc.fiscal_year && (
+                  {displayFiscalYear(selectedDoc.fiscal_year) && (
                     <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
-                      <CalendarIcon className="w-3 h-3 inline mr-0.5" />FY {selectedDoc.fiscal_year}
+                      <CalendarIcon className="w-3 h-3 inline mr-0.5" />FY {displayFiscalYear(selectedDoc.fiscal_year)}
                     </span>
                   )}
                   <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
@@ -506,13 +552,13 @@ export default function DocumentLibraryPage() {
         </div>
       ) : (
         documents && documents.length > 0 && (
-          <div className="flex-1 flex items-center justify-center bg-gray-50">
-            <div className="text-center text-gray-400">
-              <DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-lg font-medium text-gray-500">Select a document</p>
-              <p className="text-sm">Click any document on the left to view details and AI summary</p>
-            </div>
-          </div>
+          <LibraryOverview
+            documents={documents}
+            facets={facets}
+            onPickYear={(y) => setYearFilter(y)}
+            onPickEntity={(c) => setCategoryFilter(c)}
+            onPickType={(t) => setDocTypeFilter(t)}
+          />
         )
       )}
 
@@ -589,7 +635,9 @@ function DocRow({ doc, isSelected, onClick, docTypeColor, indent, snippet, match
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
-            {doc.fiscal_year && <span className="text-[10px] text-gray-400">FY {doc.fiscal_year}</span>}
+            {displayFiscalYear(doc.fiscal_year) && (
+              <span className="text-[10px] text-gray-400">FY {displayFiscalYear(doc.fiscal_year)}</span>
+            )}
             {doc.department && <span className="text-[10px] text-gray-400">{doc.department}</span>}
           </div>
           {renderedSnippet && (
@@ -623,4 +671,158 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
+
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border border-gray-200 bg-gray-50 text-gray-700">
+      <span className="capitalize">{label}</span>
+      <button onClick={onClear} className="text-gray-400 hover:text-gray-700" aria-label={`Clear ${label}`}>
+        <XMarkIcon className="w-3 h-3" />
+      </button>
+    </span>
+  );
+}
+
+/**
+ * Empty-state replacement for the right pane. Shows a quick library overview
+ * (entity / year / type breakdowns) using the same cleaned-year logic as the
+ * filters, so users see the actual coverage of the corpus instead of a
+ * decorative "Select a document" placeholder. Each row is clickable —
+ * picking a year/entity/type just sets the corresponding filter on the left.
+ */
+function LibraryOverview({
+  documents,
+  facets,
+  onPickYear,
+  onPickEntity,
+  onPickType,
+}: {
+  documents: Document[];
+  facets: { fiscal_years: Record<string, number>; doc_types: Record<string, number>; categories: Record<string, number> } | undefined;
+  onPickYear: (y: string) => void;
+  onPickEntity: (c: string) => void;
+  onPickType: (t: string) => void;
+}) {
+  const total = documents.length;
+
+  // Year coverage from cleaned values — count docs with no clean year so the
+  // user can see how much data needs backfilling.
+  const yearStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    let missing = 0;
+    for (const d of documents) {
+      const y = displayFiscalYear(d.fiscal_year);
+      if (!y) missing++;
+      else counts[y] = (counts[y] || 0) + 1;
+    }
+    return {
+      missing,
+      sorted: Object.entries(counts).sort((a, b) => b[0].localeCompare(a[0])),
+    };
+  }, [documents]);
+
+  const entityCounts = useMemo(() => {
+    const counts: Record<string, number> = { town: 0, school: 0, general: 0 };
+    for (const d of documents) {
+      const k = d.category || "general";
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    return counts;
+  }, [documents]);
+
+  const topTypes = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of documents) {
+      const k = d.doc_type || "other";
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [documents]);
+
+  const max = (entries: [string, number][]) => entries.reduce((m, [, v]) => Math.max(m, v), 0);
+  const yearMax = max(yearStats.sorted);
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="max-w-3xl mx-auto px-6 py-8">
+        <div className="mb-6">
+          <h2 className="text-2xl font-semibold text-gray-900">Library overview</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {total.toLocaleString()} documents · click any row to filter the list on the left
+          </p>
+        </div>
+
+        {/* Entity breakdown */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">By entity</h3>
+          <div className="grid grid-cols-3 gap-3">
+            {(
+              [
+                ["town", "Borough", BuildingOfficeIcon],
+                ["school", "School District", AcademicCapIcon],
+                ["general", "Other", FolderIcon],
+              ] as const
+            ).map(([key, label, Icon]) => (
+              <button key={key} onClick={() => onPickEntity(key === "general" ? "" : key)}
+                className="flex items-start gap-3 p-3 rounded-md border border-gray-100 hover:border-gray-300 hover:bg-gray-50 text-left transition-colors">
+                <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: brandColor }} />
+                <div className="min-w-0">
+                  <div className="text-2xl font-semibold text-gray-900">{(entityCounts[key] || 0).toLocaleString()}</div>
+                  <div className="text-xs text-gray-500">{label}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Year coverage */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">By fiscal year</h3>
+            {yearStats.missing > 0 && (
+              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                {yearStats.missing.toLocaleString()} without a year
+              </span>
+            )}
+          </div>
+          {yearStats.sorted.length === 0 ? (
+            <div className="text-sm text-gray-400 italic">No years detected yet.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {yearStats.sorted.slice(0, 12).map(([year, count]) => {
+                const pct = yearMax ? (count / yearMax) * 100 : 0;
+                return (
+                  <button key={year} onClick={() => onPickYear(year)}
+                    className="w-full flex items-center gap-3 px-2 py-1 rounded hover:bg-gray-50 group">
+                    <span className="text-xs text-gray-700 w-20 text-left font-mono">FY {year}</span>
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: brandColor }} />
+                    </div>
+                    <span className="text-xs text-gray-500 w-12 text-right tabular-nums">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Top doc types */}
+        {topTypes.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Top document types</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {topTypes.map(([type, count]) => (
+                <button key={type} onClick={() => onPickType(type)}
+                  className="flex items-center justify-between px-3 py-2 rounded border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors">
+                  <span className="text-sm text-gray-700 capitalize">{type.replace(/_/g, " ")}</span>
+                  <span className="text-xs text-gray-500 tabular-nums">{count.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

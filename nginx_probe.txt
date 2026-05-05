@@ -1,0 +1,60 @@
+﻿total 8
+drwxr-xr-x 2 root root 4096 May  5 04:21 .
+drwxr-xr-x 8 root root 4096 May  5 04:12 ..
+lrwxrwxrwx 1 root root   29 May  5 04:21 ah -> /etc/nginx/sites-available/ah
+---,
+total 16
+drwxr-xr-x 2 root root 4096 Apr 30 21:03 .
+drwxr-xr-x 8 root root 4096 May  5 04:12 ..
+-rw-r--r-- 1 root root 1540 May  5 04:21 ah
+-rw-r--r-- 1 root root 2412 May 30  2023 default
+---,
+# api.ahnj.info — direct HTTPS endpoint for chat streaming (bypasses Amplify
+# 30-second SSR timeout). Browser uses this for /api/chat/stream specifically.
+server {
+    listen 443 ssl;
+    server_name api.ahnj.info;
+
+    client_max_body_size 100M;
+
+    ssl_certificate /etc/letsencrypt/live/api.ahnj.info/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.ahnj.info/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_buffering off;            # SSE-friendly
+        proxy_http_version 1.1;
+    }
+}
+
+# Catchall HTTP server for everything else, including Amplify CloudFront's
+# /api/* forwarding (which sends Host: ahnj.info) and the api.ahnj.info
+# HTTPS redirect.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    client_max_body_size 100M;
+
+    # api.ahnj.info → always HTTPS
+    if ($host = "api.ahnj.info") {
+        return 301 https://$host$request_uri;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+        proxy_http_version 1.1;
+    }
+}
+

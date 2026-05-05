@@ -40,15 +40,16 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                     breaks: true,
                 });
 
-                // Process [source: filename] citations AFTER markdown rendering
-                // Split comma-separated filenames into individual buttons
+                // Process [source: filename] citations AFTER markdown rendering.
+                // Split on commas, pipes, semicolons — Claude varies the separator
+                // when listing multiple sources in one tag.
                 let final = (typeof rendered === 'string' ? rendered : String(rendered));
                 final = final.replace(
                     /\[source:\s*([^\]]+)\]/g,
                     (_match, filenames) => {
                         const buttonStyle = `display:inline-flex;align-items:center;gap:3px;background:${brandColor}12;color:${brandColor};border:1px solid ${brandColor}30;padding:2px 8px;border-radius:5px;font-size:0.7rem;cursor:pointer;font-weight:500;margin:0 2px`;
                         return String(filenames)
-                            .split(/\s*,\s*/)
+                            .split(/\s*[,|;]\s*|\s+\|\s+/)
                             .map((fn: string) => fn.trim())
                             .filter((fn: string) => fn.length > 0)
                             .map((fn: string) => {
@@ -90,10 +91,11 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
 
         (async () => {
             try {
-                const { Chart, CategoryScale, LinearScale, BarElement, LineElement, PointElement,
-                        ArcElement, Title, Tooltip, Legend, Filler } = await import('chart.js');
-                Chart.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement,
-                              ArcElement, Title, Tooltip, Legend, Filler);
+                // Chart.js v4 splits controllers (BarController, LineController, PieController)
+                // from elements (BarElement, ArcElement). `registerables` is the bundle of
+                // everything — registering only elements gives "X is not a registered controller".
+                const { Chart, registerables } = await import('chart.js');
+                Chart.register(...registerables);
 
                 chartDivs.forEach((div) => {
                     const canvas = div.querySelector('canvas') as HTMLCanvasElement;

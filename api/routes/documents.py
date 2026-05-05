@@ -548,7 +548,12 @@ def _detect_doc_type(filename: str, rel_path: str) -> str:
         return "minutes"
     if "budget" in lower:
         return "budget"
-    if "audit" in lower or "amr" in lower:
+    # AMR = Auditor's Management Report — only the Excess Surplus worksheet,
+    # not a full audit. Tag separately so the financial dashboard distinguishes.
+    import re as _re
+    if _re.search(r'\bamr\b', lower) or "auditor's management" in lower or "auditors management" in lower:
+        return "audit_management_report"
+    if "audit" in lower:
         return "audit"
     if "financial" in lower or "fs" in lower or "cafr" in lower or "comprehensive" in lower:
         return "financial_statement"
@@ -566,14 +571,69 @@ def _detect_doc_type(filename: str, rel_path: str) -> str:
 
 
 def _detect_fiscal_year(filename: str) -> str | None:
+    """Pull a fiscal year from a filename.
+
+    Accepts YYYY, YYYY-YYYY, or YYYY-YY. School-year ranges are only valid
+    when the second half is year+1 — otherwise filenames like
+    "2026-071 Payment of Bills" get mis-tagged as "2026-07".
+    """
     import re
-    m = re.search(r'(20\d{2})[-/](20\d{2}|\d{2})', filename)
-    if m:
-        return m.group(0)
-    m = re.search(r'(20\d{2})', filename)
+    for m in re.finditer(r'(20\d{2})[-/](20\d{2})', filename):
+        y1, y2 = int(m.group(1)), int(m.group(2))
+        if y2 == y1 + 1:
+            return f"{y1}-{y2}"
+    for m in re.finditer(r'(20\d{2})[-/](\d{2})(?!\d)', filename):
+        y1, suffix = int(m.group(1)), int(m.group(2))
+        if suffix == (y1 + 1) % 100:
+            return f"{y1}-{m.group(2)}"
+    m = re.search(r'(?<!\d)(20\d{2})(?!\d)', filename)
     if m:
         return m.group(1)
     return None
+
+
+def _looks_like_clean_year(value: str | None) -> bool:
+    """Return True if a stored fiscal_year value is already in a clean form."""
+    if not value:
+        return False
+    import re
+    if re.fullmatch(r"(19|20)\d{2}", value):
+        return True
+    m = re.fullmatch(r"((?:19|20)\d{2})-(\d{2,4})", value)
+    if not m:
+        return False
+    y1, suf = int(m.group(1)), m.group(2)
+    return (len(suf) == 4 and int(suf) == y1 + 1) or (len(suf) == 2 and int(suf) == (y1 + 1) % 100)
+
+
+def filename_year_backfill(db: Session) -> dict:
+    """Filename-only pass: clean junk fiscal_year values and fill missing ones.
+
+    Idempotent and cheap — safe to run on every startup. Touches only rows
+    whose stored value isn't already clean. AI inference for docs that the
+    filename regex can't help with happens automatically as part of normal
+    document processing (services.document_processor.process_document calls
+    analyze_document, which sets fiscal_year when missing).
+    """
+    cleaned = 0
+    filled = 0
+    for doc in db.query(Document).all():
+        if _looks_like_clean_year(doc.fiscal_year):
+            continue
+        new_year = _detect_fiscal_year(doc.filename)
+        if new_year:
+            if doc.fiscal_year is None:
+                filled += 1
+            else:
+                cleaned += 1
+            doc.fiscal_year = new_year
+        elif doc.fiscal_year:
+            # Junk value with no recoverable year from the filename — clear it.
+            doc.fiscal_year = None
+            cleaned += 1
+    if cleaned or filled:
+        db.commit()
+    return {"cleaned": cleaned, "filled": filled}
 
 
 @router.get("/{document_id}/view-url")

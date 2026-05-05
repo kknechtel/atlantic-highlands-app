@@ -106,7 +106,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const resp = await fetch(fileUrl, noAuth ? undefined : { headers: getAuthToken() });
+        // Cross-origin URLs (presigned S3) carry their own auth in the query
+        // string. Sending Authorization on top of that makes S3 return 400
+        // ("Only one auth mechanism allowed"), so strip our header in that case.
+        const isCrossOrigin = (() => {
+          try {
+            return new URL(fileUrl, window.location.href).origin !== window.location.origin;
+          } catch { return false; }
+        })();
+        const skipAuth = noAuth || isCrossOrigin;
+        const resp = await fetch(fileUrl, skipAuth ? undefined : { headers: getAuthToken() });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
         const arr = new Uint8Array(await resp.arrayBuffer());
         if (cancelled) return;

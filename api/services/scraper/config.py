@@ -15,26 +15,33 @@ SOURCES = {
             "/ahnj/Government/Borough%20Ordinances/",
             "/ahnj/Government/Government%20Records/",
             "/ahnj/Government/Government%20Records/Most%20Referenced%20Ordinances/",
-            # "/ahnj/Administration/Council%20Recordings/",  # All audio files, skip
             # Meetings & Agendas (current + archives)
+            # Note: /ahnj/Agendas/Archives/ only contains 2005-2013 historical;
+            # current/recent meeting docs live under Planning Board archive trees.
             "/ahnj/Meetings%20and%20Agendas/",
             "/ahnj/Agendas/",
             "/ahnj/Agendas/Archives/",
-            "/ahnj/Agendas/Archives/2015/",
-            "/ahnj/Agendas/Archives/2016/",
-            "/ahnj/Agendas/Archives/2017/",
-            "/ahnj/Agendas/Archives/2018/",
-            "/ahnj/Agendas/Archives/2019/",
-            "/ahnj/Agendas/Archives/2020/",
-            "/ahnj/Agendas/Archives/2021/",
-            "/ahnj/Agendas/Archives/2022/",
-            "/ahnj/Agendas/Archives/2023/",
-            "/ahnj/Agendas/Archives/2024/",
-            "/ahnj/Agendas/Archives/2025/",
-            # Planning Board (key gap!)
+            "/ahnj/Agendas/Archives/2005/",
+            "/ahnj/Agendas/Archives/2006/",
+            "/ahnj/Agendas/Archives/2007/",
+            "/ahnj/Agendas/Archives/2008/",
+            "/ahnj/Agendas/Archives/2009/",
+            "/ahnj/Agendas/Archives/2010/",
+            "/ahnj/Agendas/Archives/2011/",
+            "/ahnj/Agendas/Archives/2012/",
+            "/ahnj/Agendas/Archives/2013/",
+            # Planning Board archive (current site path uses long folder name)
             "/ahnj/Departments/Planning%20Board/",
-            "/ahnj/Departments/Planning%20Board/Agendas,%20Minutes%20and%20Resolutions/",
-            "/ahnj/Departments/Planning%20Board/Planning%20Board%20Agendas%20and%20Minutes/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2022/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2023/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2024/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2025/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2026/",
+            "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/",
+            "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2024/",
+            "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2025/",
+            "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2026/",
             "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/Archives/",
             # Departments
             "/ahnj/Departments",
@@ -82,18 +89,54 @@ SOURCES = {
         "description": "Henry Hudson Regional School District (Tri-District)",
         "pages_to_crawl": [
             "/",
-            # BOE Minutes & Agendas (current)
-            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593279",
-            # BOE Minutes & Agendas (archives)
-            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593280",
-            # Board of Education main
-            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2432532",
+            # BOE Agendas & Minutes — by school year
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2675269",  # 2025-2026
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593279",  # 2024-2025
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593280",  # Archive
+            # Board of Education main + supporting pages
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2432532",  # BOE main
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593229",  # Meeting Information
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593225",  # Board Members
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593533",  # Board Committees
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593278",  # Board Policies
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2580048",  # School Budget Information
+            # District-wide
+            "/apps/pages/index.jsp?uREC_ID=3733525&type=d&pREC_ID=2432536",  # Strategic Planning Documents
+            "/apps/pages/index.jsp?uREC_ID=3733531&type=d&pREC_ID=2432534",  # Curriculum & Instruction
+            "/apps/pages/index.jsp?uREC_ID=3733531&type=d",                  # Curriculum dept root
         ],
         "school_sites": [
             "https://ahes.tridistrict.org",
             "https://hes.tridistrict.org",
             "https://hhrs.tridistrict.org",
         ],
+        # Per-school deep-link landing pages (Performance Reports, etc.)
+        "school_pages": [
+            # Henry Hudson Regional (the operating consolidated district as of 7/1/2024)
+            "https://hhrs.tridistrict.org/apps/pages/index.jsp?uREC_ID=3758135&type=d&pREC_ID=2439311",  # Performance Report
+            # Atlantic Highlands Elementary (predecessor, AHSD/0130)
+            "https://ahes.tridistrict.org/apps/pages/index.jsp?uREC_ID=3733534&type=d&pREC_ID=2432548",  # Performance Report
+            # Highlands Elementary (predecessor, HSD)
+            "https://hes.tridistrict.org/apps/pages/index.jsp?uREC_ID=3763022&type=d&pREC_ID=2440904",   # Performance Report
+        ],
+    },
+    "highlands_borough": {
+        "base_url": "https://highlandsnj.gov",
+        "description": "Borough of Highlands NJ (HHRSD constituent town)",
+        "pages_to_crawl": [
+            "/",
+            "/regionalization-survey/",
+            "/category/council-agendas/",
+        ],
+        "direct_downloads": [
+            "https://highlandsnj.gov/wp-content/uploads/2024/12/Public-Letter-on-Regionalization.pdf",
+            "https://highlandsnj.gov/wp-content/uploads/2025/06/Decision-on-Sea-Bright-Amended-Petition-June-2025-2.pdf",
+        ],
+    },
+    "highlands_meetings": {
+        "base_url": "https://highlands-nj.municodemeetings.com",
+        "description": "Highlands Borough Council — Municode meeting portal (agendas/packets)",
+        "pages_to_crawl": ["/"],
     },
     "opra": {
         "base_url": "https://opramachine.com",
@@ -164,29 +207,17 @@ SOURCES = {
         "base_url": "https://www.nj.gov",
         "description": "NJ State Data Sources (ACFR, DLGS, Court Opinions)",
         "direct_downloads": [
-            # School ACFR reports (Atlantic Highlands SD = 0130, Henry Hudson Regional = 2120)
-            # Years 15-24
-            "https://www.nj.gov/education/finance/fp/acfr/search/15/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/16/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/17/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/18/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/19/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/20/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/21/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/22/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/23/0130.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/24/0130.pdf",
-            # Henry Hudson Regional
-            "https://www.nj.gov/education/finance/fp/acfr/search/15/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/16/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/17/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/18/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/19/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/20/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/21/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/22/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/23/2120.pdf",
-            "https://www.nj.gov/education/finance/fp/acfr/search/24/2120.pdf",
+            # ── NJ DOE School ACFR reports — verified years 18-24 only.
+            # 0130 = Atlantic Highlands SD (HHRSD predecessor)
+            # 2120 = Henry Hudson Regional SD (HHRSD predecessor)
+            # 2160 = Highlands SD (HHRSD third predecessor)
+            # Years 15-17 return 404 — removed.
+            *[f"https://www.nj.gov/education/finance/fp/acfr/search/{y}/0130.pdf" for y in (18, 19, 20, 21, 22, 23, 24)],
+            *[f"https://www.nj.gov/education/finance/fp/acfr/search/{y}/2120.pdf" for y in (18, 19, 20, 21, 22, 23, 24)],
+            *[f"https://www.nj.gov/education/finance/fp/acfr/search/{y}/2160.pdf" for y in (18, 19, 20, 21, 22, 23, 24)],
+            # ── NJ DCA Division of Local Government Services
+            # User-Friendly Budget Database (single .xlsm, all NJ municipalities incl. Atlantic Highlands)
+            "https://www.nj.gov/dca/dlgs/programs/mc_budget_docs/UFB%20Database%20-%20FINAL.xlsm",
             # Sea Bright litigation court opinions
             "https://www.njcourts.gov/system/files/court-opinions/2024/a0716-23.pdf",
             "https://www.njcourts.gov/system/files/court-opinions/2025/a_68_24.pdf",

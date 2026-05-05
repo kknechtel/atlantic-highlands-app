@@ -11,6 +11,7 @@ import {
     ArrowDownTrayIcon,
     LightBulbIcon,
     WrenchScrewdriverIcon,
+    PlusIcon,
 } from '@heroicons/react/24/outline';
 import EnhancedMarkdownRenderer from './EnhancedMarkdownRenderer';
 import TypingIndicator from './TypingIndicator';
@@ -88,6 +89,10 @@ interface EnhancedMessageComponentProps {
     onApplyProposal?: (messageId: string, proposalIndex: number) => void;
     /** Called when the user clicks Dismiss on a proposal. */
     onDismissProposal?: (messageId: string, proposalIndex: number) => void;
+    /** When in deck-mode, called when the user clicks "Send to deck" on a finished message. */
+    onSendMessageToDeck?: (message: ChatMessage) => void;
+    /** Title of the active deck, used to label the Send-to-Deck button. */
+    activeDeckTitle?: string;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -296,6 +301,8 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     onDownload,
     onApplyProposal,
     onDismissProposal,
+    onSendMessageToDeck,
+    activeDeckTitle,
 }) => {
     const [copied, setCopied] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
@@ -438,6 +445,20 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                                     <ArrowDownTrayIcon className="w-3 h-3 text-gray-400" />
                                 </button>
                             )}
+                        </div>
+                    )}
+
+                    {!isUser && !message.isStreaming && message.content && onSendMessageToDeck && (
+                        <div className="mt-2">
+                            <button
+                                onClick={() => onSendMessageToDeck(message)}
+                                className="text-[11px] px-2.5 py-1 rounded-full border hover:opacity-90 inline-flex items-center gap-1.5"
+                                style={{ borderColor: `${brandColor}50`, color: brandColor, backgroundColor: `${brandColor}08` }}
+                                title={activeDeckTitle ? `Add this answer as a new section in ${activeDeckTitle}` : 'Add to active deck'}
+                            >
+                                <PlusIcon className="w-3 h-3" />
+                                Send to deck{activeDeckTitle ? ` (${activeDeckTitle})` : ''}
+                            </button>
                         </div>
                     )}
 

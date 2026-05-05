@@ -4,6 +4,13 @@
 
 const API_BASE = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "");
 
+// Direct EC2 endpoint for slow LLM-backed calls (from-chat structuring,
+// ai-edit, etc.). Bypasses Amplify SSR's hard 30s response timeout.
+const API_DIRECT =
+  process.env.NEXT_PUBLIC_API_DIRECT_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "";
+
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const token = localStorage.getItem("ah_token");
@@ -16,6 +23,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+/** Same as `request`, but hits the direct EC2 endpoint to escape Amplify's 30s SSR timeout. */
+async function requestDirect<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+  Object.assign(headers, authHeaders());
+  if (!(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
+
+  const base = API_DIRECT || API_BASE;
+  const res = await fetch(`${base}${path}`, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || `Request failed: ${res.status}`);
@@ -86,12 +108,14 @@ export const createPresentation = (title: string) =>
   request<Presentation>("/api/presentations", { method: "POST", body: JSON.stringify({ title }) });
 
 /** Build a new presentation from a chat transcript (assistant structures it
- *  into 4-8 sections, preserving citations). */
+ *  into 4-8 sections, preserving citations). Routed through API_DIRECT
+ *  because the Claude structuring call easily exceeds Amplify's 30s SSR
+ *  timeout. */
 export const createPresentationFromChat = (
   messages: { role: string; content: string }[],
   title_hint?: string,
 ) =>
-  request<Presentation>("/api/presentations/from-chat", {
+  requestDirect<Presentation>("/api/presentations/from-chat", {
     method: "POST",
     body: JSON.stringify({ messages, title_hint }),
   });

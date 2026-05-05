@@ -99,13 +99,33 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                 const { Chart, registerables } = await import('chart.js');
                 Chart.register(...registerables);
 
+                const showFallback = (div: Element, msg: string) => {
+                    // Replace the empty chart container with a small inline notice so
+                    // the user sees "(chart unavailable)" instead of 320px of blank space.
+                    const note = document.createElement('div');
+                    note.className = 'text-xs text-gray-400 italic py-2 px-3 border border-gray-200 rounded bg-gray-50';
+                    note.textContent = `Chart unavailable: ${msg}`;
+                    note.style.height = 'auto';
+                    div.replaceWith(note);
+                };
+
                 chartDivs.forEach((div) => {
                     const canvas = div.querySelector('canvas') as HTMLCanvasElement;
                     const configStr = div.getAttribute('data-chart');
-                    if (!canvas || !configStr) return;
+                    if (!canvas || !configStr) {
+                        showFallback(div, 'no canvas/config');
+                        return;
+                    }
 
                     try {
                         const config = JSON.parse(configStr.replace(/&apos;/g, "'"));
+                        const datasets = config?.data?.datasets;
+                        const labels = config?.data?.labels;
+                        if (!Array.isArray(datasets) || datasets.length === 0
+                            || !Array.isArray(labels) || labels.length === 0) {
+                            showFallback(div, 'empty dataset');
+                            return;
+                        }
                         const chart = new Chart(canvas, {
                             type: config.type || 'bar',
                             data: config.data,
@@ -122,6 +142,8 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                         cleanup.push(() => chart.destroy());
                     } catch (e) {
                         console.warn('Failed to render chart:', e);
+                        const msg = e instanceof Error ? e.message : 'render error';
+                        showFallback(div, msg.slice(0, 80));
                     }
                 });
             } catch (e) {

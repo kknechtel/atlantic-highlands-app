@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { searchDocuments, getDocumentViewUrl, getChatSessions, getChatHistory, type Document } from "@/lib/api";
+import { searchDocuments, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, type Document } from "@/lib/api";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
 import { createPresentationFromChat } from "@/lib/presentationsApi";
@@ -11,9 +11,9 @@ import {
   XMarkIcon, PaperAirplaneIcon, SparklesIcon,
   MinusIcon, DocumentTextIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
   MagnifyingGlassIcon, LinkIcon, GlobeAltIcon,
-  ArrowDownTrayIcon, ClockIcon, ArrowPathIcon,
+  ArrowDownTrayIcon, ArrowUpTrayIcon, ClockIcon, ArrowPathIcon,
   LightBulbIcon, DocumentChartBarIcon, CpuChipIcon, PlusIcon,
-  ClipboardDocumentIcon, CheckIcon,
+  ClipboardDocumentIcon, CheckIcon, PaperClipIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -150,6 +150,12 @@ export default function GlobalChat() {
   const [showDocPicker, setShowDocPicker] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [docSearch, setDocSearch] = useState("");
+  // Upload-from-chat state. While `uploading` is set, the chat shows a
+  // "Uploading filename…" pill in place of the normal selectedDoc pill so
+  // the user can see progress without losing the input.
+  const [uploading, setUploading] = useState<{ filename: string; size: number } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: docResults } = useQuery({
@@ -379,6 +385,53 @@ export default function GlobalChat() {
       const p = typeof patch === "function" ? patch(m) : patch;
       return { ...m, ...p };
     }));
+  };
+
+  /** Open the system file picker. The actual upload runs in handleFileChosen. */
+  const handlePickFileToUpload = () => {
+    if (uploading || isStreaming) return;
+    setUploadError(null);
+    fileInputRef.current?.click();
+  };
+
+  /** Upload a file from the user's disk and attach it to the next chat
+   *  message. Uses the existing presigned-URL flow (lib/api.uploadDocument)
+   *  which goes browser → S3 directly, so it isn't subject to Amplify's 30s
+   *  proxy timeout for big PDFs. After success the doc behaves identically
+   *  to one picked from the existing library — the chat sends document_id. */
+  const handleFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input value so the same file can be re-picked after a clear.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!file) return;
+
+    // Cap at 100MB — anything larger probably belongs in the document library
+    // upload flow (with category metadata) rather than ad-hoc chat upload.
+    const MAX_BYTES = 100 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      setUploadError(`File too large (${Math.round(file.size / 1024 / 1024)} MB). Max 100 MB — use the Documents page for larger files.`);
+      return;
+    }
+
+    setUploading({ filename: file.name, size: file.size });
+    setUploadError(null);
+    try {
+      // "default" project mirrors what the document-library upload modal uses.
+      const doc = await uploadDocument(file, "default", { category: "chat-upload" });
+      setSelectedDoc({ id: doc.id, filename: doc.filename } as Document);
+      setShowDocPicker(false);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : String(err);
+      // 409 = duplicate. We don't have the existing doc's id in that response,
+      // so surface a clear message and let the user pick the existing one.
+      if (/409|duplicate/i.test(detail)) {
+        setUploadError(`"${file.name}" is already in the library — use "Scope docs" to attach the existing copy.`);
+      } else {
+        setUploadError(`Upload failed: ${detail}`);
+      }
+    } finally {
+      setUploading(null);
+    }
   };
 
   const handleSend = async () => {
@@ -768,13 +821,40 @@ export default function GlobalChat() {
           </div>
         )}
 
-        {selectedDoc && (
+        {/* Hidden file input — wired to the upload buttons below. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.tif,.tiff"
+          className="hidden"
+          onChange={handleFileChosen}
+        />
+
+        {/* Status pill: uploading-in-progress, upload error, or selectedDoc.
+            Only one of these shows at a time. */}
+        {uploading ? (
+          <div className="px-3 py-1.5 border-b border-gray-200 flex items-center gap-2 text-xs flex-shrink-0" style={{ backgroundColor: `${brandColor}10` }}>
+            <div
+              className="w-3 h-3 border-2 rounded-full animate-spin flex-shrink-0"
+              style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }}
+            />
+            <span className="truncate flex-1" style={{ color: brandColor }}>
+              Uploading {uploading.filename} ({Math.round(uploading.size / 1024)} KB)…
+            </span>
+          </div>
+        ) : uploadError ? (
+          <div className="px-3 py-1.5 border-b border-red-200 flex items-center gap-2 text-xs flex-shrink-0 bg-red-50">
+            <XMarkIcon className="w-3 h-3 text-red-500 flex-shrink-0" />
+            <span className="truncate flex-1 text-red-700">{uploadError}</span>
+            <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-600"><XMarkIcon className="w-3 h-3" /></button>
+          </div>
+        ) : selectedDoc ? (
           <div className="px-3 py-1.5 border-b border-gray-200 flex items-center gap-2 text-xs flex-shrink-0" style={{ backgroundColor: `${brandColor}10` }}>
             <LinkIcon className="w-3 h-3" style={{ color: brandColor }} />
             <span className="truncate flex-1" style={{ color: brandColor }}>{selectedDoc.filename}</span>
             <button onClick={() => setSelectedDoc(null)} className="text-gray-400 hover:text-gray-600"><XMarkIcon className="w-3 h-3" /></button>
           </div>
-        )}
+        ) : null}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
@@ -797,10 +877,23 @@ export default function GlobalChat() {
         </div>
 
         {showDocPicker && (
-          <div className="border-t border-gray-200 bg-white px-3 py-2 max-h-48 overflow-y-auto flex-shrink-0">
+          <div className="border-t border-gray-200 bg-white px-3 py-2 max-h-56 overflow-y-auto flex-shrink-0">
+            {/* Upload a new file from disk — sits at the top so it's the
+                first option a user sees when they want to attach something
+                that isn't already in the library. */}
+            <button
+              onClick={handlePickFileToUpload}
+              disabled={!!uploading || isStreaming}
+              className="flex items-center gap-2 w-full px-2 py-2 mb-2 text-xs rounded border border-dashed border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              style={{ color: brandColor }}
+            >
+              <ArrowUpTrayIcon className="w-3.5 h-3.5" />
+              <span className="flex-1 text-left">Upload a new file from your device</span>
+              <span className="text-[10px] text-gray-400">PDF, DOCX, XLSX, images, …</span>
+            </button>
             <div className="relative mb-2">
               <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="Search docs by content..." className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-300 rounded-lg" autoFocus />
+              <input type="text" value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="…or search the existing library" className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-300 rounded-lg" autoFocus />
             </div>
             {docResults?.slice(0, 6).map((sr: any) => (
               <button key={sr.id} onClick={() => { setSelectedDoc({ id: sr.id, filename: sr.filename } as Document); setShowDocPicker(false); setDocSearch(""); }}
@@ -822,9 +915,28 @@ export default function GlobalChat() {
                   ? "border-gray-400 text-gray-700 bg-gray-100"
                   : "border-gray-300 text-gray-400 hover:text-gray-600"
               }`}
-              title="Attach document"
+              title="Attach a document (search library or upload)"
             >
-              <DocumentTextIcon className="w-4 h-4" />
+              <PaperClipIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handlePickFileToUpload}
+              disabled={!!uploading || isStreaming}
+              className={`p-2 rounded-lg border transition-colors ${
+                uploading
+                  ? "border-gray-400 text-gray-700 bg-gray-100"
+                  : "border-gray-300 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+              }`}
+              title="Upload a file from your device"
+            >
+              {uploading ? (
+                <div
+                  className="w-4 h-4 border-2 rounded-full animate-spin"
+                  style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }}
+                />
+              ) : (
+                <ArrowUpTrayIcon className="w-4 h-4" />
+              )}
             </button>
             <input
               type="text"

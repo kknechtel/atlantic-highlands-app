@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { getAuthToken } from '@/lib/api';
 import {
@@ -13,6 +13,7 @@ import {
   FileText,
   ExternalLink,
   Loader2,
+  Search,
 } from 'lucide-react';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -30,22 +31,65 @@ interface PDFViewerProps {
   embedded?: boolean;
   /** Skip the Authorization header — for public/signed S3 URLs. */
   noAuth?: boolean;
+  /** Highlight every occurrence of this term in the rendered text layer. The
+   *  viewer also auto-jumps to the first page that contains the term. */
+  highlightTerm?: string;
 }
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpen, initialPage, embedded, noAuth }) => {
+/** Escape regex special chars so a user-typed term is treated literally. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Build a single regex that matches any of the terms (case-insensitive). */
+function buildHighlightRegex(term: string): RegExp | null {
+  const cleaned = term.replace(/"/g, '').trim();
+  if (!cleaned) return null;
+  // Split on whitespace, drop very short tokens, escape each.
+  const parts = cleaned.split(/\s+/).filter(p => p.length >= 2).map(escapeRegExp);
+  if (!parts.length) return null;
+  return new RegExp(`(${parts.join('|')})`, 'gi');
+}
+
+const PDFViewer: React.FC<PDFViewerProps> = ({
+  fileUrl, filename, onClose, isOpen, initialPage, embedded, noAuth, highlightTerm,
+}) => {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(initialPage && initialPage > 0 ? initialPage : 1);
   const [scale, setScale] = useState<number>(1.0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [matchPages, setMatchPages] = useState<number[]>([]);   // pages that contain the term
+  const [matchIndex, setMatchIndex] = useState<number>(0);      // which match we're currently on
   const modalRef = useRef<HTMLDivElement>(null);
+  const pdfDocRef = useRef<any>(null);
 
   const pdfOptions = useMemo(() => ({
     cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
     standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
   }), []);
 
+  const highlightRegex = useMemo(
+    () => (highlightTerm ? buildHighlightRegex(highlightTerm) : null),
+    [highlightTerm],
+  );
+
+  /**
+   * Custom text renderer wraps every match in a <mark> element so the term
+   * stands out inside the rendered text layer.
+   */
+  const customTextRenderer = useCallback(
+    ({ str }: { str: string }) => {
+      if (!highlightRegex) return str;
+      // Reset lastIndex on each call (the regex is `g`).
+      highlightRegex.lastIndex = 0;
+      return str.replace(highlightRegex, '<mark class="ah-pdf-mark">$1</mark>');
+    },
+    [highlightRegex],
+  );
+
+  // Load PDF bytes
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
@@ -56,6 +100,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpe
     });
     setPageNumber(initialPage && initialPage > 0 ? initialPage : 1);
     setNumPages(null);
+    setMatchPages([]);
+    setMatchIndex(0);
 
     let cancelled = false;
     (async () => {
@@ -87,6 +133,35 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpe
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
+  /** Once the document is open AND we have a highlight term, scan every page's
+   *  text content to build a list of matching page numbers, then jump to the
+   *  first match. Capped at 200 pages so a 500-page CAFR doesn't lock the UI. */
+  const scanForMatches = useCallback(
+    async (pdf: any, totalPages: number) => {
+      if (!highlightRegex) return;
+      const matches: number[] = [];
+      const cap = Math.min(totalPages, 200);
+      for (let i = 1; i <= cap; i++) {
+        try {
+          const page = await pdf.getPage(i);
+          const tc = await page.getTextContent();
+          const text = tc.items.map((it: any) => ('str' in it ? it.str : '')).join(' ');
+          highlightRegex.lastIndex = 0;
+          if (highlightRegex.test(text)) matches.push(i);
+        } catch {
+          // ignore page-level errors and keep scanning
+        }
+      }
+      setMatchPages(matches);
+      if (matches.length > 0) {
+        setMatchIndex(0);
+        // Only auto-jump if caller didn't pin a specific initial page
+        if (!initialPage) setPageNumber(matches[0]);
+      }
+    },
+    [highlightRegex, initialPage],
+  );
+
   const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (modalRef.current && !modalRef.current.contains(event.target as Node)) onClose();
   };
@@ -101,6 +176,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpe
   const zoomOut = () => setScale(s => Math.max(s - 0.25, 0.5));
   const resetZoom = () => setScale(1.0);
 
+  const goToMatch = (delta: 1 | -1) => {
+    if (!matchPages.length) return;
+    const next = (matchIndex + delta + matchPages.length) % matchPages.length;
+    setMatchIndex(next);
+    setPageNumber(matchPages[next]);
+  };
+
   if (!isOpen) return null;
   const isCompact = !!embedded;
 
@@ -112,9 +194,36 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpe
         : 'bg-white rounded-lg shadow-xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col'}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* Style for highlight marks. Scoped via class so it doesn't leak. */}
+      <style>{`
+        .ah-pdf-mark {
+          background-color: #fde68a;
+          color: inherit;
+          padding: 0;
+          border-radius: 2px;
+          box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.4);
+        }
+      `}</style>
+
       <div className={`flex items-center justify-between ${isCompact ? 'px-3 py-2' : 'p-4'} border-b border-gray-200`}>
         <h3 className={`${isCompact ? 'text-sm' : 'text-lg'} font-semibold text-gray-900 truncate`}>{filename}</h3>
         <div className="flex items-center gap-1">
+          {/* Match navigation — visible only when we have a highlight term */}
+          {highlightRegex && matchPages.length > 0 && (
+            <div className="flex items-center gap-1 mr-2 text-xs">
+              <Search className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-gray-700 min-w-[80px] text-center">
+                {matchIndex + 1} / {matchPages.length} match{matchPages.length === 1 ? '' : 'es'}
+              </span>
+              <button onClick={() => goToMatch(-1)} className="p-1 hover:bg-gray-100 rounded">
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => goToMatch(1)} className="p-1 hover:bg-gray-100 rounded">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {numPages && numPages > 1 && (
             <div className="flex items-center gap-1 mr-2">
               <button onClick={() => changePage(-1)} disabled={pageNumber <= 1}
@@ -171,7 +280,14 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpe
           <div className="flex justify-center">
             <Document
               file={pdfUrl}
-              onLoadSuccess={({ numPages }) => { setNumPages(numPages); setError(null); setLoading(false); }}
+              onLoadSuccess={(pdf) => {
+                setNumPages(pdf.numPages);
+                setError(null);
+                setLoading(false);
+                pdfDocRef.current = pdf;
+                // Kick off async match scan when we have a term.
+                if (highlightRegex) scanForMatches(pdf, pdf.numPages);
+              }}
               onLoadError={(err) => { if (!numPages) setError('Failed to load PDF document'); console.error(err); }}
               loading={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-[#385854]" /></div>}
               error={<div className="text-center p-8"><p className="text-red-600">Failed to load PDF</p></div>}
@@ -182,6 +298,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ fileUrl, filename, onClose, isOpe
                 scale={scale}
                 renderTextLayer
                 renderAnnotationLayer
+                customTextRenderer={highlightRegex ? customTextRenderer : undefined}
                 loading={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-[#385854]" /></div>}
                 error={<div className="text-center p-8"><p className="text-red-600">Failed to load page</p></div>}
                 className="shadow-lg"

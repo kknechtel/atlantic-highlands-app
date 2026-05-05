@@ -286,11 +286,40 @@ export interface DrillResponse {
   drill_results: DrillResults;
 }
 
-export async function runDrill(statementId: string) {
-  return request<{ statement_id: string; status: string }>(
-    `/api/financial/statements/${statementId}/drill`,
+export async function runDrill(statementId: string, sync = false) {
+  const qs = sync ? "?sync=true" : "";
+  return request<{
+    statement_id: string;
+    mode: "background" | "sync";
+    status?: string;
+    synthesis_ok?: boolean;
+    success_count?: number;
+    error_count?: number;
+    duration_s?: number;
+    drill_results?: any;
+  }>(`/api/financial/statements/${statementId}/drill${qs}`, { method: "POST" });
+}
+
+export async function drillAll(params?: { entity_type?: string; fiscal_year?: string; redrill?: boolean; concurrency?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.entity_type) qs.set("entity_type", params.entity_type);
+  if (params?.fiscal_year) qs.set("fiscal_year", params.fiscal_year);
+  if (params?.redrill) qs.set("redrill", "true");
+  if (params?.concurrency != null) qs.set("concurrency", String(params.concurrency));
+  return request<{ queued: number; concurrency: number; statement_ids: string[] }>(
+    `/api/financial/drill-all${qs.toString() ? `?${qs}` : ""}`,
     { method: "POST" },
   );
+}
+
+export async function getFinancialDiagnostics() {
+  return request<{
+    llm_keys: { anthropic_api_key_set: boolean; gemini_api_key_set: boolean };
+    statements: { by_status: Record<string, number>; by_accounting_basis: Record<string, number>; by_entity_type: Record<string, number>; total: number };
+    extraction_issues: { extracted_with_no_line_items: any[]; extracted_with_no_line_items_count: number };
+    drill_issues: { drills_with_errors_count: number; drills_with_errors_sample: any[] };
+    next_steps_hint: string;
+  }>("/api/financial/diagnostics");
 }
 
 export async function getDrillResults(statementId: string): Promise<DrillResponse> {
@@ -373,16 +402,31 @@ export async function getProcessingStats(projectId?: string): Promise<Processing
 
 export interface SearchResult {
   id: string; filename: string; doc_type: string | null; category: string | null;
-  fiscal_year: string | null; status: string; score: number; snippet: string | null;
+  fiscal_year: string | null; department: string | null;
+  status: string; score: number; snippet: string | null;
+  /** "phrase" = matched a quoted phrase, "fts" = ranked match, "filename" = ILIKE fallback. */
+  match_type: "phrase" | "fts" | "filename";
 }
 
-export async function searchDocuments(query: string, params?: { project_id?: string; category?: string; doc_type?: string }): Promise<SearchResult[]> {
-  return request<SearchResult[]>("/api/search/", { method: "POST", body: JSON.stringify({ query, ...params }) });
+export async function searchDocuments(
+  query: string,
+  params?: { project_id?: string; category?: string; doc_type?: string; fiscal_year?: string; department?: string },
+): Promise<SearchResult[]> {
+  return request<SearchResult[]>("/api/search/", {
+    method: "POST", body: JSON.stringify({ query, ...params }),
+  });
 }
 
-export async function getSearchFacets(projectId?: string) {
+export interface SearchFacets {
+  doc_types: Record<string, number>;
+  categories: Record<string, number>;
+  fiscal_years: Record<string, number>;  // already deduped + 4-digit-sanitized server-side
+  departments: Record<string, number>;   // already case-insensitive deduped server-side
+}
+
+export async function getSearchFacets(projectId?: string): Promise<SearchFacets> {
   const qs = projectId ? `?project_id=${projectId}` : "";
-  return request<{ doc_types: Record<string, number>; categories: Record<string, number>; fiscal_years: Record<string, number> }>(`/api/search/facets${qs}`);
+  return request<SearchFacets>(`/api/search/facets${qs}`);
 }
 
 // ─── Scraper ──────────────────────────────────────────────────────────

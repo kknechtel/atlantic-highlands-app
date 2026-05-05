@@ -12,8 +12,16 @@ import {
   getSearchFacets,
   type Document,
 } from "@/lib/api";
+import dynamic from "next/dynamic";
 import UploadModal from "@/components/UploadModal";
 import DocumentChatModal from "@/components/DocumentChatModal";
+import type { SearchResult } from "@/lib/api";
+
+// react-pdf depends on browser-only globals (DOMMatrix, etc.) — must not SSR.
+const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full text-gray-400">Loading PDF viewer…</div>,
+});
 import {
   FolderPlusIcon,
   ArrowUpTrayIcon,
@@ -120,6 +128,13 @@ export default function DocumentLibraryPage() {
     }
   };
 
+  // Build a snippet lookup keyed by document id so DocRow can render context
+  const snippetById = useMemo(() => {
+    const map = new Map<string, { snippet: string | null; match_type: SearchResult["match_type"] }>();
+    (searchResults || []).forEach((r) => map.set(r.id, { snippet: r.snippet, match_type: r.match_type }));
+    return map;
+  }, [searchResults]);
+
   // Filter documents
   const displayDocs = useMemo(() => {
     let docs = documents || [];
@@ -131,24 +146,23 @@ export default function DocumentLibraryPage() {
       docs = docs.filter((d) => d.fiscal_year === yearFilter);
     }
     if (deptFilter) {
-      docs = docs.filter((d) => d.department === deptFilter);
+      // Case-insensitive comparison — the dropdown shows server-deduped names,
+      // but underlying records may still vary in casing/whitespace.
+      const target = deptFilter.toLowerCase().trim();
+      docs = docs.filter((d) => (d.department || "").toLowerCase().trim() === target);
     }
     return docs;
   }, [documents, search, searchResults, yearFilter, deptFilter]);
 
-  // Get unique fiscal years for filter
-  const availableYears = useMemo(() => {
-    const years = new Set<string>();
-    (documents || []).forEach((d) => { if (d.fiscal_year) years.add(d.fiscal_year); });
-    return Array.from(years).sort().reverse();
-  }, [documents]);
-
-  // Get unique departments for filter
-  const availableDepts = useMemo(() => {
-    const depts = new Set<string>();
-    (documents || []).forEach((d) => { if (d.department) depts.add(d.department); });
-    return Array.from(depts).sort();
-  }, [documents]);
+  // Use server-deduped facet lists (4-digit years, case-insensitive depts).
+  const availableYears = useMemo(
+    () => Object.keys(facets?.fiscal_years || {}).sort().reverse(),
+    [facets],
+  );
+  const availableDepts = useMemo(
+    () => Object.keys(facets?.departments || {}),
+    [facets],
+  );
 
   // Build hierarchy: Entity (town/school/other) > Doc Type > Documents
   const hierarchy = useMemo(() => {
@@ -276,14 +290,19 @@ export default function DocumentLibraryPage() {
             </div>
           </div>
 
-          {/* Search */}
-          <div className="relative mb-2">
+          {/* Search — supports "quoted phrases", AND, OR, -exclusion (Postgres websearch_to_tsquery) */}
+          <div className="relative mb-1">
             <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search document content..."
+              placeholder='Search content — use "quotes" for exact phrase'
               className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:border-transparent bg-white"
               style={{ "--tw-ring-color": brandColor } as React.CSSProperties} />
           </div>
+          {isSearching && (
+            <div className="text-[10px] text-gray-400 mb-2 px-1">
+              Tip: <code className="font-mono">&quot;exact phrase&quot;</code>, <code className="font-mono">word1 word2</code> = AND, <code className="font-mono">a OR b</code>, <code className="font-mono">-exclude</code>
+            </div>
+          )}
 
           {/* Filters */}
           <div className="grid grid-cols-2 md:grid-cols-2 gap-1.5 mb-1">
@@ -319,10 +338,12 @@ export default function DocumentLibraryPage() {
         {/* Document hierarchy */}
         <div className="flex-1 overflow-y-auto">
           {isSearching ? (
-            // Flat list for search results
+            // Flat list for search results — show snippets so the user sees context
             displayDocs.map((doc) => (
               <DocRow key={doc.id} doc={doc} isSelected={selectedDoc?.id === doc.id}
-                onClick={() => handleSelectDoc(doc)} docTypeColor={docTypeColor} />
+                onClick={() => handleSelectDoc(doc)} docTypeColor={docTypeColor}
+                snippet={snippetById.get(doc.id)?.snippet}
+                matchType={snippetById.get(doc.id)?.match_type} />
             ))
           ) : (
             // Hierarchical view
@@ -454,11 +475,18 @@ export default function DocumentLibraryPage() {
               </div>
             )}
 
-            {/* Document viewer */}
+            {/* Document viewer — PDFs use react-pdf with skip-to-match + highlight */}
             <div className="flex-1 bg-gray-900 overflow-hidden">
               {viewerUrl ? (
                 selectedDoc.filename.toLowerCase().endsWith(".pdf") ? (
-                  <iframe src={viewerUrl} className="w-full h-full border-0" title={selectedDoc.filename} />
+                  <PDFViewer
+                    isOpen
+                    embedded
+                    fileUrl={viewerUrl}
+                    filename={selectedDoc.filename}
+                    onClose={() => { setSelectedDoc(null); setViewerUrl(null); }}
+                    highlightTerm={isSearching ? search : undefined}
+                  />
                 ) : /\.(png|jpg|jpeg|gif|webp)$/i.test(selectedDoc.filename) ? (
                   <div className="w-full h-full flex items-center justify-center p-8">
                     <img src={viewerUrl} alt={selectedDoc.filename} className="max-w-full max-h-full object-contain" />
@@ -522,26 +550,53 @@ export default function DocumentLibraryPage() {
   );
 }
 
-function DocRow({ doc, isSelected, onClick, docTypeColor, indent }: {
+function DocRow({ doc, isSelected, onClick, docTypeColor, indent, snippet, matchType }: {
   doc: Document; isSelected: boolean; onClick: () => void;
   docTypeColor: (t: string | null) => string; indent?: boolean;
+  snippet?: string | null;
+  matchType?: "phrase" | "fts" | "filename";
 }) {
+  // Backend returns snippets with <<MARK>>...<</MARK>> so we can apply our own
+  // styling without trusting raw HTML from the DB. Replace with safe spans.
+  const renderedSnippet = useMemo(() => {
+    if (!snippet) return null;
+    const parts = snippet.split(/(<<MARK>>|<<\/MARK>>)/);
+    let inMark = false;
+    return parts.map((p, i) => {
+      if (p === "<<MARK>>") { inMark = true; return null; }
+      if (p === "<</MARK>>") { inMark = false; return null; }
+      if (inMark) return <mark key={i} className="bg-amber-200 text-amber-900 px-0.5 rounded">{p}</mark>;
+      return <span key={i}>{p}</span>;
+    });
+  }, [snippet]);
+
   return (
     <button onClick={onClick}
       className={`w-full text-left ${indent ? "pl-12" : "pl-4"} pr-4 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
         isSelected ? "border-l-4 bg-gray-50" : ""
       }`}
       style={isSelected ? { borderLeftColor: brandColor, backgroundColor: `${brandColor}08` } : {}}>
-      <div className="flex items-center gap-2 min-w-0">
-        <DocumentTextIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+      <div className="flex items-start gap-2 min-w-0">
+        <DocumentTextIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-gray-900 truncate">{doc.filename}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm text-gray-900 truncate flex-1">{doc.filename}</p>
+            {matchType === "phrase" && (
+              <span className="text-[9px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1 rounded">phrase</span>
+            )}
+            {matchType === "filename" && (
+              <span className="text-[9px] uppercase tracking-wide bg-gray-100 text-gray-500 px-1 rounded">name</span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 mt-0.5">
             {doc.fiscal_year && <span className="text-[10px] text-gray-400">FY {doc.fiscal_year}</span>}
             {doc.department && <span className="text-[10px] text-gray-400">{doc.department}</span>}
           </div>
+          {renderedSnippet && (
+            <p className="text-[11px] text-gray-600 mt-1 leading-snug line-clamp-2">{renderedSnippet}</p>
+          )}
         </div>
-        <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0" />
+        <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0 mt-1.5" />
       </div>
     </button>
   );

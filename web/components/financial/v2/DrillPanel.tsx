@@ -32,13 +32,27 @@ export default function DrillPanel({ statement }: Props) {
   });
 
   const drillMut = useMutation({
-    mutationFn: () => runDrill(statement.id),
+    mutationFn: ({ sync }: { sync: boolean }) => runDrill(statement.id, sync),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["drill", statement.id] }); },
   });
 
-  const drills = data?.drill_results ?? {};
+  const drills: any = data?.drill_results ?? {};
   const anomalies = data?.anomaly_flags ?? [];
-  const isDrilled = !!drills.synthesis;
+  // A drill is REAL only if it produced output (no `error` key). Otherwise we treat it as "not run / failed".
+  const synthOk = !!drills.synthesis && !drills.synthesis.error;
+  const isDrilled = synthOk;
+  const meta = drills._meta ?? null;
+  const drillErrors: { drill: string; error: string; msg: string }[] = [];
+  for (const k of ["revenue", "expenditure", "debt", "fund_balance", "synthesis"]) {
+    const d = drills[k];
+    if (d && typeof d === "object" && "error" in d) {
+      drillErrors.push({
+        drill: k,
+        error: String(d.error ?? "unknown"),
+        msg: String(d.error_message ?? "")?.slice(0, 200),
+      });
+    }
+  }
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "synthesis", label: "Synthesis" },
@@ -61,15 +75,59 @@ export default function DrillPanel({ statement }: Props) {
             Reconcile: <span className="font-medium">{data?.reconcile_status ?? "—"}</span>
           </p>
         </div>
-        <button
-          onClick={() => drillMut.mutate()}
-          disabled={drillMut.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
-        >
-          {drillMut.isPending ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" /> : <BoltIcon className="w-3.5 h-3.5" />}
-          {isDrilled ? "Re-drill" : "Run Drill Agents"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => drillMut.mutate({ sync: false })}
+            disabled={drillMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
+            title="Background — refresh poll every 5s"
+          >
+            {drillMut.isPending && drillMut.variables?.sync === false ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" /> : <BoltIcon className="w-3.5 h-3.5" />}
+            {isDrilled ? "Re-drill" : "Run Drill"}
+          </button>
+          <button
+            onClick={() => drillMut.mutate({ sync: true })}
+            disabled={drillMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-primary-300 text-primary-700 text-xs font-medium hover:bg-primary-50 disabled:opacity-50"
+            title="Sync mode — blocks for ~30-90s and surfaces errors directly"
+          >
+            {drillMut.isPending && drillMut.variables?.sync === true ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" /> : "Sync"}
+          </button>
+        </div>
       </div>
+
+      {/* Meta strip */}
+      {(meta || drillErrors.length > 0) && (
+        <div className="px-5 py-2 border-b bg-gray-50 flex items-center gap-4 text-xs">
+          {meta && (
+            <>
+              <span className="text-gray-600">
+                <span className="font-medium text-green-700">{meta.success_count ?? 0}/4</span> drills OK
+                {meta.error_count > 0 && <span className="text-red-700 ml-1">· {meta.error_count} errored</span>}
+              </span>
+              <span className="text-gray-500">{meta.duration_s ? `${meta.duration_s}s` : ""}</span>
+              <span className="text-gray-400 truncate">
+                {meta.synthesis_ok ? "synthesis ok" : "synthesis failed"} · models: {(meta.llm_models_attempted || []).join(", ")}
+              </span>
+            </>
+          )}
+          {!meta && drillErrors.length > 0 && (
+            <span className="text-red-700">{drillErrors.length} drill(s) failed — see error tab</span>
+          )}
+        </div>
+      )}
+
+      {drillErrors.length > 0 && (
+        <div className="px-5 py-2 bg-red-50 border-b border-red-200 text-xs text-red-900">
+          <strong>Drill errors:</strong>{" "}
+          {drillErrors.map((d, i) => (
+            <span key={i} className="mr-3">
+              <span className="font-medium">{d.drill}:</span> {d.error}
+              {d.msg && <span className="text-red-700"> — {d.msg}</span>}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b px-5 flex gap-1 overflow-x-auto">
@@ -97,7 +155,7 @@ export default function DrillPanel({ statement }: Props) {
           <div className="text-center py-12">
             <p className="text-sm text-gray-500">Drill agents have not run yet for this statement.</p>
             <button
-              onClick={() => drillMut.mutate()}
+              onClick={() => drillMut.mutate({ sync: false })}
               disabled={drillMut.isPending}
               className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
             >
@@ -109,24 +167,39 @@ export default function DrillPanel({ statement }: Props) {
           </div>
         )}
 
-        {tab === "synthesis" && drills.synthesis && (
+        {tab === "synthesis" && drills.synthesis && !drills.synthesis.error && (
           <SynthesisView synthesis={drills.synthesis} />
         )}
+        {tab === "synthesis" && drills.synthesis?.error && (
+          <DrillErrorView label="synthesis" data={drills.synthesis} />
+        )}
 
-        {tab === "revenue" && drills.revenue && (
+        {tab === "revenue" && drills.revenue && !drills.revenue.error && (
           <RevenueView revenue={drills.revenue} />
         )}
+        {tab === "revenue" && drills.revenue?.error && (
+          <DrillErrorView label="revenue" data={drills.revenue} />
+        )}
 
-        {tab === "expenditure" && drills.expenditure && (
+        {tab === "expenditure" && drills.expenditure && !drills.expenditure.error && (
           <ExpenditureView expenditure={drills.expenditure} />
         )}
-
-        {tab === "debt" && drills.debt && (
-          <DebtView debt={drills.debt} />
+        {tab === "expenditure" && drills.expenditure?.error && (
+          <DrillErrorView label="expenditure" data={drills.expenditure} />
         )}
 
-        {tab === "fund_balance" && drills.fund_balance && (
+        {tab === "debt" && drills.debt && !drills.debt.error && (
+          <DebtView debt={drills.debt} />
+        )}
+        {tab === "debt" && drills.debt?.error && (
+          <DrillErrorView label="debt" data={drills.debt} />
+        )}
+
+        {tab === "fund_balance" && drills.fund_balance && !drills.fund_balance.error && (
           <FundBalanceView fundBalance={drills.fund_balance} accountingBasis={data?.accounting_basis} />
+        )}
+        {tab === "fund_balance" && drills.fund_balance?.error && (
+          <DrillErrorView label="fund_balance" data={drills.fund_balance} />
         )}
 
         {tab === "anomalies" && (
@@ -401,6 +474,35 @@ function FundBalanceView({ fundBalance, accountingBasis }: { fundBalance: any; a
       )}
       {fundBalance.narrative && <p className="text-sm text-gray-700">{fundBalance.narrative}</p>}
       <FindingsList findings={fundBalance.key_findings || []} />
+    </div>
+  );
+}
+
+function DrillErrorView({ label, data }: { label: string; data: any }) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg bg-red-50 border border-red-300 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-red-700 mb-1">
+          {label} drill failed
+        </div>
+        <div className="text-sm text-red-900 font-mono">{data.error}</div>
+        {data.error_message && (
+          <div className="text-xs text-red-800 mt-2 whitespace-pre-wrap">{data.error_message}</div>
+        )}
+        {data.duration_s != null && (
+          <div className="text-[11px] text-red-700 mt-2">duration: {data.duration_s}s</div>
+        )}
+      </div>
+      {data.error_trace && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-gray-600 hover:text-gray-800">Stack trace</summary>
+          <pre className="mt-2 p-3 bg-gray-900 text-gray-100 rounded overflow-x-auto text-[11px]">{data.error_trace}</pre>
+        </details>
+      )}
+      <p className="text-xs text-gray-500">
+        Try the <strong>Sync</strong> button at the top — it runs the drill inline and surfaces any LLM-side error directly.
+        Common causes: missing/invalid <code>ANTHROPIC_API_KEY</code> or <code>GEMINI_API_KEY</code>, rate limit, or LLM returning non-JSON output.
+      </p>
     </div>
   );
 }

@@ -254,11 +254,12 @@ async def _call_gemini(prompt: str, max_output: int = 65000) -> Optional[Dict]:
         from google.genai import types
 
         client = genai.Client(api_key=GEMINI_API_KEY)
-        config = types.GenerateContentConfig(
-            temperature=0.0,
-            max_output_tokens=max_output,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-        )
+        cfg_kwargs = dict(temperature=0.0, max_output_tokens=max_output)
+        try:
+            cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        except Exception:
+            pass  # SDK on EC2 may reject thinking_budget — skip
+        config = types.GenerateContentConfig(**cfg_kwargs)
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None,
@@ -280,14 +281,20 @@ async def _call_claude(prompt: str, max_output: int = 16000) -> Optional[Dict]:
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-        msg = await client.messages.create(
+        # Use streaming unconditionally — non-streaming .create() rejects
+        # max_tokens above the 10-minute estimate threshold.
+        text_parts: list[str] = []
+        async with client.messages.stream(
             model="claude-sonnet-4-6",
             max_tokens=max_output,
             messages=[{"role": "user", "content": prompt}],
-        )
-        if not msg or not msg.content:
+        ) as stream:
+            async for chunk in stream.text_stream:
+                text_parts.append(chunk)
+        text = "".join(text_parts)
+        if not text:
             return None
-        return _parse_json(msg.content[0].text)
+        return _parse_json(text)
     except Exception as exc:
         logger.warning("claude call failed: %s", exc)
         return None

@@ -421,13 +421,19 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
         try:
             import anthropic
             client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-            msg = await client.messages.create(
+            # Anthropic SDK requires .stream() for ANY request with max_tokens that
+            # could plausibly take >10 min. Use streaming unconditionally so we don't
+            # need to guess the threshold.
+            text_parts: list[str] = []
+            async with client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=max_output,
                 messages=[{"role": "user", "content": prompt}],
-            )
-            if msg and msg.content:
-                raw_response = msg.content[0].text
+            ) as stream:
+                async for text_chunk in stream.text_stream:
+                    text_parts.append(text_chunk)
+            raw_response = "".join(text_parts)
+            if raw_response:
                 parsed = _parse_json(raw_response)
                 if parsed is not None:
                     return parsed, None
@@ -445,10 +451,16 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
             from google import genai
             from google.genai import types
             client = genai.Client(api_key=GEMINI_API_KEY)
-            cfg = types.GenerateContentConfig(
-                temperature=0.1, max_output_tokens=max_output,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            )
+            # ThinkingConfig.thinking_budget is rejected by older SDK versions on
+            # the deployed EC2. Build the config without it and try setting it
+            # only if the SDK accepts. (We don't actually need thinking for these
+            # structured-extraction drills.)
+            cfg_kwargs = dict(temperature=0.1, max_output_tokens=max_output)
+            try:
+                cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+            except Exception:
+                pass  # SDK doesn't accept thinking_budget — skip
+            cfg = types.GenerateContentConfig(**cfg_kwargs)
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,

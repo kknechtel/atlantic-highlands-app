@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import EnhancedMarkdownRenderer from './EnhancedMarkdownRenderer';
 import TypingIndicator from './TypingIndicator';
+import { useAuth } from '@/app/contexts/AuthContext';
 
 export type ToolActivity = {
     name: string;
@@ -299,6 +300,8 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     const [copied, setCopied] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
     const messageRef = useRef<HTMLDivElement>(null);
+    const { user } = useAuth();
+    const isAdmin = !!user?.is_admin;
 
     useEffect(() => {
         const timer = setTimeout(() => setIsVisible(true), 50);
@@ -453,7 +456,7 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         </div>
                     )}
 
-                    {!isUser && !message.isStreaming && message.cost && <CostFooter cost={message.cost} />}
+                    {!isUser && !message.isStreaming && message.cost && isAdmin && <CostFooter cost={message.cost} />}
 
                     {!message.isStreaming && (
                         <div className="text-[10px] text-gray-400 mt-1.5">{formatTimestamp(message.timestamp)}</div>

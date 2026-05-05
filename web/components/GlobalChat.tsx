@@ -10,12 +10,19 @@ import {
   MinusIcon, DocumentTextIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
   MagnifyingGlassIcon, LinkIcon, GlobeAltIcon,
   ArrowDownTrayIcon, ClockIcon, ArrowPathIcon,
-  LightBulbIcon, DocumentChartBarIcon,
+  LightBulbIcon, DocumentChartBarIcon, CpuChipIcon, PlusIcon,
+  ClipboardDocumentIcon, CheckIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
 // Use relative URLs in browser so Next.js rewrite proxy handles it (avoids HTTPS/HTTP mixed content)
 const API_BASE = "";
+
+// Panel widths — matches bank-processor's RKCAIChatPanel.
+const CHAT_WIDTH_DEFAULT = 480;
+const CHAT_WIDTH_WIDE = Math.min(900, typeof window !== "undefined" ? Math.max(480, window.innerWidth * 0.6) : 720);
+const CHAT_WIDTH_MIN = 360;
+const CHAT_WIDTH_KEY = "ah_chat_width";
 
 /** Stable ref to "is the chat panel currently visible to the user".
  *  Read inside the streaming reader so the 'done' handler can decide
@@ -56,6 +63,53 @@ export default function GlobalChat() {
     if (dismissed) localStorage.setItem(DISMISSED_KEY, "1");
     else localStorage.removeItem(DISMISSED_KEY);
   }, [dismissed]);
+
+  // Resizable width — persisted, drag handle on the left edge.
+  const [chatWidthPx, setChatWidthPx] = useState<number>(() => {
+    if (typeof window === "undefined") return CHAT_WIDTH_DEFAULT;
+    const stored = localStorage.getItem(CHAT_WIDTH_KEY);
+    const n = stored ? parseInt(stored, 10) : NaN;
+    return Number.isFinite(n) && n >= CHAT_WIDTH_MIN ? n : CHAT_WIDTH_DEFAULT;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const isWide = chatWidthPx >= CHAT_WIDTH_WIDE - 1;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(CHAT_WIDTH_KEY, String(chatWidthPx));
+  }, [chatWidthPx]);
+
+  // Clamp if window resized smaller than the chat
+  useEffect(() => {
+    const onResize = () => {
+      setChatWidthPx(w => Math.min(w, Math.max(CHAT_WIDTH_MIN, window.innerWidth - 200)));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startW = chatWidthPx;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX;  // drag LEFT = wider
+      const next = Math.max(CHAT_WIDTH_MIN, Math.min(window.innerWidth - 200, startW + delta));
+      setChatWidthPx(next);
+    };
+    const onUp = () => {
+      setIsResizing(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const toggleMaximize = () => {
+    setChatWidthPx(w => (w >= CHAT_WIDTH_WIDE - 1 ? CHAT_WIDTH_DEFAULT : CHAT_WIDTH_WIDE));
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -429,46 +483,121 @@ export default function GlobalChat() {
     </div>
   );
 
-  const widthClass = isExpanded
-    ? (splitDoc ? "md:w-[min(1100px,calc(100vw-3rem))]" : "md:w-[min(560px,calc(100vw-3rem))]")
-    : splitDoc ? "md:w-[min(820px,calc(100vw-3rem))]" : "md:w-[min(420px,calc(100vw-3rem))]";
-  const heightClass = isExpanded ? "md:h-[min(85vh,800px)]" : "md:h-[min(620px,calc(100vh-6rem))]";
+  // Layout matches bank-processor's RKCAIChatPanel: full-height slide-out
+  // anchored to the right edge, draggable left-edge handle, maximize toggles
+  // between default width and ~60% of viewport.
+  const totalWidth = splitDoc ? `calc(${chatWidthPx}px + min(420px, 40vw))` : `${chatWidthPx}px`;
 
   return (
-    <div className={`fixed z-50
-      inset-0 md:inset-auto
-      md:bottom-6 md:right-6 ${widthClass} ${heightClass}
-      flex md:rounded-2xl shadow-2xl md:border md:border-gray-200 overflow-hidden transition-all duration-200`}>
-      <div className={`${splitDoc ? "w-1/2" : "w-full"} bg-gray-50 flex flex-col min-w-0`}>
+    <div
+      className={`fixed inset-y-0 right-0 z-50 bg-white shadow-2xl flex flex-row border-l border-gray-200 ${isResizing ? "" : "transition-[width] duration-200"}`}
+      style={{ width: totalWidth }}
+    >
+      {/* Drag handle on the LEFT edge — drag to resize, double-click to toggle wide */}
+      <div
+        onMouseDown={startResize}
+        onDoubleClick={toggleMaximize}
+        title="Drag to resize · double-click to toggle wide"
+        className="absolute top-0 bottom-0 left-0 w-1.5 -translate-x-1/2 cursor-col-resize z-10 group"
+      >
+        <div className="h-full w-full transition-colors" style={{ backgroundColor: isResizing ? brandColor : "transparent" }} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-1 h-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ backgroundColor: brandColor }}
+        />
+      </div>
+
+      {/* Chat column */}
+      <div
+        className="flex flex-col border-r border-gray-200 bg-gray-50 min-w-0"
+        style={{ width: `${chatWidthPx}px`, minWidth: `${chatWidthPx}px` }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>
-          <div className="flex items-center gap-2 flex-wrap">
-            <SparklesIcon className="w-5 h-5" />
-            <span className="font-semibold text-sm">Atlantic Highlands Expert</span>
-            {activeDeck && (
-              <span className="text-[10px] bg-amber-300/90 text-[#1a2e2c] px-1.5 py-0.5 rounded font-semibold" title={activeDeck.title}>
-                Deck mode
-              </span>
-            )}
-            {webSearchEnabled && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Web</span>}
-            {deepThinking && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Deep</span>}
-            {reportMode && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded">+ Report</span>}
+        <div className="flex items-center justify-between px-4 py-3 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <CpuChipIcon className="w-5 h-5 opacity-90 flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="font-bold text-sm leading-tight">AI Analyst</div>
+              <div className="text-[10px] opacity-75 leading-tight truncate">
+                {activeDeck
+                  ? `Deck mode · ${activeDeck.title}`
+                  : `Connected · Documents${webSearchEnabled ? " + Web" : ""}${deepThinking ? " + Deep" : ""}${reportMode ? " + Report" : ""}`}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-0.5">
-            <button onClick={handleNewSession} className="p-1.5 hover:bg-white/20 rounded" title="New chat"><ArrowPathIcon className="w-4 h-4" /></button>
-            <button onClick={() => setShowHistory(!showHistory)} className="p-1.5 hover:bg-white/20 rounded" title="History"><ClockIcon className="w-4 h-4" /></button>
-            <button onClick={handleDownloadChat} className="p-1.5 hover:bg-white/20 rounded" title="Download chat"><ArrowDownTrayIcon className="w-4 h-4" /></button>
-            <button onClick={() => setIsExpanded(!isExpanded)} className="p-1.5 hover:bg-white/20 rounded">{isExpanded ? <ArrowsPointingInIcon className="w-4 h-4" /> : <ArrowsPointingOutIcon className="w-4 h-4" />}</button>
-            <button onClick={() => setIsMinimized(true)} className="p-1.5 hover:bg-white/20 rounded"><MinusIcon className="w-4 h-4" /></button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {messages.length > 1 && <CopyChatButton messages={messages} />}
+            <button
+              onClick={handleNewSession}
+              title="New chat"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition"
+            >
+              <PlusIcon className="w-3.5 h-3.5" />
+              <span>New</span>
+            </button>
+            <button onClick={() => setShowHistory(!showHistory)}
+              title="Conversation history"
+              className={`p-1 rounded transition ${showHistory ? "bg-white/30" : "hover:bg-white/20"}`}
+            >
+              <ClockIcon className="w-4 h-4 opacity-80" />
+            </button>
+            <button onClick={toggleMaximize} title={isWide ? "Shrink to default width" : "Expand to wide"} className="p-1 hover:bg-white/20 rounded transition">
+              {isWide ? <ArrowsPointingInIcon className="w-4 h-4 opacity-80" /> : <ArrowsPointingOutIcon className="w-4 h-4 opacity-80" />}
+            </button>
             <button
               onClick={() => { setIsOpen(false); setSplitDoc(null); }}
               onContextMenu={(e) => { e.preventDefault(); setDismissed(true); setIsOpen(false); setSplitDoc(null); }}
-              className="p-1.5 hover:bg-white/20 rounded"
-              title="Close (right-click to fully dismiss; Cmd+/ to summon)"
+              className="p-1 hover:bg-white/20 rounded transition"
+              title="Close (right-click to fully dismiss; Ctrl/Cmd+/ to summon)"
             >
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* Controls bar — Deep / Report toggles + scope filters (matches bank-processor) */}
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
+          <label
+            className={`flex items-center gap-1.5 cursor-pointer ${deepThinking ? "font-semibold" : "text-gray-500"}`}
+            style={deepThinking ? { color: brandColor } : undefined}
+          >
+            <input type="checkbox" checked={deepThinking} onChange={e => setDeepThinking(e.target.checked)}
+              className="cursor-pointer" style={{ accentColor: brandColor, width: 13, height: 13 }} />
+            <LightBulbIcon className="w-3 h-3" />
+            Deep
+          </label>
+          <label
+            className={`flex items-center gap-1.5 cursor-pointer ${reportMode ? "font-semibold" : "text-gray-500"}`}
+            style={reportMode ? { color: brandColor } : undefined}
+          >
+            <input type="checkbox" checked={reportMode} onChange={e => setReportMode(e.target.checked)}
+              className="cursor-pointer" style={{ accentColor: brandColor, width: 13, height: 13 }} />
+            <DocumentChartBarIcon className="w-3 h-3" />
+            Report
+          </label>
+          <label
+            className={`flex items-center gap-1.5 cursor-pointer ${webSearchEnabled ? "font-semibold" : "text-gray-500"}`}
+            style={webSearchEnabled ? { color: brandColor } : undefined}
+          >
+            <input type="checkbox" checked={webSearchEnabled} onChange={e => setWebSearchEnabled(e.target.checked)}
+              className="cursor-pointer" style={{ accentColor: brandColor, width: 13, height: 13 }} />
+            <GlobeAltIcon className="w-3 h-3" />
+            Web
+          </label>
+          <div className="flex-1" />
+          <button
+            onClick={() => setShowDocPicker(!showDocPicker)}
+            className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border ${
+              selectedDoc
+                ? "bg-emerald-50 border-emerald-200 font-semibold"
+                : "bg-white border-gray-300 text-gray-600 hover:bg-gray-100"
+            }`}
+            style={selectedDoc ? { color: brandColor } : undefined}
+            title="Restrict the chat to a specific document"
+          >
+            <DocumentTextIcon className="w-3 h-3" />
+            {selectedDoc ? "1 doc" : "Scope docs"}
+          </button>
         </div>
 
         {/* History panel */}
@@ -530,49 +659,52 @@ export default function GlobalChat() {
           </div>
         )}
 
-        {/* Input */}
+        {/* Input — toggles live in the top controls bar; this row is just
+            attach + textfield + send. */}
         <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0">
           <div className="flex gap-1.5">
-            <button onClick={() => setShowDocPicker(!showDocPicker)}
-              className={`p-2 rounded-lg border transition-colors ${showDocPicker || selectedDoc ? "border-gray-400 text-gray-700 bg-gray-100" : "border-gray-300 text-gray-400 hover:text-gray-600"}`} title="Attach document">
+            <button
+              onClick={() => setShowDocPicker(!showDocPicker)}
+              className={`p-2 rounded-lg border transition-colors ${
+                showDocPicker || selectedDoc
+                  ? "border-gray-400 text-gray-700 bg-gray-100"
+                  : "border-gray-300 text-gray-400 hover:text-gray-600"
+              }`}
+              title="Attach document"
+            >
               <DocumentTextIcon className="w-4 h-4" />
             </button>
-            <button onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-              className={`p-2 rounded-lg border transition-colors ${webSearchEnabled ? "bg-blue-50 border-blue-300 text-blue-600" : "border-gray-300 text-gray-400 hover:text-gray-600"}`}
-              title={webSearchEnabled ? "Web search ON" : "Enable web search"}>
-              <GlobeAltIcon className="w-4 h-4" />
-            </button>
-            <button onClick={() => setDeepThinking(!deepThinking)}
-              className={`p-2 rounded-lg border transition-colors ${deepThinking ? "bg-amber-50 border-amber-300 text-amber-700" : "border-gray-300 text-gray-400 hover:text-gray-600"}`}
-              title={deepThinking ? "Deep thinking ON (Opus 4.7)" : "Enable extended thinking"}>
-              <LightBulbIcon className="w-4 h-4" />
-            </button>
-            <button onClick={() => setReportMode(!reportMode)}
-              className={`p-2 rounded-lg border transition-colors ${reportMode ? "bg-emerald-50 border-emerald-300 text-emerald-700" : "border-gray-300 text-gray-400 hover:text-gray-600"}`}
-              title={reportMode ? "Report mode ON" : "Format as a structured report"}>
-              <DocumentChartBarIcon className="w-4 h-4" />
-            </button>
-            <input type="text" value={input} onChange={e => setInput(e.target.value)}
+            <input
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder={selectedDoc ? `Ask about ${selectedDoc.filename}...`
+              placeholder={
+                selectedDoc ? `Ask about ${selectedDoc.filename}...`
                 : reportMode ? "Request a report..."
                 : deepThinking ? "Ask a deep analytical question..."
                 : webSearchEnabled ? "Ask anything (+ web search)..."
-                : "Ask about AH documents..."}
+                : "Ask about AH documents..."
+              }
               className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:border-transparent"
               style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
-              disabled={isStreaming} />
-            <button onClick={handleSend} disabled={!input.trim() || isStreaming}
+              disabled={isStreaming}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
               className="px-3 py-2 text-white rounded-xl hover:opacity-90 disabled:opacity-50 shadow-lg"
-              style={{ backgroundColor: brandColor }}>
+              style={{ backgroundColor: brandColor }}
+            >
               <PaperAirplaneIcon className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
+      {/* Split document viewer (when a citation was clicked) */}
       {splitDoc && (
-        <div className="w-1/2 border-l border-gray-200 flex flex-col bg-white">
+        <div className="flex-1 border-l border-gray-200 flex flex-col bg-white min-w-0">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <span className="text-xs font-medium text-gray-600 truncate flex-1">{splitDoc.filename}</span>
             <button onClick={() => setSplitDoc(null)} className="p-1 text-gray-400 hover:text-gray-600 rounded"><XMarkIcon className="w-4 h-4" /></button>
@@ -583,5 +715,35 @@ export default function GlobalChat() {
         </div>
       )}
     </div>
+  );
+}
+
+
+/** Header button: copy the entire chat transcript to clipboard. */
+function CopyChatButton({ messages }: { messages: ChatMessage[] }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    const text = messages
+      .filter(m => m.role !== "error")
+      .map(m => {
+        const role = m.role === "user" ? "USER" : "AH EXPERT";
+        return `[${role}]\n${m.content}`;
+      })
+      .join("\n\n---\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? "Copied" : "Copy entire chat"}
+      className="flex items-center gap-1 px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition"
+    >
+      {copied ? <CheckIcon className="w-3.5 h-3.5" /> : <ClipboardDocumentIcon className="w-3.5 h-3.5" />}
+      <span>{copied ? "Copied" : "Copy Chat"}</span>
+    </button>
   );
 }

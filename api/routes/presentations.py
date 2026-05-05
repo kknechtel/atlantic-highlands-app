@@ -16,28 +16,37 @@ Presentations & analytical decks.
   POST   /api/presentations/{id}/password         body: {password: str}
   POST   /api/presentations/{id}/ai-chat          SSE stream — propose_section, search_chunks
   POST   /api/presentations/{id}/fact-check       run citation entailment
+  POST   /api/presentations/{id}/ai-edit          rewrite/expand/tighten one section
+  GET    /api/presentations/{id}/export?format=pptx|docx   download office file
+  POST   /api/presentations/from-chat             create deck from chat transcript
   GET    /api/presentations/public/{slug}/meta    public, no auth
   GET    /api/presentations/public/{slug}         public, header X-Deck-Password if protected
 """
 from __future__ import annotations
 
+import json
+import logging
 import secrets
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Literal, Optional
 
 import bcrypt
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
+from config import ANTHROPIC_API_KEY
 from database import get_db, SessionLocal
 from models.presentation import Presentation
 from models.user import User
 from services.deck_chat_service import build_sections_summary, stream_deck_chat
+from services.deck_export import export_docx, export_pptx
 from services.fact_check_service import fact_check_presentation
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -346,6 +355,328 @@ def fact_check(presentation_id: str, db: Session = Depends(get_db),
     p.last_fact_check = result
     db.commit()
     return result
+
+
+# ─── Export (PPTX / DOCX) ───────────────────────────────────────────────────
+
+@router.get("/{presentation_id}/export")
+def export_deck(
+    presentation_id: str,
+    format: Literal["pptx", "docx"] = Query("pptx"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Stream a generated PPTX or DOCX of the presentation."""
+    p = _get_or_404(db, presentation_id)
+
+    if format == "pptx":
+        data, filename = export_pptx(p)
+        media = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    else:
+        data, filename = export_docx(p)
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    return Response(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ─── AI-edit (rewrite / expand / tighten / fact-check one section) ──────────
+
+class AIEditBody(BaseModel):
+    section_id: str
+    action: Literal["rewrite_tighter", "expand", "fact_polish", "translate_plain", "summarize"]
+    instructions: Optional[str] = None  # extra freeform guidance for the AI
+
+
+_AI_EDIT_GUIDANCE = {
+    "rewrite_tighter":
+        "Rewrite the section to be tighter and more direct. Cut filler. Keep all "
+        "facts, numbers, and citations. Aim for ~30-40% fewer words.",
+    "expand":
+        "Expand the section with additional detail, context, and supporting facts. "
+        "If the original cites documents, weave in additional related citations from "
+        "the same documents where useful. Do not invent facts.",
+    "fact_polish":
+        "Tighten any imprecise claims. Where the original says approximations, replace "
+        "with the actual figures from cited sources if you can verify them. Flag any "
+        "unverifiable claims with [unverified]. Keep all citations.",
+    "translate_plain":
+        "Rewrite the section in plain English suitable for a resident with no government "
+        "or finance background. Preserve all numbers and citations. Avoid jargon.",
+    "summarize":
+        "Replace the section body with a 3-5 bullet executive summary. Keep all "
+        "[source: ...] citations associated with their facts.",
+}
+
+
+@router.post("/{presentation_id}/ai-edit")
+def ai_edit_section(
+    presentation_id: str,
+    body: AIEditBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Apply an AI-powered transformation to a single section's body. Returns
+    the updated presentation (the section's `body` is replaced in place).
+
+    Synchronous (no SSE) — these are usually fast (<10s) on Sonnet."""
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
+    p = _get_or_404(db, presentation_id)
+
+    sections = list(p.sections or [])
+    target_idx = next((i for i, s in enumerate(sections) if s.get("id") == body.section_id), -1)
+    if target_idx < 0:
+        raise HTTPException(404, "Section not found")
+    section = dict(sections[target_idx])
+    if section.get("kind") != "narrative":
+        raise HTTPException(400, "ai-edit currently only works on narrative sections")
+
+    original_body = section.get("body") or ""
+    if not original_body.strip():
+        raise HTTPException(400, "Section is empty — nothing to edit")
+
+    guidance = _AI_EDIT_GUIDANCE[body.action]
+    if body.instructions:
+        guidance += "\n\nAdditional instructions from the operator:\n" + body.instructions
+
+    prompt = (
+        f"You are editing one section of a presentation about Atlantic Highlands, NJ municipal affairs.\n\n"
+        f"## Action: {body.action}\n{guidance}\n\n"
+        f"## Section title: {section.get('title') or '(untitled)'}\n\n"
+        f"## Current body:\n{original_body}\n\n"
+        f"Output ONLY the new markdown body (no commentary, no fences, no preamble)."
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        new_body = ""
+        for block in resp.content:
+            if getattr(block, "type", None) == "text":
+                new_body += block.text or ""
+        new_body = new_body.strip()
+        # Drop accidental code-fence wrappers some models emit
+        new_body = new_body.removeprefix("```markdown").removeprefix("```md").removeprefix("```").strip()
+        new_body = new_body.removesuffix("```").strip()
+        if not new_body:
+            raise HTTPException(502, "AI returned empty body")
+    except anthropic.APIStatusError as exc:
+        logger.error("ai-edit Anthropic error: %s", exc)
+        raise HTTPException(502, f"AI service error: {getattr(exc, 'message', str(exc))}")
+    except Exception as exc:
+        logger.exception("ai-edit failed")
+        raise HTTPException(500, str(exc)[:300])
+
+    section["body"] = new_body
+    sections[target_idx] = section
+    p.sections = sections
+    db.commit(); db.refresh(p)
+    return _serialize(p)
+
+
+# ─── From-chat: turn a chat transcript into a draft deck ────────────────────
+
+class FromChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class FromChatBody(BaseModel):
+    messages: List[FromChatMessage]
+    title_hint: Optional[str] = None
+
+
+_FROM_CHAT_PROMPT = """You are converting a chat transcript about Atlantic Highlands, NJ into a structured presentation.
+
+Output ONLY a JSON object of this shape:
+{{
+  "title": "<concise deck title>",
+  "sections": [
+    {{ "kind": "narrative", "title": "<heading>", "body": "<markdown body with citations>" }},
+    ...
+  ]
+}}
+
+RULES:
+- 4-8 sections. Group related findings together. Don't make one section per chat turn.
+- Each narrative body should be 2-6 paragraphs of substantive content.
+- PRESERVE every [source: filename.pdf] citation from the assistant turns — do not drop them.
+- If the assistant produced a clear table or list, you MAY use a "table" section:
+    {{ "kind": "table", "title": "...", "headers": ["..."], "rows": [["..."]], "caption": "..." }}
+- Bring forward any markdown tables and bullet structure verbatim (don't paraphrase numbers).
+- If the user typed a clear prompt at the top, weave it into a section 1 "Background" or "Question".
+- title_hint, if provided, is a strong suggestion for the deck title.
+
+Output ONLY valid JSON — no fences, no commentary."""
+
+
+def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str]) -> dict:
+    import anthropic
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    transcript_lines = []
+    for m in messages:
+        role = m.get("role", "user").upper()
+        transcript_lines.append(f"## {role}\n\n{m.get('content', '')}")
+    transcript = "\n\n---\n\n".join(transcript_lines)
+
+    prompt = _FROM_CHAT_PROMPT
+    if title_hint:
+        prompt += f"\n\ntitle_hint: {title_hint}"
+
+    resp = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=12000,
+        system=prompt,
+        messages=[{"role": "user", "content": f"TRANSCRIPT:\n\n{transcript}"}],
+    )
+    text = ""
+    for block in resp.content:
+        if getattr(block, "type", None) == "text":
+            text += block.text or ""
+    text = text.strip().removeprefix("```json").removeprefix("```").strip().removesuffix("```").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Best-effort: salvage the largest JSON object substring
+        start, end = text.find("{"), text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except Exception:
+                pass
+        raise HTTPException(502, "AI returned invalid JSON for the deck structure")
+
+
+@router.post("/from-chat")
+def create_from_chat(
+    body: FromChatBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Convert a chat conversation into a draft presentation. The assistant
+    structures the messages into 4-8 sections, preserving citations."""
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
+    if not body.messages:
+        raise HTTPException(400, "messages cannot be empty")
+
+    msg_dicts = [{"role": m.role, "content": m.content} for m in body.messages]
+    structured = _structure_chat_with_claude(msg_dicts, body.title_hint)
+
+    title = (structured.get("title") or body.title_hint or "Untitled Presentation").strip()
+    raw_sections = structured.get("sections") or []
+    sections = _ensure_section_ids([
+        s for s in raw_sections
+        if isinstance(s, dict) and s.get("kind") in ("narrative", "table")
+    ])
+
+    p = Presentation(
+        title=title,
+        sections=sections,
+        theme={},
+        created_by=user.id,
+    )
+    db.add(p); db.commit(); db.refresh(p)
+    return _serialize(p)
+
+
+# ─── Comments (threaded review) ─────────────────────────────────────────────
+
+class CommentBody(BaseModel):
+    section_id: Optional[str] = None
+    body: str
+    parent_comment_id: Optional[str] = None
+
+
+def _serialize_comment(c) -> dict:
+    return {
+        "id": str(c.id),
+        "presentation_id": str(c.presentation_id),
+        "section_id": c.section_id,
+        "parent_comment_id": str(c.parent_comment_id) if c.parent_comment_id else None,
+        "author_email": c.author_email,
+        "author_name": c.author_name,
+        "body": c.body,
+        "resolved": c.resolved,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+    }
+
+
+@router.get("/{presentation_id}/comments")
+def list_comments(presentation_id: str, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    from models.presentation import PresentationComment
+    rows = (
+        db.query(PresentationComment)
+        .filter(PresentationComment.presentation_id == presentation_id)
+        .order_by(PresentationComment.created_at)
+        .all()
+    )
+    return [_serialize_comment(c) for c in rows]
+
+
+@router.post("/{presentation_id}/comments")
+def add_comment(presentation_id: str, body: CommentBody,
+                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from models.presentation import PresentationComment
+    if not body.body.strip():
+        raise HTTPException(400, "body cannot be empty")
+    _get_or_404(db, presentation_id)
+    c = PresentationComment(
+        presentation_id=presentation_id,
+        section_id=body.section_id,
+        parent_comment_id=body.parent_comment_id,
+        author_email=user.email,
+        author_name=getattr(user, "full_name", None) or user.email,
+        body=body.body.strip(),
+    )
+    db.add(c); db.commit(); db.refresh(c)
+    return _serialize_comment(c)
+
+
+@router.patch("/{presentation_id}/comments/{comment_id}/resolve")
+def toggle_resolve(presentation_id: str, comment_id: str,
+                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from models.presentation import PresentationComment
+    c = (
+        db.query(PresentationComment)
+        .filter(PresentationComment.id == comment_id,
+                PresentationComment.presentation_id == presentation_id)
+        .first()
+    )
+    if not c:
+        raise HTTPException(404, "Comment not found")
+    c.resolved = not c.resolved
+    c.resolved_by_email = user.email if c.resolved else None
+    db.commit(); db.refresh(c)
+    return _serialize_comment(c)
+
+
+@router.delete("/{presentation_id}/comments/{comment_id}")
+def delete_comment(presentation_id: str, comment_id: str,
+                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from models.presentation import PresentationComment
+    c = (
+        db.query(PresentationComment)
+        .filter(PresentationComment.id == comment_id,
+                PresentationComment.presentation_id == presentation_id)
+        .first()
+    )
+    if not c:
+        raise HTTPException(404, "Comment not found")
+    db.delete(c); db.commit()
+    return {"ok": True}
 
 
 # ─── Public viewer ──────────────────────────────────────────────────────────

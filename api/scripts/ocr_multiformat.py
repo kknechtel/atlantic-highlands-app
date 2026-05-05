@@ -158,21 +158,30 @@ def extract_doc_via_antiword(content: bytes) -> str:
 
     Gemini's Files API doesn't accept application/msword. antiword is a small
     binary that's bundled with mingw/git-bash on Windows and apt-installable
-    on Linux. We pipe via stdin to avoid temp files.
+    on Linux. mingw's antiword can't read from stdin, so we go via temp file.
     """
-    import subprocess, shutil
+    import subprocess, shutil, tempfile
     if not shutil.which("antiword"):
         return ""
+    tmp_path = None
     try:
-        # antiword reads from stdin with `-` as filename
+        with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tf:
+            tf.write(content)
+            tmp_path = tf.name
         r = subprocess.run(
-            ["antiword", "-"],
-            input=content, capture_output=True, timeout=60,
+            ["antiword", tmp_path],
+            capture_output=True, timeout=60,
         )
         if r.returncode == 0 and r.stdout:
             return r.stdout.decode("utf-8", errors="replace")
     except Exception as exc:
         logger.warning(f"  antiword failed: {exc}")
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     return ""
 
 

@@ -483,6 +483,147 @@ def get_anomalies(
     return {"statement_id": str(stmt.id), "anomaly_flags": stmt.anomaly_flags or []}
 
 
+@router.get("/fy-view")
+def fy_view(
+    entity_type: str = Query(..., description="town | school"),
+    fiscal_year: str = Query(..., description="exact match, e.g. '2026-2027' or '2024'"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Merged financial view for one entity + fiscal year, combining data from
+    multiple source statements (advertised budget, adopted budget, presentation,
+    audit, ACFR). Picks best-of-source for each metric and surfaces what's
+    missing.
+
+    Use this when several documents cover the same FY and the dashboard shows
+    apparent duplicates — this returns the canonical merged view.
+    """
+    matches = (
+        db.query(FinancialStatement)
+        .filter(FinancialStatement.entity_type == entity_type,
+                FinancialStatement.fiscal_year == fiscal_year)
+        .all()
+    )
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"No statements for {entity_type} FY {fiscal_year}")
+
+    # Source priority — most authoritative first
+    PRIORITY = {
+        "audit": 0, "acfr": 0, "annual_report": 1, "financial_statement": 1,
+        "ufb": 2, "budget": 3,
+    }
+
+    def _variant(name: str | None) -> str:
+        n = (name or "").lower()
+        if "advertised" in n or "tentative" in n:
+            return "advertised"
+        if "adopted" in n or "final" in n:
+            return "adopted"
+        if "monmouth" in n:
+            return "dlgs_filing"
+        if "presentation" in n:
+            return "presentation"
+        return "primary"
+
+    def _stmt_priority(s):
+        type_pri = PRIORITY.get((s.statement_type or "").lower(), 9)
+        # Among same type: adopted > dlgs > primary > advertised > presentation
+        variant_pri = {"adopted": 0, "dlgs_filing": 1, "primary": 2, "advertised": 3, "presentation": 4}.get(_variant(s.entity_name), 5)
+        return (type_pri, variant_pri)
+
+    sorted_stmts = sorted(matches, key=_stmt_priority)
+    primary = sorted_stmts[0]
+
+    def best(field: str):
+        for s in sorted_stmts:
+            v = getattr(s, field, None)
+            if v is not None:
+                return v, str(s.id)
+        return None, None
+
+    rev, rev_src = best("total_revenue")
+    exp, exp_src = best("total_expenditures")
+    surplus, surp_src = best("surplus_deficit")
+    fb, fb_src = best("fund_balance")
+    debt, debt_src = best("total_debt")
+
+    # Aggregate line items, deduped by (line_name, amount)
+    from models.financial import FinancialLineItem
+    seen: set[tuple] = set()
+    merged_lines: list[dict] = []
+    for s in sorted_stmts:
+        items = db.query(FinancialLineItem).filter(FinancialLineItem.statement_id == s.id).all()
+        for it in items:
+            key = ((it.line_name or "").strip().lower(), float(it.amount) if it.amount else None, it.section)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged_lines.append({
+                "line_name": it.line_name, "section": it.section, "subsection": it.subsection,
+                "amount": it.amount, "prior_year_amount": it.prior_year_amount,
+                "budget_amount": it.budget_amount, "yoy_change_pct": it.yoy_change_pct,
+                "fund": it.fund, "account_code": it.account_code, "is_total_row": it.is_total_row,
+                "from_statement_id": str(s.id),
+                "from_doc_variant": _variant(s.entity_name),
+            })
+
+    # What's missing? List authoritative document types we don't have
+    expected_types = ["audit", "annual_report", "financial_statement", "budget"]
+    have_types = {s.statement_type for s in matches}
+    missing_types = [t for t in expected_types if t not in have_types]
+
+    # Field-level missing
+    missing_fields = []
+    if rev is None: missing_fields.append("total_revenue")
+    if exp is None: missing_fields.append("total_expenditures")
+    if fb is None: missing_fields.append("fund_balance")
+    if debt is None: missing_fields.append("total_debt")
+
+    return {
+        "entity_type": entity_type,
+        "fiscal_year": fiscal_year,
+        "primary_statement_id": str(primary.id),
+        "primary_statement_type": primary.statement_type,
+        "primary_entity_name": primary.entity_name,
+        "accounting_basis": primary.accounting_basis,
+        "fiscal_calendar": primary.fiscal_calendar,
+        "merged": {
+            "total_revenue": rev,
+            "total_revenue_source": rev_src,
+            "total_expenditures": exp,
+            "total_expenditures_source": exp_src,
+            "surplus_deficit": surplus,
+            "surplus_deficit_source": surp_src,
+            "fund_balance": fb,
+            "fund_balance_source": fb_src,
+            "total_debt": debt,
+            "total_debt_source": debt_src,
+        },
+        "sources": [
+            {
+                "statement_id": str(s.id),
+                "statement_type": s.statement_type,
+                "entity_name": s.entity_name,
+                "variant": _variant(s.entity_name),
+                "status": s.status,
+                "reconcile_status": s.reconcile_status,
+                "has_revenue": s.total_revenue is not None,
+                "has_expenditures": s.total_expenditures is not None,
+                "has_fund_balance": s.fund_balance is not None,
+                "has_debt": s.total_debt is not None,
+                "line_item_count": db.query(FinancialLineItem).filter(FinancialLineItem.statement_id == s.id).count(),
+            }
+            for s in sorted_stmts
+        ],
+        "merged_line_item_count": len(merged_lines),
+        "merged_line_items": merged_lines[:100],  # cap to keep response tractable
+        "missing": {
+            "doc_types": missing_types,
+            "fields": missing_fields,
+        },
+    }
+
+
 @router.get("/diagnostics")
 def diagnostics(
     db: Session = Depends(get_db),

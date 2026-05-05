@@ -10,6 +10,7 @@ import { BuildingOfficeIcon, AcademicCapIcon, BoltIcon, BugAntIcon } from "@hero
 import StatementCard from "./StatementCard";
 import DrillPanel from "./DrillPanel";
 import YoYTrajectory from "./YoYTrajectory";
+import CombinedFYView from "./CombinedFYView";
 
 type EntityFilter = "all" | "town" | "school";
 
@@ -17,6 +18,7 @@ export default function FinancialDashboardV2() {
   const [entityFilter, setEntityFilter] = useState<EntityFilter>("school");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showDiag, setShowDiag] = useState(false);
+  const [combinedFY, setCombinedFY] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: statements } = useQuery({
@@ -210,7 +212,18 @@ export default function FinancialDashboardV2() {
           )}
           {grouped.map(([fy, stmts]) => (
             <div key={fy}>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">FY {fy}</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">FY {fy}</h3>
+                {stmts.length > 1 && entityFilter !== "all" && (
+                  <button
+                    onClick={() => setCombinedFY(fy)}
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200"
+                    title={`Combine ${stmts.length} source documents into one canonical view`}
+                  >
+                    Combine ({stmts.length})
+                  </button>
+                )}
+              </div>
               <div className="space-y-2">
                 {stmts.map(s => (
                   <StatementCard
@@ -225,13 +238,19 @@ export default function FinancialDashboardV2() {
           ))}
         </div>
 
-        {/* Right: drill panel */}
+        {/* Right: combined FY view OR drill panel */}
         <div className="lg:col-span-2">
-          {selected ? (
+          {combinedFY && entityFilter !== "all" ? (
+            <CombinedFYView
+              entityType={entityFilter as "town" | "school"}
+              fiscalYear={combinedFY}
+              onClose={() => setCombinedFY(null)}
+            />
+          ) : selected ? (
             <DrillPanel statement={selected} />
           ) : (
             <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-12 text-center">
-              <p className="text-sm text-gray-500">Select a statement to view its drill analysis.</p>
+              <p className="text-sm text-gray-500">Select a statement to view its drill analysis, or click <strong>Combine</strong> on a multi-doc FY group.</p>
             </div>
           )}
         </div>

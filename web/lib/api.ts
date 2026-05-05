@@ -322,6 +322,40 @@ export async function getFinancialDiagnostics() {
   }>("/api/financial/diagnostics");
 }
 
+// ─── FY merged view ───────────────────────────────────────────────────
+
+export interface FYView {
+  entity_type: string;
+  fiscal_year: string;
+  primary_statement_id: string;
+  primary_statement_type: string;
+  primary_entity_name: string | null;
+  accounting_basis: string | null;
+  fiscal_calendar: string | null;
+  merged: {
+    total_revenue: number | null; total_revenue_source: string | null;
+    total_expenditures: number | null; total_expenditures_source: string | null;
+    surplus_deficit: number | null; surplus_deficit_source: string | null;
+    fund_balance: number | null; fund_balance_source: string | null;
+    total_debt: number | null; total_debt_source: string | null;
+  };
+  sources: {
+    statement_id: string; statement_type: string; entity_name: string | null;
+    variant: string; status: string; reconcile_status: string | null;
+    has_revenue: boolean; has_expenditures: boolean;
+    has_fund_balance: boolean; has_debt: boolean;
+    line_item_count: number;
+  }[];
+  merged_line_item_count: number;
+  merged_line_items: any[];
+  missing: { doc_types: string[]; fields: string[] };
+}
+
+export async function getFYView(entity_type: string, fiscal_year: string): Promise<FYView> {
+  const qs = new URLSearchParams({ entity_type, fiscal_year });
+  return request<FYView>(`/api/financial/fy-view?${qs}`);
+}
+
 export async function getDrillResults(statementId: string): Promise<DrillResponse> {
   return request<DrillResponse>(`/api/financial/statements/${statementId}/drill`);
 }

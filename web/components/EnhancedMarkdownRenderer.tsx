@@ -89,19 +89,23 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
         const chartDivs = containerRef.current.querySelectorAll('.ah-chart');
         if (chartDivs.length === 0) return;
 
-        let cleanup: (() => void)[] = [];
+        // Cancellation flag for the async effect — so a stale render pass
+        // (e.g. after content prop changed) can't push fallback notices into
+        // the now-fresh DOM and clobber a successfully rendered chart.
+        let cancelled = false;
+        const cleanup: (() => void)[] = [];
 
         (async () => {
             try {
-                // Chart.js v4 splits controllers (BarController, LineController, PieController)
-                // from elements (BarElement, ArcElement). `registerables` is the bundle of
-                // everything — registering only elements gives "X is not a registered controller".
+                // Chart.js v4 splits controllers from elements; `registerables` is
+                // the bundle of everything — registering only elements throws
+                // "X is not a registered controller".
                 const { Chart, registerables } = await import('chart.js');
                 Chart.register(...registerables);
+                if (cancelled) return;
 
                 const showFallback = (div: Element, msg: string) => {
-                    // Replace the empty chart container with a small inline notice so
-                    // the user sees "(chart unavailable)" instead of 320px of blank space.
+                    if (!div.isConnected) return; // div was already removed
                     const note = document.createElement('div');
                     note.className = 'text-xs text-gray-400 italic py-2 px-3 border border-gray-200 rounded bg-gray-50';
                     note.textContent = `Chart unavailable: ${msg}`;
@@ -110,12 +114,22 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                 };
 
                 chartDivs.forEach((div) => {
+                    if (cancelled || !div.isConnected) return;
+                    // Skip if already rendered in a prior pass (StrictMode
+                    // double-invokes effects — without this guard the second
+                    // pass clobbers the chart created by the first).
+                    if (div.getAttribute('data-rendered') === '1') return;
+
                     const canvas = div.querySelector('canvas') as HTMLCanvasElement;
                     const configStr = div.getAttribute('data-chart');
                     if (!canvas || !configStr) {
                         showFallback(div, 'no canvas/config');
                         return;
                     }
+
+                    // If this canvas already has a Chart attached (StrictMode
+                    // remount, hot reload), tear it down before recreating.
+                    Chart.getChart(canvas)?.destroy();
 
                     try {
                         const config = JSON.parse(configStr.replace(/&apos;/g, "'"));
@@ -139,19 +153,34 @@ const EnhancedMarkdownRenderer: React.FC<EnhancedMarkdownRendererProps> = ({
                                 },
                             },
                         });
+                        div.setAttribute('data-rendered', '1');
                         cleanup.push(() => chart.destroy());
                     } catch (e) {
-                        console.warn('Failed to render chart:', e);
+                        console.warn('[chart] render failed:', e, { configStr: configStr.slice(0, 200) });
                         const msg = e instanceof Error ? e.message : 'render error';
                         showFallback(div, msg.slice(0, 80));
                     }
                 });
             } catch (e) {
-                console.warn('Chart.js not available:', e);
+                console.warn('[chart] Chart.js not available:', e);
+                // Make the failure visible — without this the divs sit as
+                // 320px blank space.
+                if (!cancelled) {
+                    chartDivs.forEach((div) => {
+                        if (!div.isConnected || div.getAttribute('data-rendered') === '1') return;
+                        const note = document.createElement('div');
+                        note.className = 'text-xs text-gray-400 italic py-2 px-3 border border-gray-200 rounded bg-gray-50';
+                        note.textContent = 'Chart unavailable: failed to load chart library';
+                        div.replaceWith(note);
+                    });
+                }
             }
         })();
 
-        return () => { cleanup.forEach(fn => fn()); };
+        return () => {
+            cancelled = true;
+            cleanup.forEach(fn => fn());
+        };
     }, [html, isLoading]);
 
     const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {

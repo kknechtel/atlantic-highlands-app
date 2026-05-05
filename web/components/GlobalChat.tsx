@@ -403,12 +403,29 @@ export default function GlobalChat() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
       // Use the direct HTTPS endpoint so Amplify's 30s SSR timeout doesn't
-      // kill long streams. Falls back to the relative URL when API_DIRECT
-      // isn't configured (local dev).
-      const streamUrl = `${API_DIRECT || API_BASE}/api/chat/stream`;
-      const response = await fetch(streamUrl, {
-        method: "POST", headers, body: JSON.stringify(body),
-      });
+      // kill long streams. If the direct endpoint can't be reached at all
+      // (network error, VPN block, DNS, TLS), fall back to the same-origin
+      // Amplify proxy — the user gets a working chat (capped at ~30s) instead
+      // of a dead one. Falls back to the relative URL when API_DIRECT isn't
+      // configured (local dev).
+      const directUrl = `${API_DIRECT || API_BASE}/api/chat/stream`;
+      const fallbackUrl = `${API_BASE}/api/chat/stream`;
+      let response: Response;
+      try {
+        response = await fetch(directUrl, {
+          method: "POST", headers, body: JSON.stringify(body),
+        });
+      } catch (netErr) {
+        // CORS-blocked / DNS / TLS / offline. Try the same-origin proxy.
+        if (directUrl !== fallbackUrl) {
+          console.warn("Direct chat endpoint unreachable, falling back to proxy:", netErr);
+          response = await fetch(fallbackUrl, {
+            method: "POST", headers, body: JSON.stringify(body),
+          });
+        } else {
+          throw netErr;
+        }
+      }
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let full = "";

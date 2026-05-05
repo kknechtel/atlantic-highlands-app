@@ -9,6 +9,7 @@ import {
 import { BuildingOfficeIcon, AcademicCapIcon, BoltIcon, BugAntIcon } from "@heroicons/react/24/outline";
 import StatementCard from "./StatementCard";
 import DrillPanel from "./DrillPanel";
+import YoYTrajectory from "./YoYTrajectory";
 
 type EntityFilter = "all" | "town" | "school";
 
@@ -196,6 +197,8 @@ export default function FinancialDashboardV2() {
           )}
         </div>
       )}
+
+      <YoYTrajectory statements={filtered} entity={entityFilter} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: cards grouped by FY */}

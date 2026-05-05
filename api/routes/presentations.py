@@ -528,24 +528,31 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
     import anthropic
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+    # Trim each turn to a sane size — full chat transcripts often run 300K+
+    # tokens once tool results bloat the assistant turns. The structurer doesn't
+    # need every intermediate "Now let me check…" line, just the final content.
+    PER_TURN_CHARS = 12000
     transcript_lines = []
     for m in messages:
-        role = m.get("role", "user").upper()
-        transcript_lines.append(f"## {role}\n\n{m.get('content', '')}")
+        role = (m.get("role") or "user").upper()
+        body = (m.get("content") or "")
+        if len(body) > PER_TURN_CHARS:
+            body = body[:PER_TURN_CHARS] + "\n\n[... truncated ...]"
+        transcript_lines.append(f"## {role}\n\n{body}")
     transcript = "\n\n---\n\n".join(transcript_lines)
 
     prompt = _FROM_CHAT_PROMPT
     if title_hint:
         prompt += f"\n\ntitle_hint: {title_hint}"
 
-    # 1M-context beta header — chat transcripts with 10+ tool calls easily push
-    # past 200K tokens, and without this the call truncates input or 400s.
-    # Anthropic SDK refuses non-streaming for long requests (>10min projected),
-    # so we stream and accumulate text.
+    # Use Haiku 4.5 — structuring a transcript into JSON sections is a
+    # straightforward reformatting task; Sonnet's ~5x latency isn't worth it.
+    # 1M-context beta still useful when transcripts are large after trimming.
+    # Anthropic SDK refuses non-streaming for long requests, so we stream.
     text = ""
     with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=16000,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=12000,
         system=prompt,
         messages=[{"role": "user", "content": f"TRANSCRIPT:\n\n{transcript}"}],
         extra_headers={"anthropic-beta": "context-1m-2025-08-07"},

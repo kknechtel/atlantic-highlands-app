@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002";
 
+// Long-running streams (chat SSE, OCR ingestion, fact-check) need the
+// Amplify SSR Lambda to live well past the 30-second default. 300s is
+// safely under Amplify's 15-minute hard ceiling.
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
   return proxyRequest(request, params.path);
 }

@@ -98,6 +98,32 @@ async def reextract_one(
     db.commit()
     db.refresh(doc)
 
+    # Record OCR cost. Tesseract / pdfplumber are free but still tracked at
+    # zero so the admin sees coverage of the corpus, not just paid runs.
+    try:
+        from services.usage import record_usage
+        tier_to_model = {
+            "pdfplumber": "pdfplumber",
+            "tesseract": "tesseract",
+            "gemini_vision": "gemini-2.5-flash",
+        }
+        record_usage(
+            db,
+            source="ocr",
+            model=tier_to_model.get(result.tier, result.tier or "unknown"),
+            estimated_cost_usd=float(result.estimated_cost or 0.0),
+            resource_type="document",
+            resource_id=str(doc.id),
+            metadata={
+                "tier": result.tier,
+                "page_count": result.page_count,
+                "chars": len(result.markdown),
+                "elapsed_ms": int(result.processing_time_ms),
+            },
+        )
+    except Exception:
+        logger.warning("usage record skipped for ocr/%s", doc.filename, exc_info=True)
+
     summary = {
         "document_id": str(doc.id),
         "filename": doc.filename,

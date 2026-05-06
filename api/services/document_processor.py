@@ -176,6 +176,24 @@ Respond with ONLY a JSON object:
     return None
 
 
+def _record_doc_processor_usage(model: str, in_t: int, out_t: int) -> None:
+    if not (in_t or out_t):
+        return
+    try:
+        from database import SessionLocal
+        from services.usage import record_usage
+        sess = SessionLocal()
+        try:
+            record_usage(
+                sess, source="document_processor", model=model,
+                input_tokens=in_t, output_tokens=out_t,
+            )
+        finally:
+            sess.close()
+    except Exception:
+        pass
+
+
 async def _analyze_with_gemini(prompt: str) -> Optional[Dict]:
     from google import genai
     from google.genai import types
@@ -198,6 +216,13 @@ async def _analyze_with_gemini(prompt: str) -> Optional[Dict]:
     )
 
     if response and response.text:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is not None:
+            _record_doc_processor_usage(
+                "gemini-2.5-flash",
+                int(getattr(usage, "prompt_token_count", 0) or 0),
+                int(getattr(usage, "candidates_token_count", 0) or 0),
+            )
         return _parse_json(response.text, "gemini")
     return None
 
@@ -218,6 +243,11 @@ async def _analyze_with_claude(prompt: str) -> Optional[Dict]:
     )
 
     if response and response.content:
+        _record_doc_processor_usage(
+            "claude-sonnet-4-20250514",
+            getattr(response.usage, "input_tokens", 0) or 0,
+            getattr(response.usage, "output_tokens", 0) or 0,
+        )
         return _parse_json(response.content[0].text, "claude")
     return None
 

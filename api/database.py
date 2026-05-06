@@ -257,4 +257,115 @@ def _migrate():
             except Exception as e:
                 logger.warning(f"Index {name} skipped: {e}")
 
+        # 5. Per-user scoping: add user_id to chat_history so each user only sees
+        # their own sessions. Existing rows (pre-migration) get NULL — they're
+        # treated as legacy/unowned and only visible to admins.
+        if _table_exists("chat_history"):
+            exists = conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'chat_history' AND column_name = 'user_id'"
+            )).fetchone()
+            if not exists:
+                conn.execute(text(
+                    "ALTER TABLE chat_history ADD COLUMN user_id UUID REFERENCES users(id)"
+                ))
+                logger.info("Added column chat_history.user_id")
+            try:
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_chat_history_user_id "
+                    "ON chat_history(user_id)"
+                ))
+            except Exception as e:
+                logger.warning(f"Index ix_chat_history_user_id skipped: {e}")
+
+        # 6. Sharing tables for presentations and projects. Owner-or-share-or-admin
+        # access is enforced at the route level; these tables just record who has
+        # been granted access and at what role (viewer | editor).
+        share_tables = [
+            ("presentation_shares", """
+                CREATE TABLE IF NOT EXISTS presentation_shares (
+                    presentation_id UUID NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR NOT NULL DEFAULT 'viewer',
+                    created_at TIMESTAMP DEFAULT now(),
+                    PRIMARY KEY (presentation_id, user_id)
+                )
+            """),
+            ("project_shares", """
+                CREATE TABLE IF NOT EXISTS project_shares (
+                    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR NOT NULL DEFAULT 'viewer',
+                    created_at TIMESTAMP DEFAULT now(),
+                    PRIMARY KEY (project_id, user_id)
+                )
+            """),
+        ]
+        for name, sql in share_tables:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"Table {name} skipped: {e}")
+
+        share_indexes = [
+            "CREATE INDEX IF NOT EXISTS ix_presentation_shares_user ON presentation_shares(user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_project_shares_user ON project_shares(user_id)",
+        ]
+        for sql in share_indexes:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"Share index skipped: {e}")
+
+        # 7. LLM usage tracking — one row per LLM call. Aggregated for the
+        # admin cost panel; raw rows kept for drill-down. user_id may be NULL
+        # for system jobs (batch OCR, scheduled extraction).
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS llm_usage (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    source VARCHAR NOT NULL,
+                    model VARCHAR NOT NULL,
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    estimated_cost_usd DOUBLE PRECISION DEFAULT 0,
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    resource_type VARCHAR,
+                    resource_id VARCHAR,
+                    metadata JSONB DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMP DEFAULT now()
+                )
+            """))
+        except Exception as e:
+            # Older Postgres without pgcrypto: fall back to client-supplied UUIDs
+            logger.warning(f"llm_usage table create with gen_random_uuid failed: {e} — retrying without default")
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS llm_usage (
+                        id UUID PRIMARY KEY,
+                        source VARCHAR NOT NULL,
+                        model VARCHAR NOT NULL,
+                        input_tokens INTEGER DEFAULT 0,
+                        output_tokens INTEGER DEFAULT 0,
+                        estimated_cost_usd DOUBLE PRECISION DEFAULT 0,
+                        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                        resource_type VARCHAR,
+                        resource_id VARCHAR,
+                        metadata JSONB DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMP DEFAULT now()
+                    )
+                """))
+            except Exception as e2:
+                logger.warning(f"llm_usage table create failed: {e2}")
+
+        for sql in [
+            "CREATE INDEX IF NOT EXISTS ix_llm_usage_created ON llm_usage(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS ix_llm_usage_user ON llm_usage(user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_llm_usage_source ON llm_usage(source)",
+        ]:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"llm_usage index skipped: {e}")
+
         conn.commit()

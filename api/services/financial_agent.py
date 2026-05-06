@@ -417,6 +417,24 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
     last_error: Optional[str] = None
     raw_response: Optional[str] = None
 
+    def _record(model: str, in_t: int, out_t: int) -> None:
+        if not (in_t or out_t):
+            return
+        try:
+            from database import SessionLocal
+            from services.usage import record_usage
+            sess = SessionLocal()
+            try:
+                record_usage(
+                    sess, source="financial_agent", model=model,
+                    input_tokens=in_t, output_tokens=out_t,
+                    metadata={"label": label},
+                )
+            finally:
+                sess.close()
+        except Exception:
+            logger.debug("financial_agent usage record skipped", exc_info=True)
+
     if ANTHROPIC_API_KEY:
         try:
             import anthropic
@@ -425,6 +443,7 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
             # could plausibly take >10 min. Use streaming unconditionally so we don't
             # need to guess the threshold.
             text_parts: list[str] = []
+            in_t = out_t = 0
             async with client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=max_output,
@@ -432,6 +451,13 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
             ) as stream:
                 async for text_chunk in stream.text_stream:
                     text_parts.append(text_chunk)
+                try:
+                    final = await stream.get_final_message()
+                    in_t = getattr(final.usage, "input_tokens", 0) or 0
+                    out_t = getattr(final.usage, "output_tokens", 0) or 0
+                except Exception:
+                    pass
+            _record("claude-sonnet-4-6", in_t, out_t)
             raw_response = "".join(text_parts)
             if raw_response:
                 parsed = _parse_json(raw_response)
@@ -466,6 +492,14 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
                 None,
                 lambda: client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=cfg),
             )
+            if response:
+                usage = getattr(response, "usage_metadata", None)
+                if usage is not None:
+                    _record(
+                        "gemini-2.5-flash",
+                        int(getattr(usage, "prompt_token_count", 0) or 0),
+                        int(getattr(usage, "candidates_token_count", 0) or 0),
+                    )
             if response and response.text:
                 raw_response = response.text
                 parsed = _parse_json(raw_response)

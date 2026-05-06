@@ -35,9 +35,17 @@ import bcrypt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import or_, text as sql_text
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import (
+    get_current_user,
+    require_edit,
+    require_owner_or_admin,
+    require_view,
+    shared_resource_ids,
+    user_share_role,
+)
 from config import ANTHROPIC_API_KEY
 from database import get_db, SessionLocal
 from models.presentation import Presentation
@@ -108,7 +116,9 @@ class PasswordBody(BaseModel):
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-def _serialize(p: Presentation) -> dict:
+def _serialize(p: Presentation, user: Optional[User] = None,
+               role: Optional[str] = None) -> dict:
+    is_owner = bool(user and str(p.created_by) == str(user.id))
     return {
         "id": str(p.id),
         "title": p.title,
@@ -123,6 +133,8 @@ def _serialize(p: Presentation) -> dict:
         "published_at": p.published_at.isoformat() if p.published_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        "is_owner": is_owner,
+        "share_role": None if is_owner else role,
     }
 
 
@@ -130,6 +142,18 @@ def _get_or_404(db: Session, presentation_id: str) -> Presentation:
     p = db.query(Presentation).filter(Presentation.id == presentation_id).first()
     if not p:
         raise HTTPException(404, "Presentation not found")
+    return p
+
+
+def _get_viewable_or_404(db: Session, presentation_id: str, user: User) -> Presentation:
+    p = _get_or_404(db, presentation_id)
+    require_view(db, "presentations", p.created_by, p.id, user)
+    return p
+
+
+def _get_editable_or_404(db: Session, presentation_id: str, user: User) -> Presentation:
+    p = _get_or_404(db, presentation_id)
+    require_edit(db, "presentations", p.created_by, p.id, user)
     return p
 
 
@@ -148,8 +172,25 @@ def _ensure_section_ids(sections: list) -> list:
 
 @router.get("")
 def list_presentations(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    rows = db.query(Presentation).order_by(Presentation.updated_at.desc()).limit(200).all()
-    return [_serialize(p) for p in rows]
+    q = db.query(Presentation)
+    if not user.is_admin:
+        shared_ids = shared_resource_ids(db, "presentations", user.id)
+        if shared_ids:
+            q = q.filter(or_(
+                Presentation.created_by == user.id,
+                Presentation.id.in_(shared_ids),
+            ))
+        else:
+            q = q.filter(Presentation.created_by == user.id)
+    rows = q.order_by(Presentation.updated_at.desc()).limit(200).all()
+
+    role_by_id: dict[str, str] = {}
+    if not user.is_admin:
+        share_rows = db.execute(sql_text(
+            "SELECT presentation_id, role FROM presentation_shares WHERE user_id = :uid"
+        ), {"uid": str(user.id)}).fetchall()
+        role_by_id = {str(r[0]): r[1] for r in share_rows}
+    return [_serialize(p, user, role_by_id.get(str(p.id))) for p in rows]
 
 
 @router.post("")
@@ -165,19 +206,21 @@ def create_presentation(
         created_by=user.id,
     )
     db.add(p); db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 @router.get("/{presentation_id}")
 def get_presentation(presentation_id: str, db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):
-    return _serialize(_get_or_404(db, presentation_id))
+    p = _get_viewable_or_404(db, presentation_id, user)
+    role = user_share_role(db, "presentations", p.id, user.id)
+    return _serialize(p, user, role)
 
 
 @router.put("/{presentation_id}")
 def update_presentation(presentation_id: str, body: UpdatePresentation,
                         db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
     if body.title is not None:
         p.title = body.title
     if body.sections is not None:
@@ -187,13 +230,14 @@ def update_presentation(presentation_id: str, body: UpdatePresentation,
     if body.theme is not None:
         p.theme = body.theme
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 @router.delete("/{presentation_id}")
 def delete_presentation(presentation_id: str, db: Session = Depends(get_db),
                         user: User = Depends(get_current_user)):
     p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
     db.delete(p); db.commit()
     return {"ok": True}
 
@@ -203,7 +247,7 @@ def delete_presentation(presentation_id: str, db: Session = Depends(get_db),
 @router.post("/{presentation_id}/section")
 def add_section(presentation_id: str, body: NewSection, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
     new_sec = {
         "id": f"sec_{uuid.uuid4().hex[:10]}",
         "kind": body.kind,
@@ -222,13 +266,13 @@ def add_section(presentation_id: str, body: NewSection, db: Session = Depends(ge
         sections.append(new_sec)
     p.sections = sections
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 @router.patch("/{presentation_id}/section/{section_id}")
 def patch_section(presentation_id: str, section_id: str, body: SectionPatch,
                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
     sections = list(p.sections or [])
     for i, s in enumerate(sections):
         if s.get("id") == section_id:
@@ -240,17 +284,17 @@ def patch_section(presentation_id: str, section_id: str, body: SectionPatch,
             sections[i] = updated
             p.sections = sections
             db.commit(); db.refresh(p)
-            return _serialize(p)
+            return _serialize(p, user)
     raise HTTPException(404, "Section not found")
 
 
 @router.delete("/{presentation_id}/section/{section_id}")
 def delete_section(presentation_id: str, section_id: str,
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
     p.sections = [s for s in (p.sections or []) if s.get("id") != section_id]
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 # ─── Attachments ────────────────────────────────────────────────────────────
@@ -258,7 +302,7 @@ def delete_section(presentation_id: str, section_id: str,
 @router.post("/{presentation_id}/attachments")
 def add_attachment(presentation_id: str, body: AttachmentBody,
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
     from models.document import Document
     doc = db.query(Document).filter(Document.id == body.document_id).first()
     if not doc:
@@ -271,48 +315,54 @@ def add_attachment(presentation_id: str, body: AttachmentBody,
     }
     p.attachments = [*(p.attachments or []), att]
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 @router.delete("/{presentation_id}/attachments/{att_id}")
 def remove_attachment(presentation_id: str, att_id: str,
                       db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
     p.attachments = [a for a in (p.attachments or []) if a.get("id") != att_id]
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 # ─── Publish / password ─────────────────────────────────────────────────────
+# Publishing/password = owner-only — sharing read access is what the share
+# endpoints are for; making a deck public is a different decision that
+# only the owner should be able to make.
 
 @router.post("/{presentation_id}/publish")
 def publish(presentation_id: str, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
     p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
     if not p.public_slug:
         # short slugs are easier to share; collisions are negligible at this scale
         p.public_slug = secrets.token_urlsafe(9).replace("_", "").replace("-", "")[:12].lower()
     p.status = "published"
     p.published_at = datetime.utcnow()
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 @router.post("/{presentation_id}/unpublish")
 def unpublish(presentation_id: str, db: Session = Depends(get_db),
               user: User = Depends(get_current_user)):
     p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
     p.public_slug = None
     p.status = "draft"
     p.published_at = None
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 @router.post("/{presentation_id}/password")
 def set_password(presentation_id: str, body: PasswordBody,
                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
     if not body.password:
         p.public_password_hash = None
         p.public_password_set_at = None
@@ -320,7 +370,7 @@ def set_password(presentation_id: str, body: PasswordBody,
         p.public_password_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
         p.public_password_set_at = datetime.utcnow()
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 # ─── AI chat ────────────────────────────────────────────────────────────────
@@ -334,12 +384,16 @@ async def ai_chat(presentation_id: str, body: AIChatBody, request: Request,
         p = setup_db.query(Presentation).filter(Presentation.id == presentation_id).first()
         if not p:
             raise HTTPException(404, "Presentation not found")
+        require_view(setup_db, "presentations", p.created_by, p.id, user)
         sections_summary = build_sections_summary(p.sections or [])
     finally:
         setup_db.close()
 
     return StreamingResponse(
-        stream_deck_chat(body.message, sections_summary, body.history),
+        stream_deck_chat(
+            body.message, sections_summary, body.history,
+            user_id=str(user.id), presentation_id=presentation_id,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
@@ -350,8 +404,11 @@ async def ai_chat(presentation_id: str, body: AIChatBody, request: Request,
 @router.post("/{presentation_id}/fact-check")
 def fact_check(presentation_id: str, db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
-    p = _get_or_404(db, presentation_id)
-    result = fact_check_presentation(db, p.sections or [])
+    p = _get_editable_or_404(db, presentation_id, user)
+    result = fact_check_presentation(
+        db, p.sections or [],
+        user_id=str(user.id), presentation_id=str(p.id),
+    )
     p.last_fact_check = result
     db.commit()
     return result
@@ -367,7 +424,7 @@ def export_deck(
     user: User = Depends(get_current_user),
 ):
     """Stream a generated PPTX or DOCX of the presentation."""
-    p = _get_or_404(db, presentation_id)
+    p = _get_viewable_or_404(db, presentation_id, user)
 
     if format == "pptx":
         data, filename = export_pptx(p)
@@ -425,7 +482,7 @@ def ai_edit_section(
     Synchronous (no SSE) — these are usually fast (<10s) on Sonnet."""
     if not ANTHROPIC_API_KEY:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
-    p = _get_or_404(db, presentation_id)
+    p = _get_editable_or_404(db, presentation_id, user)
 
     sections = list(p.sections or [])
     target_idx = next((i for i, s in enumerate(sections) if s.get("id") == body.section_id), -1)
@@ -469,6 +526,15 @@ def ai_edit_section(
         new_body = new_body.removesuffix("```").strip()
         if not new_body:
             raise HTTPException(502, "AI returned empty body")
+        from services.usage import record_usage
+        record_usage(
+            db, source="ai_edit", model="claude-sonnet-4-6",
+            input_tokens=getattr(resp.usage, "input_tokens", 0) or 0,
+            output_tokens=getattr(resp.usage, "output_tokens", 0) or 0,
+            user_id=str(user.id),
+            resource_type="presentation", resource_id=str(p.id),
+            metadata={"action": body.action, "section_id": body.section_id},
+        )
     except anthropic.APIStatusError as exc:
         logger.error("ai-edit Anthropic error: %s", exc)
         raise HTTPException(502, f"AI service error: {getattr(exc, 'message', str(exc))}")
@@ -480,7 +546,7 @@ def ai_edit_section(
     sections[target_idx] = section
     p.sections = sections
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, user)
 
 
 # ─── From-chat: turn a chat transcript into a draft deck ────────────────────
@@ -528,7 +594,9 @@ RULES:
 Output ONLY valid JSON — no fences, no commentary."""
 
 
-def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str]) -> dict:
+def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str]) -> tuple[dict, int, int]:
+    """Returns (deck_json, input_tokens, output_tokens) so the caller can
+    record usage."""
     import anthropic
     import re as _re
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -568,6 +636,7 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
     # 1M-context beta still useful when transcripts are large after trimming.
     # Anthropic SDK refuses non-streaming for long requests, so we stream.
     text = ""
+    in_t = out_t = 0
     with client.messages.stream(
         model="claude-haiku-4-5-20251001",
         max_tokens=12000,
@@ -577,6 +646,12 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
     ) as stream:
         for chunk in stream.text_stream:
             text += chunk
+        try:
+            final_msg = stream.get_final_message()
+            in_t = getattr(final_msg.usage, "input_tokens", 0) or 0
+            out_t = getattr(final_msg.usage, "output_tokens", 0) or 0
+        except Exception:
+            pass
     text = text.strip().removeprefix("```json").removeprefix("```").strip().removesuffix("```").strip()
 
     def _restore_charts(obj):
@@ -594,13 +669,13 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
         return obj
 
     try:
-        return _restore_charts(json.loads(text))
+        return _restore_charts(json.loads(text)), in_t, out_t
     except json.JSONDecodeError:
         # Best-effort: salvage the largest JSON object substring
         start, end = text.find("{"), text.rfind("}")
         if start >= 0 and end > start:
             try:
-                return _restore_charts(json.loads(text[start:end + 1]))
+                return _restore_charts(json.loads(text[start:end + 1])), in_t, out_t
             except Exception:
                 pass
         raise HTTPException(502, "AI returned invalid JSON for the deck structure")
@@ -620,7 +695,7 @@ def create_from_chat(
         raise HTTPException(400, "messages cannot be empty")
 
     msg_dicts = [{"role": m.role, "content": m.content} for m in body.messages]
-    structured = _structure_chat_with_claude(msg_dicts, body.title_hint)
+    structured, in_t, out_t = _structure_chat_with_claude(msg_dicts, body.title_hint)
 
     title = (structured.get("title") or body.title_hint or "Untitled Presentation").strip()
     raw_sections = structured.get("sections") or []
@@ -636,7 +711,17 @@ def create_from_chat(
         created_by=user.id,
     )
     db.add(p); db.commit(); db.refresh(p)
-    return _serialize(p)
+
+    from services.usage import record_usage
+    record_usage(
+        db, source="deck_from_chat", model="claude-haiku-4-5-20251001",
+        input_tokens=in_t, output_tokens=out_t,
+        user_id=str(user.id),
+        resource_type="presentation", resource_id=str(p.id),
+        metadata={"message_count": len(msg_dicts)},
+    )
+
+    return _serialize(p, user)
 
 
 # ─── Comments (threaded review) ─────────────────────────────────────────────
@@ -666,6 +751,7 @@ def _serialize_comment(c) -> dict:
 def list_comments(presentation_id: str, db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     from models.presentation import PresentationComment
+    _get_viewable_or_404(db, presentation_id, user)
     rows = (
         db.query(PresentationComment)
         .filter(PresentationComment.presentation_id == presentation_id)
@@ -681,7 +767,7 @@ def add_comment(presentation_id: str, body: CommentBody,
     from models.presentation import PresentationComment
     if not body.body.strip():
         raise HTTPException(400, "body cannot be empty")
-    _get_or_404(db, presentation_id)
+    _get_viewable_or_404(db, presentation_id, user)
     c = PresentationComment(
         presentation_id=presentation_id,
         section_id=body.section_id,
@@ -698,6 +784,7 @@ def add_comment(presentation_id: str, body: CommentBody,
 def toggle_resolve(presentation_id: str, comment_id: str,
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     from models.presentation import PresentationComment
+    _get_viewable_or_404(db, presentation_id, user)
     c = (
         db.query(PresentationComment)
         .filter(PresentationComment.id == comment_id,
@@ -716,6 +803,7 @@ def toggle_resolve(presentation_id: str, comment_id: str,
 def delete_comment(presentation_id: str, comment_id: str,
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     from models.presentation import PresentationComment
+    p = _get_viewable_or_404(db, presentation_id, user)
     c = (
         db.query(PresentationComment)
         .filter(PresentationComment.id == comment_id,
@@ -724,7 +812,75 @@ def delete_comment(presentation_id: str, comment_id: str,
     )
     if not c:
         raise HTTPException(404, "Comment not found")
+    # Only the comment author, the presentation owner, or an admin can delete.
+    is_author = c.author_email and user.email and c.author_email.lower() == user.email.lower()
+    is_owner = str(p.created_by) == str(user.id)
+    if not (is_author or is_owner or user.is_admin):
+        raise HTTPException(403, "You can only delete your own comments")
     db.delete(c); db.commit()
+    return {"ok": True}
+
+
+# ─── Sharing ────────────────────────────────────────────────────────────────
+
+class ShareCreateBody(BaseModel):
+    user_id: str
+    role: Literal["viewer", "editor"] = "viewer"
+
+
+@router.get("/{presentation_id}/shares")
+def list_presentation_shares(presentation_id: str, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user)):
+    p = _get_viewable_or_404(db, presentation_id, user)
+    rows = db.execute(sql_text("""
+        SELECT u.id, u.email, u.full_name, ps.role
+        FROM presentation_shares ps
+        JOIN users u ON u.id = ps.user_id
+        WHERE ps.presentation_id = :pid
+        ORDER BY u.email
+    """), {"pid": str(p.id)}).fetchall()
+    return [
+        {"user_id": str(r[0]), "email": r[1], "full_name": r[2], "role": r[3]}
+        for r in rows
+    ]
+
+
+@router.post("/{presentation_id}/shares")
+def add_presentation_share(presentation_id: str, body: ShareCreateBody,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
+    if str(body.user_id) == str(p.created_by):
+        raise HTTPException(400, "Owner already has full access")
+    target = db.query(User).filter(User.id == body.user_id).first()
+    if not target:
+        raise HTTPException(404, "User not found")
+    db.execute(sql_text("""
+        INSERT INTO presentation_shares (presentation_id, user_id, role)
+        VALUES (:pid, :uid, :role)
+        ON CONFLICT (presentation_id, user_id) DO UPDATE SET role = EXCLUDED.role
+    """), {"pid": str(p.id), "uid": str(body.user_id), "role": body.role})
+    db.commit()
+    return {
+        "user_id": str(target.id),
+        "email": target.email,
+        "full_name": target.full_name,
+        "role": body.role,
+    }
+
+
+@router.delete("/{presentation_id}/shares/{user_id}")
+def remove_presentation_share(presentation_id: str, user_id: str,
+                              db: Session = Depends(get_db),
+                              user: User = Depends(get_current_user)):
+    p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
+    db.execute(sql_text(
+        "DELETE FROM presentation_shares "
+        "WHERE presentation_id = :pid AND user_id = :uid"
+    ), {"pid": str(p.id), "uid": str(user_id)})
+    db.commit()
     return {"ok": True}
 
 

@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.user import User, InviteToken
-from auth import hash_password, verify_password, create_access_token, get_current_user_allow_pending
+from auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+    get_current_user_allow_pending,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -189,3 +195,29 @@ def change_password(
     current_user.must_change_password = False
     db.commit()
     return {"detail": "Password changed"}
+
+
+class DirectoryEntry(BaseModel):
+    id: str
+    email: str
+    full_name: str | None
+
+
+@router.get("/directory", response_model=list[DirectoryEntry])
+def user_directory(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Minimal directory of approved users — used by share dialogs to pick
+    a target user. Excludes pending/disabled accounts and the requester
+    themselves."""
+    users = (
+        db.query(User)
+        .filter(User.is_active == True, User.id != current_user.id)
+        .order_by(User.email)
+        .all()
+    )
+    return [
+        DirectoryEntry(id=str(u.id), email=u.email, full_name=u.full_name)
+        for u in users
+    ]

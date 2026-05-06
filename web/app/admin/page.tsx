@@ -11,6 +11,8 @@ import {
   CheckIcon, ClipboardIcon, TrashIcon, PlusIcon,
   UserPlusIcon, ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
+import AdminDocumentsPanel from "@/components/admin/AdminDocumentsPanel";
+import AdminCostsPanel from "@/components/admin/AdminCostsPanel";
 
 const brandColor = "#385854";
 
@@ -71,6 +73,8 @@ export default function AdminPage() {
     setTimeout(() => setCopiedInvite(null), 3000);
   };
 
+  const [tab, setTab] = useState<"users" | "documents" | "costs">("users");
+
   if (!user?.is_admin) {
     return (
       <div className="p-8">
@@ -84,9 +88,25 @@ export default function AdminPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+        <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-white">
+          {(["users", "documents", "costs"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-1 text-xs font-medium rounded ${
+                tab === t ? "text-white" : "text-gray-600 hover:bg-gray-50"
+              }`}
+              style={tab === t ? { backgroundColor: brandColor } : {}}
+            >
+              {t === "users" ? "Users" : t === "documents" ? "Documents" : "Costs"}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Stats */}
+      {/* Stats — always visible across all tabs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: "Users", value: stats?.total_users },
@@ -108,6 +128,58 @@ export default function AdminPage() {
           </div>
         ))}
       </div>
+
+      {/* Corpus health + cost stats — second row of always-visible cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          {
+            label: "OCR'd",
+            value: stats?.documents_ocrd ?? 0,
+            sub: stats?.total_documents ? `of ${stats.total_documents}` : undefined,
+          },
+          {
+            label: "Vector-indexed",
+            value: stats?.documents_vector_indexed ?? 0,
+            sub: stats?.total_documents ? `of ${stats.total_documents}` : undefined,
+          },
+          {
+            label: "Cost (30d)",
+            value: stats?.cost_last_30d_usd != null
+              ? `$${stats.cost_last_30d_usd.toFixed(2)}`
+              : "$0.00",
+            sub: stats?.llm_calls_last_30d
+              ? `${stats.llm_calls_last_30d} calls`
+              : undefined,
+          },
+          {
+            label: "Cost (total)",
+            value: stats?.cost_total_usd != null
+              ? `$${stats.cost_total_usd.toFixed(2)}`
+              : "$0.00",
+          },
+          {
+            label: "Avg / call",
+            value: stats?.cost_last_30d_usd && stats?.llm_calls_last_30d
+              ? `$${(stats.cost_last_30d_usd / stats.llm_calls_last_30d).toFixed(4)}`
+              : "—",
+            sub: "last 30d",
+          },
+        ].map((s) => (
+          <div
+            key={s.label}
+            className="rounded-xl shadow border border-gray-200 bg-white p-4"
+          >
+            <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+            <p className="text-sm text-gray-500">{s.label}</p>
+            {s.sub && <p className="text-[11px] text-gray-400 mt-0.5">{s.sub}</p>}
+          </div>
+        ))}
+      </div>
+
+      {tab === "documents" && <AdminDocumentsPanel />}
+      {tab === "costs" && <AdminCostsPanel />}
+      {tab === "users" && (
+        <div className="space-y-6">
 
       {/* Pending Approval */}
       {pendingUsers.length > 0 && (
@@ -321,6 +393,8 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }

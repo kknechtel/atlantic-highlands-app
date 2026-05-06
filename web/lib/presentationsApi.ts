@@ -99,6 +99,8 @@ export interface Presentation {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  is_owner?: boolean;
+  share_role?: "viewer" | "editor" | null;
 }
 
 export const listPresentations = () => request<Presentation[]>("/api/presentations");

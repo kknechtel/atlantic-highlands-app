@@ -589,6 +589,29 @@ GovPilot online form at the Atlantic Highlands portal.
                     yield f"data: {json.dumps({'type': 'delta', 'content': text[i:i+chunk_size]})}\n\n"
                     await asyncio.sleep(0.01)
 
+            # Record usage. OPRA endpoint is public — no user_id available.
+            try:
+                in_t = out_t = 0
+                usage = getattr(response, "usage_metadata", None) if response else None
+                if usage is not None:
+                    in_t = int(getattr(usage, "prompt_token_count", 0) or 0)
+                    out_t = int(getattr(usage, "candidates_token_count", 0) or 0)
+                if in_t or out_t:
+                    from database import SessionLocal
+                    from services.usage import record_usage
+                    sess = SessionLocal()
+                    try:
+                        record_usage(
+                            sess, source="opra_generate", model="gemini-2.5-flash",
+                            input_tokens=in_t, output_tokens=out_t,
+                            metadata={"entity": getattr(req, "entity", None),
+                                      "category": getattr(req, "category", None)},
+                        )
+                    finally:
+                        sess.close()
+            except Exception:
+                logger.debug("opra usage record skipped", exc_info=True)
+
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             logger.error(f"OPRA generation error: {e}")
@@ -682,6 +705,28 @@ Be meticulous - every citation must be verified against the actual statute text.
         )
 
         result_text = response.text if response and response.text else "Fact-check failed to produce results."
+
+        # Record usage
+        try:
+            in_t = out_t = 0
+            usage = getattr(response, "usage_metadata", None) if response else None
+            if usage is not None:
+                in_t = int(getattr(usage, "prompt_token_count", 0) or 0)
+                out_t = int(getattr(usage, "candidates_token_count", 0) or 0)
+            if in_t or out_t:
+                from database import SessionLocal
+                from services.usage import record_usage
+                sess = SessionLocal()
+                try:
+                    record_usage(
+                        sess, source="opra_fact_check", model="gemini-2.5-flash",
+                        input_tokens=in_t, output_tokens=out_t,
+                        metadata={"grounded": True},
+                    )
+                finally:
+                    sess.close()
+        except Exception:
+            logger.debug("opra fact-check usage record skipped", exc_info=True)
 
         # Extract grounding metadata if available
         grounding_sources = []

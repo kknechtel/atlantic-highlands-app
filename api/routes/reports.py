@@ -105,6 +105,8 @@ Documents:
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return StreamingResponse(no_key(), media_type="text/event-stream")
 
+    user_id_str = str(user.id)
+
     async def stream_report():
         from google import genai
         from google.genai import types
@@ -125,6 +127,28 @@ Documents:
             for i in range(0, len(text), chunk_size):
                 yield f"data: {json.dumps({'type': 'delta', 'content': text[i:i+chunk_size]})}\n\n"
                 await asyncio.sleep(0.01)
+
+        try:
+            in_t = out_t = 0
+            usage = getattr(response, "usage_metadata", None) if response else None
+            if usage is not None:
+                in_t = int(getattr(usage, "prompt_token_count", 0) or 0)
+                out_t = int(getattr(usage, "candidates_token_count", 0) or 0)
+            if in_t or out_t:
+                from database import SessionLocal
+                from services.usage import record_usage
+                sess = SessionLocal()
+                try:
+                    record_usage(
+                        sess, source="reports", model="gemini-2.5-flash",
+                        input_tokens=in_t, output_tokens=out_t,
+                        user_id=user_id_str,
+                        metadata={"report_type": getattr(req, "report_type", None)},
+                    )
+                finally:
+                    sess.close()
+        except Exception:
+            pass
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

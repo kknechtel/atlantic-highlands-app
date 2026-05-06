@@ -141,6 +141,8 @@ async def stream_deck_chat(
     user_message: str,
     sections_summary: str,
     history: Optional[list[dict]] = None,
+    user_id: Optional[str] = None,
+    presentation_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     if not ANTHROPIC_API_KEY:
         yield _sse("error", {"content": "ANTHROPIC_API_KEY not configured"})
@@ -148,16 +150,34 @@ async def stream_deck_chat(
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     tools = _tool_defs()
+    model = "claude-sonnet-4-6"
 
     system = SYSTEM_PROMPT + "\n\n## CURRENT DECK\n\n" + sections_summary
 
     messages: list[dict] = list(history or [])[-20:]
     messages.append({"role": "user", "content": user_message})
 
+    total_in = 0
+    total_out = 0
+
+    def _record_usage():
+        if total_in == 0 and total_out == 0:
+            return
+        sess = SessionLocal()
+        try:
+            from services.usage import record_usage
+            record_usage(
+                sess, source="deck_chat", model=model,
+                input_tokens=total_in, output_tokens=total_out,
+                user_id=user_id, resource_type="presentation", resource_id=presentation_id,
+            )
+        finally:
+            sess.close()
+
     try:
         for _ in range(6):
             async with client.messages.stream(
-                model="claude-sonnet-4-6",
+                model=model,
                 max_tokens=12000,
                 system=system,
                 tools=tools,
@@ -175,8 +195,11 @@ async def stream_deck_chat(
                             yield _sse("delta", {"content": delta.text})
 
                 final = await stream.get_final_message()
+                total_in += getattr(final.usage, "input_tokens", 0) or 0
+                total_out += getattr(final.usage, "output_tokens", 0) or 0
                 tool_blocks = [b for b in final.content if getattr(b, "type", None) == "tool_use"]
                 if not tool_blocks or final.stop_reason != "tool_use":
+                    _record_usage()
                     yield _sse("done", {})
                     return
 
@@ -215,13 +238,16 @@ async def stream_deck_chat(
                 messages.append({"role": "assistant", "content": final.content})
                 messages.append({"role": "user", "content": results})
 
+        _record_usage()
         yield _sse("done", {"reason": "iteration_limit"})
 
     except anthropic.APIStatusError as exc:
         log.error("Deck chat API error: %s", exc)
+        _record_usage()
         yield _sse("error", {"content": str(exc)[:300]})
     except Exception as exc:
         log.exception("Deck chat failed")
+        _record_usage()
         yield _sse("error", {"content": str(exc)[:300]})
 
 

@@ -4,13 +4,19 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { Plus, Trash2, Globe, FileText, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Globe, FileText, Loader2, Share2, Eye } from 'lucide-react';
 import {
   type Presentation,
   listPresentations,
   createPresentation,
   deletePresentation,
 } from '@/lib/presentationsApi';
+import {
+  listPresentationShares,
+  addPresentationShare,
+  removePresentationShare,
+} from '@/lib/api';
+import { ShareDialog } from '@/components/ShareDialog';
 
 const brandColor = '#385854';
 
@@ -22,6 +28,7 @@ export default function PresentationsListPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [shareTarget, setShareTarget] = useState<Presentation | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -104,29 +111,64 @@ export default function PresentationsListPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {decks.map((d) => (
+          {decks.map((d) => {
+            const isOwner = d.is_owner !== false;  // default true for backward-compat
+            const isReadOnly = !isOwner && d.share_role !== 'editor';
+            return (
             <div key={d.id} className="border border-gray-200 rounded-lg bg-white p-4 hover:shadow-md transition-shadow group">
               <Link href={`/presentations/${d.id}`} className="block">
                 <h3 className="font-semibold text-gray-900 mb-1 truncate group-hover:underline">{d.title}</h3>
-                <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
                   <span>{d.sections.length} section{d.sections.length === 1 ? '' : 's'}</span>
                   <span>•</span>
                   <span className={`uppercase tracking-wide ${
                     d.status === 'published' ? 'text-emerald-600' : ''
                   }`}>{d.status}</span>
                   {d.public_slug && <Globe className="w-3 h-3 text-emerald-600" />}
+                  {!isOwner && (
+                    <span className="ml-auto text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 flex items-center gap-1">
+                      {isReadOnly && <Eye className="w-3 h-3" />}
+                      Shared{d.share_role ? ` (${d.share_role})` : ''}
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-gray-400">Updated {new Date(d.updated_at).toLocaleDateString()}</p>
               </Link>
-              <button
-                onClick={() => handleDelete(d.id, d.title)}
-                className="mt-3 text-xs text-red-500 hover:text-red-700 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 className="w-3 h-3" /> Delete
-              </button>
+              <div className="mt-3 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                {isOwner && (
+                  <button
+                    onClick={() => setShareTarget(d)}
+                    className="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                  >
+                    <Share2 className="w-3 h-3" /> Share
+                  </button>
+                )}
+                {isOwner && (
+                  <button
+                    onClick={() => handleDelete(d.id, d.title)}
+                    className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
+                )}
+              </div>
             </div>
-          ))}
+            );
+          })}
         </div>
+      )}
+
+      {shareTarget && (
+        <ShareDialog
+          resourceType="presentation"
+          resourceId={shareTarget.id}
+          resourceTitle={shareTarget.title}
+          open={true}
+          onClose={() => setShareTarget(null)}
+          fetchShares={listPresentationShares}
+          addShare={addPresentationShare}
+          removeShare={removePresentationShare}
+        />
       )}
     </div>
   );

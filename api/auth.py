@@ -1,16 +1,19 @@
 """Authentication utilities - JWT-based auth with Google OAuth support."""
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
 from database import get_db
 from models.user import User
+
+ShareRole = Literal["viewer", "editor"]
 
 logger = logging.getLogger(__name__)
 
@@ -82,3 +85,74 @@ def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+# ─── Ownership / sharing helpers ────────────────────────────────────────────
+#
+# Resources scoped per-user follow the same shape: a `created_by` column on
+# the resource table, plus an optional `<resource>_shares` table with
+# (resource_id, user_id, role). Admins bypass all checks.
+
+_SHARE_TABLES = {
+    "presentations": ("presentation_shares", "presentation_id"),
+    "projects": ("project_shares", "project_id"),
+}
+
+
+def user_share_role(
+    db: Session,
+    resource: str,
+    resource_id,
+    user_id,
+) -> Optional[ShareRole]:
+    """Return the share role for (resource, user) or None if not shared."""
+    share_tbl, fk_col = _SHARE_TABLES[resource]
+    row = db.execute(sql_text(
+        f"SELECT role FROM {share_tbl} "
+        f"WHERE {fk_col} = :rid AND user_id = :uid"
+    ), {"rid": str(resource_id), "uid": str(user_id)}).fetchone()
+    return row[0] if row else None
+
+
+def can_view(db: Session, resource: str, owner_id, resource_id, user: User) -> bool:
+    """Owner, any share, or admin can view."""
+    if user.is_admin or str(owner_id) == str(user.id):
+        return True
+    return user_share_role(db, resource, resource_id, user.id) is not None
+
+
+def can_edit(db: Session, resource: str, owner_id, resource_id, user: User) -> bool:
+    """Owner, editor share, or admin can edit. Viewer cannot."""
+    if user.is_admin or str(owner_id) == str(user.id):
+        return True
+    return user_share_role(db, resource, resource_id, user.id) == "editor"
+
+
+def require_view(db: Session, resource: str, owner_id, resource_id, user: User) -> None:
+    if not can_view(db, resource, owner_id, resource_id, user):
+        raise HTTPException(status_code=404, detail=f"{resource[:-1].capitalize()} not found")
+
+
+def require_edit(db: Session, resource: str, owner_id, resource_id, user: User) -> None:
+    if not can_edit(db, resource, owner_id, resource_id, user):
+        # If they can view but not edit, say so; otherwise 404 to avoid
+        # leaking existence.
+        if can_view(db, resource, owner_id, resource_id, user):
+            raise HTTPException(status_code=403, detail="Read-only access")
+        raise HTTPException(status_code=404, detail=f"{resource[:-1].capitalize()} not found")
+
+
+def require_owner_or_admin(owner_id, user: User) -> None:
+    """For destructive ops (delete, share-management): only owner or admin."""
+    if user.is_admin or str(owner_id) == str(user.id):
+        return
+    raise HTTPException(status_code=403, detail="Only the owner can perform this action")
+
+
+def shared_resource_ids(db: Session, resource: str, user_id) -> list[str]:
+    """IDs of resources of this kind that have been shared with this user."""
+    share_tbl, fk_col = _SHARE_TABLES[resource]
+    rows = db.execute(sql_text(
+        f"SELECT {fk_col} FROM {share_tbl} WHERE user_id = :uid"
+    ), {"uid": str(user_id)}).fetchall()
+    return [str(r[0]) for r in rows]

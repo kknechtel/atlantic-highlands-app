@@ -40,7 +40,34 @@ def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[f
     )
     if not resp.ok:
         raise RuntimeError(f"Voyage API error {resp.status_code}: {resp.text[:200]}")
-    return [d["embedding"] for d in resp.json()["data"]]
+    data = resp.json()
+
+    # Record usage on a fresh short-lived session. Voyage returns
+    # usage.total_tokens — stash that as input_tokens (embeddings have no
+    # output side). Safe to skip silently if SessionLocal can't bind.
+    try:
+        total_tokens = int(((data.get("usage") or {}).get("total_tokens")) or 0)
+        if total_tokens > 0:
+            from database import SessionLocal
+            from services.usage import record_usage
+            sess = SessionLocal()
+            try:
+                # voyage-3 is $0.06/1M; voyage-3-lite is $0.02/1M. Use a
+                # tighter rate than the catch-all in usage.py for accuracy.
+                rate = 0.06 if EMBEDDING_MODEL == "voyage-3" else 0.02
+                cost = (total_tokens * rate) / 1_000_000
+                record_usage(
+                    sess, source="embeddings", model=EMBEDDING_MODEL,
+                    input_tokens=total_tokens, output_tokens=0,
+                    estimated_cost_usd=cost,
+                    metadata={"input_type": input_type, "batch_size": len(texts)},
+                )
+            finally:
+                sess.close()
+    except Exception:
+        log.debug("voyage usage record skipped", exc_info=True)
+
+    return [d["embedding"] for d in data["data"]]
 
 
 def _hash_embed(text: str) -> list[float]:

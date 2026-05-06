@@ -780,6 +780,16 @@ def get_chat_history(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Verify the session belongs to this user (or admin can read any).
+    if not user.is_admin:
+        owner = db.execute(sql_text(
+            "SELECT user_id FROM chat_history WHERE session_id = :sid LIMIT 1"
+        ), {"sid": session_id}).fetchone()
+        if owner is None:
+            return {"session_id": session_id, "messages": []}
+        if owner[0] is None or str(owner[0]) != str(user.id):
+            raise HTTPException(status_code=404, detail="Session not found")
+
     rows = db.execute(sql_text(
         "SELECT role, content, metadata, created_at FROM chat_history "
         "WHERE session_id = :sid ORDER BY created_at"
@@ -799,18 +809,33 @@ def list_chat_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    rows = db.execute(sql_text("""
-        SELECT session_id, scope_type, scope_id,
-               count(*) AS message_count,
-               max(created_at) AS last_activity,
-               (SELECT content FROM chat_history ch2
-                WHERE ch2.session_id = ch.session_id AND ch2.role = 'user'
-                ORDER BY created_at DESC LIMIT 1) AS last_query
-        FROM chat_history ch
-        GROUP BY session_id, scope_type, scope_id
-        ORDER BY max(created_at) DESC
-        LIMIT 30
-    """)).fetchall()
+    if user.is_admin:
+        rows = db.execute(sql_text("""
+            SELECT session_id, scope_type, scope_id,
+                   count(*) AS message_count,
+                   max(created_at) AS last_activity,
+                   (SELECT content FROM chat_history ch2
+                    WHERE ch2.session_id = ch.session_id AND ch2.role = 'user'
+                    ORDER BY created_at DESC LIMIT 1) AS last_query
+            FROM chat_history ch
+            GROUP BY session_id, scope_type, scope_id
+            ORDER BY max(created_at) DESC
+            LIMIT 30
+        """)).fetchall()
+    else:
+        rows = db.execute(sql_text("""
+            SELECT session_id, scope_type, scope_id,
+                   count(*) AS message_count,
+                   max(created_at) AS last_activity,
+                   (SELECT content FROM chat_history ch2
+                    WHERE ch2.session_id = ch.session_id AND ch2.role = 'user'
+                    ORDER BY created_at DESC LIMIT 1) AS last_query
+            FROM chat_history ch
+            WHERE user_id = :uid
+            GROUP BY session_id, scope_type, scope_id
+            ORDER BY max(created_at) DESC
+            LIMIT 30
+        """), {"uid": str(user.id)}).fetchall()
     return [
         {
             "session_id": r.session_id,
@@ -825,12 +850,13 @@ def list_chat_sessions(
 
 
 def _save_message(db: Session, session_id: str, role: str, content: str,
-                  scope_type: str = "all", scope_id: Optional[str] = None) -> None:
+                  scope_type: str = "all", scope_id: Optional[str] = None,
+                  user_id: Optional[str] = None) -> None:
     db.execute(sql_text(
-        "INSERT INTO chat_history (id, session_id, scope_type, scope_id, role, content) "
-        "VALUES (:id, :sid, :st, :si, :role, :content)"
+        "INSERT INTO chat_history (id, session_id, scope_type, scope_id, role, content, user_id) "
+        "VALUES (:id, :sid, :st, :si, :role, :content, :uid)"
     ), {"id": str(uuid.uuid4()), "sid": session_id, "st": scope_type,
-        "si": scope_id, "role": role, "content": content})
+        "si": scope_id, "role": role, "content": content, "uid": user_id})
     db.commit()
 
 
@@ -925,10 +951,19 @@ async def chat_stream(
         raise HTTPException(status_code=503, detail="No LLM API key configured")
 
     session_id = req.session_id or str(uuid.uuid4())
+    user_id_str = str(user.id)
 
     # Build the prompt with attached-doc context (small, opens/closes its own session).
     setup_db = SessionLocal()
     try:
+        # If continuing a session, ensure it belongs to this user.
+        if req.session_id and not user.is_admin:
+            owner = setup_db.execute(sql_text(
+                "SELECT user_id FROM chat_history WHERE session_id = :sid LIMIT 1"
+            ), {"sid": session_id}).fetchone()
+            if owner is not None and owner[0] is not None and str(owner[0]) != user_id_str:
+                raise HTTPException(status_code=404, detail="Session not found")
+
         doc_context = _attached_doc_context(setup_db, req.document_id)
         history_rows = setup_db.execute(sql_text(
             "SELECT role, content FROM chat_history WHERE session_id = :sid ORDER BY created_at"
@@ -936,10 +971,11 @@ async def chat_stream(
         # Save the user message before streaming so it's persisted even if the
         # client disconnects mid-stream.
         setup_db.execute(sql_text(
-            "INSERT INTO chat_history (id, session_id, scope_type, scope_id, role, content) "
-            "VALUES (:id, :sid, :st, :si, :role, :content)"
+            "INSERT INTO chat_history (id, session_id, scope_type, scope_id, role, content, user_id) "
+            "VALUES (:id, :sid, :st, :si, :role, :content, :uid)"
         ), {"id": str(uuid.uuid4()), "sid": session_id, "st": req.scope_type,
-            "si": req.scope_id, "role": "user", "content": req.query})
+            "si": req.scope_id, "role": "user", "content": req.query,
+            "uid": user_id_str})
         setup_db.commit()
     finally:
         setup_db.close()
@@ -950,14 +986,15 @@ async def chat_stream(
     # If only Gemini is configured, fall through to a simpler streamer (no tools).
     if not ANTHROPIC_API_KEY and GEMINI_API_KEY:
         return StreamingResponse(
-            _stream_gemini(system_prompt, req.query, history, session_id, req.scope_type, req.scope_id),
+            _stream_gemini(system_prompt, req.query, history, session_id,
+                           req.scope_type, req.scope_id, user_id_str),
             media_type="text/event-stream",
             headers={"X-Session-Id": session_id, "Cache-Control": "no-cache",
                      "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
 
     return StreamingResponse(
-        _stream_claude(req, system_prompt, history, session_id, request),
+        _stream_claude(req, system_prompt, history, session_id, request, user_id_str),
         media_type="text/event-stream",
         headers={"X-Session-Id": session_id, "Cache-Control": "no-cache",
                  "Connection": "keep-alive", "X-Accel-Buffering": "no"},
@@ -970,6 +1007,7 @@ async def _stream_claude(
     history: list[dict],
     session_id: str,
     request: Request,
+    user_id: Optional[str] = None,
 ):
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
@@ -1110,7 +1148,17 @@ async def _stream_claude(
                     save_db = SessionLocal()
                     try:
                         _save_message(save_db, session_id, "assistant", accumulated_text,
-                                      req.scope_type, req.scope_id)
+                                      req.scope_type, req.scope_id, user_id=user_id)
+                        from services.usage import record_usage
+                        record_usage(
+                            save_db, source="chat", model=model,
+                            input_tokens=total_input_tokens,
+                            output_tokens=total_output_tokens,
+                            user_id=user_id,
+                            resource_type="chat_session", resource_id=session_id,
+                            metadata={"tool_calls": tool_calls_made,
+                                      "stop_reason": stop_reason},
+                        )
                     finally:
                         save_db.close()
                     cost = _estimate_cost(model, total_input_tokens, total_output_tokens)
@@ -1176,7 +1224,17 @@ async def _stream_claude(
         save_db = SessionLocal()
         try:
             _save_message(save_db, session_id, "assistant", accumulated_text,
-                          req.scope_type, req.scope_id)
+                          req.scope_type, req.scope_id, user_id=user_id)
+            from services.usage import record_usage
+            record_usage(
+                save_db, source="chat", model=model,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                user_id=user_id,
+                resource_type="chat_session", resource_id=session_id,
+                metadata={"tool_calls": tool_calls_made,
+                          "stop_reason": "iteration_limit"},
+            )
         finally:
             save_db.close()
         cost = _estimate_cost(model, total_input_tokens, total_output_tokens)
@@ -1243,7 +1301,7 @@ def _summarize_tool_result(name: str, res: dict) -> str:
     return "ok"
 
 
-async def _stream_gemini(system_prompt, query, history, session_id, scope_type, scope_id):
+async def _stream_gemini(system_prompt, query, history, session_id, scope_type, scope_id, user_id=None):
     """Fallback streamer when only Gemini is configured. No tool use — single shot."""
     try:
         from google import genai
@@ -1270,9 +1328,26 @@ async def _stream_gemini(system_prompt, query, history, session_id, scope_type, 
             yield _sse("delta", {"content": full[i:i + 30], "session_id": session_id})
             await asyncio.sleep(0.005)
 
+        # Pull token counts from Gemini's usage_metadata when present.
+        in_t = out_t = 0
+        try:
+            usage = getattr(response, "usage_metadata", None)
+            if usage is not None:
+                in_t = int(getattr(usage, "prompt_token_count", 0) or 0)
+                out_t = int(getattr(usage, "candidates_token_count", 0) or 0)
+        except Exception:
+            pass
+
         save_db = SessionLocal()
         try:
-            _save_message(save_db, session_id, "assistant", full, scope_type, scope_id)
+            _save_message(save_db, session_id, "assistant", full, scope_type, scope_id, user_id=user_id)
+            from services.usage import record_usage
+            record_usage(
+                save_db, source="chat", model="gemini-2.5-flash",
+                input_tokens=in_t, output_tokens=out_t,
+                user_id=user_id,
+                resource_type="chat_session", resource_id=session_id,
+            )
         finally:
             save_db.close()
         yield _sse("done", {"session_id": session_id})

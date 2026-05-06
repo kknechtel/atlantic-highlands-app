@@ -328,6 +328,26 @@ Output ONLY the JSON object, no commentary or code fences.
 # ─── LLM helpers ─────────────────────────────────────────────────────────────
 
 
+def _record_extractor_usage(model: str, in_t: int, out_t: int) -> None:
+    """Best-effort usage record for batch financial extraction. user_id=None
+    because these calls are typically batch jobs."""
+    if not (in_t or out_t):
+        return
+    try:
+        from database import SessionLocal
+        from services.usage import record_usage
+        sess = SessionLocal()
+        try:
+            record_usage(
+                sess, source="financial_extraction", model=model,
+                input_tokens=in_t, output_tokens=out_t,
+            )
+        finally:
+            sess.close()
+    except Exception:
+        logger.debug("financial_extraction usage record skipped", exc_info=True)
+
+
 async def _call_gemini(prompt: str, max_output: int = 65000) -> Optional[Dict]:
     if not GEMINI_API_KEY:
         return None
@@ -351,6 +371,13 @@ async def _call_gemini(prompt: str, max_output: int = 65000) -> Optional[Dict]:
         )
         if not response or not response.text:
             return None
+        usage = getattr(response, "usage_metadata", None)
+        if usage is not None:
+            _record_extractor_usage(
+                "gemini-2.5-flash",
+                int(getattr(usage, "prompt_token_count", 0) or 0),
+                int(getattr(usage, "candidates_token_count", 0) or 0),
+            )
         return _parse_json(response.text)
     except Exception as exc:
         logger.warning("gemini call failed: %s", exc)
@@ -366,6 +393,7 @@ async def _call_claude(prompt: str, max_output: int = 16000) -> Optional[Dict]:
         # Use streaming unconditionally — non-streaming .create() rejects
         # max_tokens above the 10-minute estimate threshold.
         text_parts: list[str] = []
+        in_t = out_t = 0
         async with client.messages.stream(
             model="claude-sonnet-4-6",
             max_tokens=max_output,
@@ -373,6 +401,13 @@ async def _call_claude(prompt: str, max_output: int = 16000) -> Optional[Dict]:
         ) as stream:
             async for chunk in stream.text_stream:
                 text_parts.append(chunk)
+            try:
+                final = await stream.get_final_message()
+                in_t = getattr(final.usage, "input_tokens", 0) or 0
+                out_t = getattr(final.usage, "output_tokens", 0) or 0
+            except Exception:
+                pass
+        _record_extractor_usage("claude-sonnet-4-6", in_t, out_t)
         text = "".join(text_parts)
         if not text:
             return None

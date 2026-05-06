@@ -67,6 +67,8 @@ export function logout() { localStorage.removeItem("ah_token"); }
 export interface Project {
   id: string; name: string; description: string | null;
   entity_type: string | null; document_count: number; created_at: string;
+  is_owner?: boolean;
+  share_role?: "viewer" | "editor" | null;
 }
 
 export async function getProjects(): Promise<Project[]> { return request<Project[]>("/api/projects/"); }
@@ -74,6 +76,49 @@ export async function createProject(name: string, description?: string, entity_t
   return request<Project>("/api/projects/", { method: "POST", body: JSON.stringify({ name, description, entity_type }) });
 }
 export async function deleteProject(projectId: string) { return request(`/api/projects/${projectId}`, { method: "DELETE" }); }
+
+// ─── Sharing (projects + presentations) ───────────────────────────────
+
+export interface DirectoryUser {
+  id: string;
+  email: string;
+  full_name: string | null;
+}
+
+export interface ShareEntry {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: "viewer" | "editor";
+}
+
+export async function getUserDirectory(): Promise<DirectoryUser[]> {
+  return request<DirectoryUser[]>("/api/auth/directory");
+}
+
+export async function listProjectShares(projectId: string): Promise<ShareEntry[]> {
+  return request<ShareEntry[]>(`/api/projects/${projectId}/shares`);
+}
+export async function addProjectShare(projectId: string, userId: string, role: "viewer" | "editor"): Promise<ShareEntry> {
+  return request<ShareEntry>(`/api/projects/${projectId}/shares`, {
+    method: "POST", body: JSON.stringify({ user_id: userId, role }),
+  });
+}
+export async function removeProjectShare(projectId: string, userId: string) {
+  return request(`/api/projects/${projectId}/shares/${userId}`, { method: "DELETE" });
+}
+
+export async function listPresentationShares(presentationId: string): Promise<ShareEntry[]> {
+  return request<ShareEntry[]>(`/api/presentations/${presentationId}/shares`);
+}
+export async function addPresentationShare(presentationId: string, userId: string, role: "viewer" | "editor"): Promise<ShareEntry> {
+  return request<ShareEntry>(`/api/presentations/${presentationId}/shares`, {
+    method: "POST", body: JSON.stringify({ user_id: userId, role }),
+  });
+}
+export async function removePresentationShare(presentationId: string, userId: string) {
+  return request(`/api/presentations/${presentationId}/shares/${userId}`, { method: "DELETE" });
+}
 
 // ─── Documents ────────────────────────────────────────────────────────
 
@@ -551,6 +596,11 @@ export async function getCalendarEvents(year?: number, month?: number): Promise<
 export interface AdminStats {
   total_users: number; total_projects: number; total_documents: number; total_statements: number;
   pending_users: number;
+  documents_ocrd?: number;
+  documents_vector_indexed?: number;
+  cost_last_30d_usd?: number;
+  cost_total_usd?: number;
+  llm_calls_last_30d?: number;
 }
 
 export interface Invite {
@@ -575,3 +625,110 @@ export async function createInvite(email?: string, expiresHours: number = 72) {
 }
 export async function getInvites() { return request<Invite[]>("/api/admin/invites"); }
 export async function deleteInvite(inviteId: string) { return request(`/api/admin/invites/${inviteId}`, { method: "DELETE" }); }
+
+// ─── Admin: corpus health ─────────────────────────────────────────────
+
+export interface AdminDocumentRow {
+  id: string;
+  filename: string;
+  project_id: string | null;
+  project_name: string | null;
+  doc_type: string | null;
+  fiscal_year: string | null;
+  status: string;
+  file_size: number;
+  page_count: number | null;
+  is_ocrd: boolean;
+  ocr_chars: number;
+  is_vector_indexed: boolean;
+  chunk_count: number;
+  embedded_chunk_count: number;
+  uploaded_by: string | null;
+  uploaded_by_email: string | null;
+  created_at: string;
+}
+
+export async function getAdminDocuments(params: {
+  search?: string;
+  has_ocr?: "yes" | "no";
+  has_vector?: "yes" | "no";
+  limit?: number;
+  offset?: number;
+} = {}): Promise<AdminDocumentRow[]> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set("search", params.search);
+  if (params.has_ocr) qs.set("has_ocr", params.has_ocr);
+  if (params.has_vector) qs.set("has_vector", params.has_vector);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params.offset !== undefined) qs.set("offset", String(params.offset));
+  const s = qs.toString();
+  return request<AdminDocumentRow[]>(`/api/admin/documents${s ? `?${s}` : ""}`);
+}
+
+// ─── Admin: cost tracker ──────────────────────────────────────────────
+
+export interface UsageBreakdownRow {
+  cost: number;
+  input_tokens: number;
+  output_tokens: number;
+  calls: number;
+  source?: string;
+  model?: string;
+}
+
+export interface UsageUserRow {
+  user_id: string | null;
+  email: string;
+  cost: number;
+  calls: number;
+}
+
+export interface UsageDailyRow {
+  date: string;
+  cost: number;
+  calls: number;
+}
+
+export interface UsageSummary {
+  total_cost_usd: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_calls: number;
+  by_source: UsageBreakdownRow[];
+  by_model: UsageBreakdownRow[];
+  by_user: UsageUserRow[];
+  daily: UsageDailyRow[];
+}
+
+export async function getUsageSummary(days: number = 30): Promise<UsageSummary> {
+  return request<UsageSummary>(`/api/admin/usage/summary?days=${days}`);
+}
+
+export interface UsageRow {
+  id: string;
+  source: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+  user_email: string | null;
+  resource_type: string | null;
+  resource_id: string | null;
+  created_at: string;
+}
+
+export async function getUsageRows(params: {
+  source?: string;
+  model?: string;
+  user_id?: string;
+  days?: number;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<UsageRow[]> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+  }
+  const s = qs.toString();
+  return request<UsageRow[]>(`/api/admin/usage${s ? `?${s}` : ""}`);
+}

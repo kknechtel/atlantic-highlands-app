@@ -172,6 +172,24 @@ async def call_extraction_llm(prompt: str) -> Optional[Dict]:
     return None
 
 
+def _record_v1_usage(model: str, in_t: int, out_t: int) -> None:
+    if not (in_t or out_t):
+        return
+    try:
+        from database import SessionLocal
+        from services.usage import record_usage
+        sess = SessionLocal()
+        try:
+            record_usage(
+                sess, source="financial_extraction", model=model,
+                input_tokens=in_t, output_tokens=out_t,
+            )
+        finally:
+            sess.close()
+    except Exception:
+        pass
+
+
 async def _call_gemini(prompt: str) -> Optional[Dict]:
     """Extract using Gemini 2.5 Flash."""
     from google import genai
@@ -197,6 +215,14 @@ async def _call_gemini(prompt: str) -> Optional[Dict]:
     if not response or not response.text:
         return None
 
+    usage = getattr(response, "usage_metadata", None)
+    if usage is not None:
+        _record_v1_usage(
+            "gemini-2.5-flash",
+            int(getattr(usage, "prompt_token_count", 0) or 0),
+            int(getattr(usage, "candidates_token_count", 0) or 0),
+        )
+
     return _parse_json_response(response.text)
 
 
@@ -218,6 +244,12 @@ async def _call_claude(prompt: str) -> Optional[Dict]:
 
     if not response or not response.content:
         return None
+
+    _record_v1_usage(
+        "claude-sonnet-4-20250514",
+        getattr(response.usage, "input_tokens", 0) or 0,
+        getattr(response.usage, "output_tokens", 0) or 0,
+    )
 
     return _parse_json_response(response.content[0].text)
 

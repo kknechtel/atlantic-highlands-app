@@ -8,20 +8,32 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
-  return proxyRequest(request, params.path);
+// Next 15: route handler `params` is now a Promise. Await it before use.
+type RouteParams = { params: Promise<{ path: string[] }> };
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { path } = await params;
+  return proxyRequest(request, path);
 }
 
-export async function POST(request: NextRequest, { params }: { params: { path: string[] } }) {
-  return proxyRequest(request, params.path);
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { path } = await params;
+  return proxyRequest(request, path);
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { path: string[] } }) {
-  return proxyRequest(request, params.path);
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  const { path } = await params;
+  return proxyRequest(request, path);
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { path: string[] } }) {
-  return proxyRequest(request, params.path);
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { path } = await params;
+  return proxyRequest(request, path);
+}
+
+export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const { path } = await params;
+  return proxyRequest(request, path);
 }
 
 async function proxyRequest(request: NextRequest, pathSegments: string[]) {

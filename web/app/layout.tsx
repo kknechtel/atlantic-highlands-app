@@ -1,25 +1,26 @@
 import "./globals.css";
-import type { Metadata } from "next";
-import dynamic from "next/dynamic";
-
-const Providers = dynamic(() => import("@/components/Providers"), { ssr: false });
+import type { Metadata, Viewport } from "next";
+import Providers from "@/components/ProvidersClient";
 
 export const metadata: Metadata = {
   title: "Atlantic Highlands",
   description: "Document Intelligence, Events & Local Business",
   manifest: "/manifest.json",
-  themeColor: "#385854",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "AH Town",
   },
+};
+
+// Next 15: themeColor and viewport moved out of `metadata` into a
+// separate `viewport` export.
+export const viewport: Viewport = {
+  themeColor: "#385854",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({

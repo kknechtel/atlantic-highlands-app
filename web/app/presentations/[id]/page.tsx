@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/contexts/AuthContext';
 import PresentationEditor from '@/components/presentations/PresentationEditor';
 import { Loader2 } from 'lucide-react';
 
-interface PageProps { params: { id: string } }
+// Next 15: route params are now a Promise; unwrap with React.use() in
+// client components.
+interface PageProps { params: Promise<{ id: string }> }
 
 export default function PresentationEditorPage({ params }: PageProps) {
+  const { id } = use(params);
   const router = useRouter();
   const { user, loading } = useAuth();
 
@@ -22,7 +25,7 @@ export default function PresentationEditorPage({ params }: PageProps) {
 
   return (
     <div className="h-[calc(100vh-0px)]">
-      <PresentationEditor presentationId={params.id} />
+      <PresentationEditor presentationId={id} />
     </div>
   );
 }

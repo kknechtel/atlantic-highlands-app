@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, use } from 'react';
 import { Lock, Loader2 } from 'lucide-react';
 import {
   type DeckSection, type DeckAttachment,
@@ -8,7 +8,9 @@ import {
 } from '@/lib/presentationsApi';
 import PresentationViewer from '@/components/presentations/PresentationViewer';
 
-interface PageProps { params: { slug: string } }
+// Next 15: dynamic route params arrive as a Promise. Client components
+// unwrap with React.use(); server components await directly.
+interface PageProps { params: Promise<{ slug: string }> }
 
 const brandColor = '#385854';
 
@@ -17,7 +19,7 @@ const brandColor = '#385854';
  * we prompt for it and persist on the session for the slug.
  */
 export default function PublicPresentationPage({ params }: PageProps) {
-  const { slug } = params;
+  const { slug } = use(params);
   const [meta, setMeta] = useState<{ title: string; has_password: boolean } | null>(null);
   const [deck, setDeck] = useState<{ title: string; sections: DeckSection[]; attachments: DeckAttachment[] } | null>(null);
   const [error, setError] = useState<string | null>(null);

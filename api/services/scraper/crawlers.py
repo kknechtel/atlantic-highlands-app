@@ -389,28 +389,42 @@ class HighlandsBoroughCrawler:
 
 class HighlandsMeetingsCrawler:
     """Crawler for highlands-nj.municodemeetings.com (Highlands Borough Council
-    meeting agendas + packets, hosted on Microsoft Azure blob storage)."""
+    meeting agendas + packets, hosted on Microsoft Azure blob storage).
+
+    The portal is a Drupal site with an infinite-scroll meetings table.
+    Hitting `/` returns only the first ~15-20 meetings (~50 PDFs); the next
+    pages live at `/?page=1`, `/?page=2`, … up to ~17. We paginate until a
+    page yields no new PDFs."""
+
+    MAX_PAGES = 30  # cap; real depth is ~18
 
     def __init__(self):
         self.source_name = "highlands_meetings"
         self.config = SOURCES.get("highlands_meetings", {})
         self.basic = BasicScraper()
+        self.progress_callback = None
 
     def find_documents(self) -> list[dict]:
         all_docs = []
-        for path in self.config.get("pages_to_crawl", []):
-            url = self.config["base_url"] + path if path.startswith("/") else path
+        base = self.config["base_url"].rstrip("/")
+        for page in range(self.MAX_PAGES):
+            url = f"{base}/?page={page}" if page else f"{base}/"
             try:
                 soup = self.basic.fetch_page(url)
                 if not soup:
-                    continue
-                # Municode meetings portal links to mccmeetings.blob.core.usgovcloudapi.net PDFs
+                    break
                 docs = self.basic.find_document_links(soup, url)
+                if not docs:
+                    # Empty page = past the end of the infinite-scroll list.
+                    logger.info(f"  Highlands Meetings portal: no docs at page={page}, stopping")
+                    break
                 all_docs.extend(docs)
-                if docs:
-                    logger.info(f"  Highlands Meetings portal: found {len(docs)} documents")
+                logger.info(f"  Highlands Meetings portal: page={page} → {len(docs)} documents")
+                if self.progress_callback:
+                    self.progress_callback(len(docs))
             except Exception as e:
                 logger.warning(f"Highlands Meetings scrape failed for {url}: {e}")
+                break
         return _deduplicate_docs(all_docs)
 
     def _cleanup(self):

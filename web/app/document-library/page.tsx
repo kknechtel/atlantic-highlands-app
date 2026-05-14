@@ -445,40 +445,43 @@ export default function DocumentLibraryPage() {
       {/* Right: Selected document detail + viewer */}
       {selectedDoc ? (
         <div className="flex-1 flex flex-col bg-gray-50">
-          {/* Doc info bar */}
-          <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-white border-b border-gray-200">
-            <div className="flex items-center gap-2 min-w-0">
+          {/* Doc info bar — action buttons get bigger tap targets on mobile.
+              Close (×) is redundant with the back arrow on mobile so it's
+              md+ only. */}
+          <div className="flex items-center justify-between px-2 md:px-4 py-2 bg-white border-b border-gray-200 gap-1">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               {/* Mobile back button */}
               <button onClick={() => { setSelectedDoc(null); setViewerUrl(null); }}
-                className="md:hidden p-1 text-gray-400 hover:text-gray-600 rounded-md">
+                className="md:hidden flex items-center justify-center min-w-[40px] min-h-[40px] text-gray-500 hover:text-gray-700 rounded-md hover:bg-gray-100"
+                aria-label="Back to list">
                 <ChevronLeftIcon className="w-5 h-5" />
               </button>
-              <DocumentTextIcon className="w-4 h-4 flex-shrink-0" style={{ color: brandColor }} />
+              <DocumentTextIcon className="hidden md:inline w-4 h-4 flex-shrink-0" style={{ color: brandColor }} />
               <span className="text-sm font-medium text-gray-900 truncate">{selectedDoc.filename}</span>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-0.5 flex-shrink-0">
               <button onClick={() => { setChatDoc(selectedDoc); setShowChat(true); }}
-                className="p-1.5 text-gray-400 hover:text-purple-600 rounded-md hover:bg-gray-100" title="Chat">
-                <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                className="flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-0 md:min-h-0 md:p-1.5 text-gray-400 hover:text-purple-600 rounded-md hover:bg-gray-100" title="Chat" aria-label="Chat about this doc">
+                <ChatBubbleLeftRightIcon className="w-5 h-5 md:w-4 md:h-4" />
               </button>
               {viewerUrl && (
                 <a href={viewerUrl} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" title="Open">
-                  <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                  className="flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-0 md:min-h-0 md:p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" title="Open in new tab" aria-label="Open in new tab">
+                  <ArrowTopRightOnSquareIcon className="w-5 h-5 md:w-4 md:h-4" />
                 </a>
               )}
               {viewerUrl && (
                 <a href={viewerUrl} download={selectedDoc.filename}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" title="Download">
+                  className="hidden md:flex items-center justify-center p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" title="Download" aria-label="Download">
                   <ArrowDownTrayIcon className="w-4 h-4" />
                 </a>
               )}
               <button onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(selectedDoc.id); }}
-                className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-gray-100" title="Delete">
-                <TrashIcon className="w-4 h-4" />
+                className="flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-0 md:min-h-0 md:p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-gray-100" title="Delete" aria-label="Delete">
+                <TrashIcon className="w-5 h-5 md:w-4 md:h-4" />
               </button>
               <button onClick={() => { setSelectedDoc(null); setViewerUrl(null); }}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100">
+                className="hidden md:flex items-center justify-center p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100" aria-label="Close">
                 <XMarkIcon className="w-4 h-4" />
               </button>
             </div>
@@ -487,7 +490,7 @@ export default function DocumentLibraryPage() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* AI Summary */}
             {selectedDoc.notes && (
-              <div className="bg-white border-b border-gray-200 px-5 py-4">
+              <div className="bg-white border-b border-gray-200 px-3 md:px-5 py-3 md:py-4">
                 <div className="flex items-center gap-2 mb-2">
                   <SparklesIcon className="w-4 h-4" style={{ color: brandColor }} />
                   <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: brandColor }}>AI Summary</h3>
@@ -551,14 +554,20 @@ export default function DocumentLibraryPage() {
           </div>
         </div>
       ) : (
+        // Library overview is desktop-only — on mobile the right side would
+        // share screen with the doc list as a 50/50 split, which is unusable.
+        // Mobile users see only the doc list; if they want stats they can
+        // rotate to landscape or use a tablet.
         documents && documents.length > 0 && (
-          <LibraryOverview
-            documents={documents}
-            facets={facets}
-            onPickYear={(y) => setYearFilter(y)}
-            onPickEntity={(c) => setCategoryFilter(c)}
-            onPickType={(t) => setDocTypeFilter(t)}
-          />
+          <div className="hidden md:flex flex-1 min-w-0">
+            <LibraryOverview
+              documents={documents}
+              facets={facets}
+              onPickYear={(y) => setYearFilter(y)}
+              onPickEntity={(c) => setCategoryFilter(c)}
+              onPickType={(t) => setDocTypeFilter(t)}
+            />
+          </div>
         )
       )}
 

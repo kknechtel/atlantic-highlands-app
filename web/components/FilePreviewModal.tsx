@@ -1,10 +1,19 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { X, Download, ExternalLink, Image as ImageIcon, FileText as FileTextIcon, File as FileIcon, Maximize2, Minimize2 } from 'lucide-react';
-import PDFViewer from './PDFViewer';
 import XlsxSheetViewer from './XlsxSheetViewer';
 import { useIsMobile } from '@/lib/hooks';
+
+// react-pdf pulls in pdfjs-dist, which references DOMMatrix at module load.
+// A static import would crash the initial page bundle on every route that
+// loads Providers → GlobalChat → FilePreviewModal. Lazy-load with ssr:false
+// so the chunk is only fetched on demand.
+const PDFViewer = dynamic(() => import('./PDFViewer'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full text-gray-400">Loading PDF viewer…</div>,
+});
 
 interface FilePreviewModalProps {
     isOpen: boolean;

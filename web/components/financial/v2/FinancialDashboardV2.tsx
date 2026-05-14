@@ -78,31 +78,38 @@ export default function FinancialDashboardV2() {
 
   return (
     <div className="space-y-6">
-      {/* Filter bar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {[
-          { key: "school" as const, label: "School (Henry Hudson Regional)", icon: AcademicCapIcon, color: "orange" },
-          { key: "town" as const, label: "Town (Atlantic Highlands Borough)", icon: BuildingOfficeIcon, color: "blue" },
-          { key: "all" as const, label: "All", icon: null, color: "gray" },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => { setEntityFilter(key); setSelectedId(null); }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-              ${entityFilter === key
-                ? "bg-primary-600 text-white"
-                : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"}`}
-          >
-            {Icon && <Icon className="w-4 h-4" />}
-            {label}
-          </button>
-        ))}
+      {/* Filter bar — on mobile the entity filter buttons get their own row
+          (3 equal-width columns), and the action buttons (Drill All /
+          Diagnostics) sit on a second row. Desktop keeps the original
+          single-row layout. Long entity labels collapse to short forms so
+          they actually fit at phone widths. */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-3 gap-2">
+          {[
+            { key: "school" as const, shortLabel: "School", label: "School (Henry Hudson Regional)", icon: AcademicCapIcon },
+            { key: "town" as const, shortLabel: "Town", label: "Town (Atlantic Highlands Borough)", icon: BuildingOfficeIcon },
+            { key: "all" as const, shortLabel: "All", label: "All", icon: null },
+          ].map(({ key, shortLabel, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => { setEntityFilter(key); setSelectedId(null); }}
+              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[40px]
+                ${entityFilter === key
+                  ? "bg-primary-600 text-white"
+                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"}`}
+            >
+              {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
+              <span className="sm:hidden">{shortLabel}</span>
+              <span className="hidden sm:inline truncate">{label}</span>
+            </button>
+          ))}
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:ml-auto">
           <button
             onClick={() => drillAllMut.mutate()}
             disabled={drillAllMut.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 min-h-[40px]"
             title="Run drill agents on every extracted statement matching the current filter"
           >
             <BoltIcon className="w-4 h-4" />
@@ -110,7 +117,7 @@ export default function FinancialDashboardV2() {
           </button>
           <button
             onClick={() => setShowDiag(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 min-h-[40px]"
           >
             <BugAntIcon className="w-4 h-4" />
             Diagnostics

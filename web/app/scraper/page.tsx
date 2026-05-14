@@ -21,12 +21,12 @@ type Site = { key: string; name: string; desc: string; siteId: string; note?: st
 // per-site progress in status.per_site.
 const SITES: Site[] = [
   { key: "ahnj", siteId: "ahnj.com", name: "ahnj.com", desc: "Borough website — Planning Board, Council Archives, Budgets, Ordinances, Annual Audits" },
-  { key: "ecode", siteId: "ecode360.com", name: "ecode360.com", desc: "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets" },
+  { key: "ecode", siteId: "ecode360.com", name: "ecode360.com", desc: "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets", note: "Cloudflare Turnstile protected — requires a browser. Currently skipped on the server (no Chrome installed); results will show 0 found." },
   { key: "tri", siteId: "tridistrict.org", name: "tridistrict.org", desc: "HHRSD + AHES + HES + HHRS — BOE Agendas/Minutes, Budget, Curriculum, Performance Reports" },
   { key: "nj_state", siteId: "NJ State / Courts", name: "NJ State / Courts", desc: "ACFR school finance (0130, 2120, 2160), Sea Bright court opinions, Master Plan, DCA UFB" },
   { key: "highlands_borough", siteId: "highlandsnj.gov", name: "highlandsnj.gov", desc: "Borough of Highlands — regionalization, council letters, public docs" },
   { key: "highlands_meetings", siteId: "highlands-nj.municodemeetings.com", name: "Highlands Council (Municode)", desc: "Highlands Borough Council meeting agendas + packets" },
-  { key: "opra", siteId: "OPRAmachine", name: "OPRAmachine", desc: "Crowdsourced OPRA public records requests for Atlantic Highlands" },
+  { key: "opra", siteId: "OPRAmachine", name: "OPRAmachine", desc: "Crowdsourced OPRA public records requests for Atlantic Highlands", note: "Cloudflare protected — requires a browser. Currently skipped on the server (no Chrome installed)." },
   { key: "police", siteId: "Police/Crime Data", name: "Police / Crime", desc: "SpotCrime, CrimeMapping, Nixle, AHPD page", note: "Limited — these are mostly interactive maps, not document repositories." },
   { key: "fire", siteId: "Fire/EMS Data", name: "Fire / EMS", desc: "PulsePoint, Monmouth County OEM, Fire Dept reports", note: "Limited — interactive feeds." },
   { key: "county", siteId: "Monmouth County", name: "Monmouth County", desc: "County clerk archives, property records, tax data" },
@@ -149,6 +149,18 @@ export default function ScraperPage() {
                     <p className="text-xs text-gray-600 mt-1">
                       {stats.documents_found} found · {stats.documents_uploaded} uploaded · {stats.documents_skipped} skipped
                       {stats.errors > 0 && ` · ${stats.errors} errors`}
+                    </p>
+                  )}
+                  {stats?.status === "running" && (
+                    <p className="text-[11px] text-blue-600 italic mt-0.5">
+                      {stats.documents_uploaded === 0 && stats.documents_skipped === 0
+                        ? `Discovering pages… (${stats.documents_found} docs queued so far)`
+                        : `Downloading documents… (${stats.documents_uploaded + stats.documents_skipped} of ${stats.documents_found})`}
+                    </p>
+                  )}
+                  {stats?.status === "done" && stats.documents_found === 0 && (site.key === "ecode" || site.key === "opra") && (
+                    <p className="text-[11px] text-amber-700 italic mt-0.5">
+                      Skipped — Cloudflare-protected, needs a browser the server doesn't have.
                     </p>
                   )}
                 </div>

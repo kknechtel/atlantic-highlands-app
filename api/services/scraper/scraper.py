@@ -4,11 +4,12 @@ Level 1: requests + BeautifulSoup (works for most static pages)
 Level 2: Selenium fallback for JavaScript-heavy pages
 """
 import io
+import os
 import time
 import logging
 import requests
 from requests.exceptions import ConnectTimeout, ConnectionError as RequestsConnectionError
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlencode
 from bs4 import BeautifulSoup
 
 from .config import (
@@ -26,6 +27,27 @@ logger = logging.getLogger("ah_scraper")
 
 _HOST_FAIL_THRESHOLD = 3
 _CONNECT_TIMEOUT = 10  # short connect TO so blocked hosts fail fast; read TO stays at REQUEST_TIMEOUT
+
+# Per-host proxy routing. ahnj.com firewalls AWS source IPs, so when an
+# AHNJ_PROXY_URL is set we route ahnj.com requests through a Cloudflare
+# Worker that fetches the target from a residential-class IP and returns
+# the bytes verbatim. The Worker source is in workers/ahnj-proxy/.
+_PROXY_URL = (os.getenv("AHNJ_PROXY_URL") or "").rstrip("/")
+_PROXY_SECRET = os.getenv("AHNJ_PROXY_SECRET") or ""
+_PROXIED_HOSTS = {"www.ahnj.com", "ahnj.com"}
+
+
+def _proxy_for(url: str) -> tuple[str, dict]:
+    """If url's host is proxied and a proxy is configured, return
+    (rewritten_url, extra_headers). Otherwise return (url, {}).
+    Falls back to the direct URL when AHNJ_PROXY_URL is unset so local
+    dev keeps working without the Worker."""
+    if not _PROXY_URL:
+        return url, {}
+    host = urlparse(url).netloc.lower()
+    if host not in _PROXIED_HOSTS:
+        return url, {}
+    return f"{_PROXY_URL}/?{urlencode({'url': url})}", {"X-Proxy-Secret": _PROXY_SECRET}
 
 
 class BasicScraper:
@@ -76,10 +98,11 @@ class BasicScraper:
             return None
         if self._is_host_dead(url):
             return None
+        fetch_url, proxy_headers = _proxy_for(url)
         for attempt in range(MAX_RETRIES):
             try:
-                logger.info(f"Fetching: {url}")
-                resp = self.session.get(url, timeout=(_CONNECT_TIMEOUT, REQUEST_TIMEOUT))
+                logger.info(f"Fetching: {url}" + (" (via proxy)" if proxy_headers else ""))
+                resp = self.session.get(fetch_url, timeout=(_CONNECT_TIMEOUT, REQUEST_TIMEOUT), headers=proxy_headers or None)
                 resp.raise_for_status()
                 self._record_success(url)
                 time.sleep(REQUEST_DELAY)
@@ -157,9 +180,10 @@ class BasicScraper:
         filename = url_to_filename(url)
         if self._is_host_dead(url):
             return None, filename
+        fetch_url, proxy_headers = _proxy_for(url)
         try:
-            logger.info(f"  [DOWNLOAD] {filename}")
-            resp = self.session.get(url, timeout=(_CONNECT_TIMEOUT, REQUEST_TIMEOUT), stream=True)
+            logger.info(f"  [DOWNLOAD] {filename}" + (" (via proxy)" if proxy_headers else ""))
+            resp = self.session.get(fetch_url, timeout=(_CONNECT_TIMEOUT, REQUEST_TIMEOUT), stream=True, headers=proxy_headers or None)
             resp.raise_for_status()
 
             buf = io.BytesIO()

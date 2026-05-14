@@ -1,36 +1,45 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { Globe, FileText } from 'lucide-react';
 import type { DeckSection, DeckAttachment } from '@/lib/presentationsApi';
 import NarrativeBlock from './NarrativeBlock';
 import TableBlock from './TableBlock';
-import AttachmentBlock from './AttachmentBlock';
 import ReactComponentBlock from './ReactComponentBlock';
-import FilePreviewModal from '@/components/FilePreviewModal';
+import SourceChip from './SourceChip';
+import CitationPreview from './CitationPreview';
+import WebReferencePreview from './WebReferencePreview';
+
+// Lazy: AttachmentBlock (and the doc preview path it pulls in) drag in
+// react-pdf which uses DOMMatrix at module init — not available during
+// Node SSR. Loading it client-only avoids the build-time crash.
+const AttachmentBlock = dynamic(() => import('./AttachmentBlock'), { ssr: false });
 
 interface Props {
   title: string;
   sections: DeckSection[];
   attachments: DeckAttachment[];
+  /** Public viewer (mode='public') uses the slug-scoped citation endpoint;
+   *  authenticated preview (mode='auth') uses the regular doc API. */
+  mode?: 'auth' | 'public';
+  publicSlug?: string;
   /** When provided, attachment previews fetch from this base URL (used by public viewer). */
   publicAttachmentBase?: string;
-  /** When provided, [source: filename] citations resolve through this callback
-   *  (returns a signed URL the viewer opens in FilePreviewModal). */
-  onResolveCitation?: (filename: string) => Promise<{ url: string; filename: string }>;
+  /** Optional ISO timestamp shown in the cover banner + footer. */
+  publishedAt?: string | null;
 }
 
 const brandColor = '#385854';
 
-/** Walk every narrative section body and pull out the unique filenames cited
- *  via [source: filename.pdf]. Used to render an always-visible Sources panel
- *  at the bottom — guarantees the user can always click through to citations
- *  even if the inline button rendering somehow fails (CSS conflict, JS error). */
+/** Walk every narrative section body and pull out unique cited filenames.
+ *  Used to render an always-visible Sources panel at the bottom — guarantees
+ *  doc links remain reachable even if inline citation pills happen to fail. */
 function collectCitedFilenames(sections: DeckSection[]): string[] {
   const seen = new Set<string>();
   const re = /\[source:\s*([^\]]+)\]/g;
   for (const s of sections) {
-    const body = (s as { body?: string }).body || '';
+    const body = s.body || '';
     let m: RegExpExecArray | null;
     while ((m = re.exec(body)) !== null) {
       for (const fn of m[1].split(/\s*[,;|]\s*|\s+\|\s+/)) {
@@ -42,111 +51,173 @@ function collectCitedFilenames(sections: DeckSection[]): string[] {
   return Array.from(seen).sort();
 }
 
-
-/** Read-only renderer used by both public viewer and authenticated preview. */
-export default function PresentationViewer({ title, sections, attachments, publicAttachmentBase, onResolveCitation }: Props) {
-  const [preview, setPreview] = useState<{ url: string; filename: string } | null>(null);
+/**
+ * Read-only deck experience — used by both `/p/{slug}` (public) and the
+ * in-editor Preview overlay. Renders as a continuous document:
+ *
+ *   ┌────────────────────────────────┐
+ *   │      teal cover banner         │  ← deck title + subtitle
+ *   └────────────────────────────────┘
+ *      Section heading
+ *      ─────────────  (teal rule)
+ *      content...
+ *
+ *      Section heading
+ *      ─────────────
+ *      content...
+ *
+ *   ─────────────── (footer rule)
+ *      Atlantic Highlands
+ */
+export default function PresentationViewer({
+  title, sections, attachments, mode = 'auth', publicSlug, publicAttachmentBase, publishedAt,
+}: Props) {
   const citedFilenames = useMemo(() => collectCitedFilenames(sections), [sections]);
 
-  const previewAttachment = (att: DeckAttachment) => {
-    if (publicAttachmentBase) {
-      setPreview({ url: `${publicAttachmentBase}/${att.id}`, filename: att.filename });
-    } else {
-      // Editor uses authenticated /api/documents/{id}/view-url — but this read-only
-      // viewer is also used by the public flow, so we just no-op without a base.
-      console.warn('No attachment preview base configured');
-    }
-  };
-
-  const handleCitationClick = async (info: { filename: string }) => {
-    if (!onResolveCitation) return;
-    try {
-      const { url, filename } = await onResolveCitation(info.filename);
-      setPreview({ url, filename });
-    } catch (e) {
-      console.warn('Citation lookup failed', e);
-    }
-  };
+  // If a section is flagged as the cover (is_cover=true), fold its
+  // title/subtitle/date into the deck-level cover banner and exclude it
+  // from the visible flow — otherwise we'd show two competing title
+  // blocks. This mirrors bank-processor's cover-section pattern.
+  const coverSection = sections.find(s => s.is_cover);
+  const subtitle = coverSection?.subtitle?.trim() || '';
+  const coverDate = coverSection?.date?.trim() || '';
+  const renderedSections = sections.filter(s => !s.is_cover);
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
-      <div className="flex items-center gap-2 mb-6">
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: brandColor }}>
-          <Globe className="w-5 h-5 text-white" />
+    <div className="ah-deck min-h-screen">
+      <main className="max-w-4xl mx-auto px-6 pt-6 pb-2">
+        {/* Cover banner — single instance at the top of the deck. */}
+        <div className="ah-deck-cover">
+          <div className="ah-cover-eyebrow flex items-center gap-1.5">
+            <Globe className="w-3 h-3" />
+            <span>Atlantic Highlands</span>
+          </div>
+          <div className="ah-cover-title">{title || 'Untitled presentation'}</div>
+          {subtitle && <div className="ah-cover-subtitle">{subtitle}</div>}
+          <div className="ah-cover-meta">
+            {coverDate || (publishedAt
+              ? new Date(publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+              : new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }))}
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-          <p className="text-xs text-gray-500">Atlantic Highlands</p>
-        </div>
-      </div>
 
-      <div className="space-y-8">
-        {sections.length === 0 && (
-          <p className="text-sm text-gray-500 italic">This presentation has no sections.</p>
-        )}
-        {sections.map((s) => (
-          <div key={s.id} className="bg-white rounded-lg border border-gray-200 p-5">
-            {s.kind === 'narrative' && (
-              <NarrativeBlock
-                section={s} editable={false} onSave={() => {}} brandColor={brandColor}
-                onCitationClick={onResolveCitation ? handleCitationClick : undefined}
-              />
-            )}
-            {s.kind === 'table' && (
-              <TableBlock section={s} editable={false} onSave={() => {}} brandColor={brandColor} />
-            )}
-            {s.kind === 'attachment' && (
-              <AttachmentBlock section={s} attachments={attachments} onPreview={publicAttachmentBase ? previewAttachment : undefined} brandColor={brandColor} />
-            )}
-            {s.kind === 'react_component' && (
-              <ReactComponentBlock section={s} editable={false} onSave={() => {}} brandColor={brandColor} />
-            )}
-          </div>
-        ))}
-      </div>
+        {/* Body — continuous flow inside one bordered container, no per-section cards. */}
+        <div className="bg-white border border-t-0 border-[#dadfdc] rounded-b-xl px-10 py-10 space-y-10">
+          {renderedSections.length === 0 && (
+            <p className="text-sm text-gray-500 italic">This presentation has no sections.</p>
+          )}
+          {renderedSections.map((section) => (
+            <ViewerSection
+              key={section.id}
+              section={section}
+              attachments={attachments}
+              mode={mode}
+              publicAttachmentBase={publicAttachmentBase}
+            />
+          ))}
 
-      {/* Always-visible Sources panel — guarantees doc links are reachable
-          even if inline citation buttons fail to render (CSS conflict, etc.).
-          Lists every unique filename cited anywhere in the deck. */}
-      {citedFilenames.length > 0 && (
-        <div className="mt-8 bg-white rounded-lg border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <FileText className="w-4 h-4" style={{ color: brandColor }} />
-            <h2 className="text-base font-semibold text-gray-900">
-              Sources ({citedFilenames.length})
-            </h2>
-          </div>
-          <p className="text-xs text-gray-500 mb-3">Click any document to open its preview.</p>
-          <div className="flex flex-wrap gap-2">
-            {citedFilenames.map((fn) => (
-              <button
-                key={fn}
-                type="button"
-                onClick={() => onResolveCitation && handleCitationClick({ filename: fn })}
-                className="text-xs inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border transition-colors hover:bg-gray-50"
-                style={{
-                  color: brandColor,
-                  borderColor: `${brandColor}40`,
-                  backgroundColor: `${brandColor}08`,
-                }}
-              >
-                <FileText className="w-3 h-3" />
-                <span className="truncate max-w-md">{fn}</span>
-              </button>
-            ))}
+          {/* Always-visible Sources panel — guarantees doc links are reachable
+              even if an inline citation button somehow fails. Lists every
+              unique filename cited anywhere in the deck. */}
+          {citedFilenames.length > 0 && (
+            <section className="ah-section">
+              <h2 className="flex items-center gap-2">
+                <FileText className="w-4 h-4 inline-block" style={{ color: brandColor }} />
+                Sources ({citedFilenames.length})
+              </h2>
+              <p className="text-xs text-gray-500 mb-3">Click any document to open its preview.</p>
+              <div className="flex flex-wrap gap-2">
+                {citedFilenames.map((fn) => (
+                  <button
+                    key={fn}
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('ah:open-citation', {
+                        detail: { kind: 'doc', filename: fn },
+                      }));
+                    }}
+                    className="text-xs inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border transition-colors hover:bg-gray-50"
+                    style={{
+                      color: brandColor,
+                      borderColor: `${brandColor}40`,
+                      backgroundColor: `${brandColor}08`,
+                    }}
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span className="truncate max-w-md">{fn}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Single deck-level footer */}
+          <div className="ah-deck-footer">
+            <div className="ah-deck-wordmark">Atlantic Highlands</div>
+            <div className="ah-deck-meta">
+              {publishedAt
+                ? `Published ${new Date(publishedAt).toLocaleDateString()}`
+                : 'Draft'}
+            </div>
           </div>
         </div>
+      </main>
+
+      {/* Side panels — both subscribe to ah:open-citation / ah:open-web-reference
+          window events. They render as fixed overlays; CSS in globals.css
+          slides .ah-deck left when body has class ah-preview-open. */}
+      <CitationPreview mode={mode} publicSlug={publicSlug} />
+      <WebReferencePreview />
+    </div>
+  );
+}
+
+function ViewerSection({
+  section, attachments, mode, publicAttachmentBase,
+}: {
+  section: DeckSection;
+  attachments: DeckAttachment[];
+  mode: 'auth' | 'public';
+  publicAttachmentBase?: string;
+}) {
+  const noop = () => {};
+  return (
+    <section id={`sec-${section.id}`} className="ah-section scroll-mt-4">
+      {section.title && (
+        <>
+          <div className="mb-1.5">
+            <SourceChip section={section} />
+          </div>
+          <h2>{section.title}</h2>
+        </>
       )}
-
-      {preview && (
-        <FilePreviewModal
-          isOpen
-          url={preview.url}
-          filename={preview.filename}
-          onClose={() => setPreview(null)}
-          noAuth
+      {section.kind === 'narrative' && (
+        <NarrativeBlock section={section} editable={false} onSave={noop} brandColor={brandColor} />
+      )}
+      {section.kind === 'table' && (
+        <TableBlock section={section} editable={false} onSave={noop} brandColor={brandColor} />
+      )}
+      {section.kind === 'attachment' && (
+        <AttachmentBlock
+          section={section}
+          attachments={attachments}
+          onPreview={publicAttachmentBase ? (att) => {
+            // Public viewer: open via the slug-scoped attachment URL.
+            window.dispatchEvent(new CustomEvent('ah:open-citation', {
+              detail: { kind: 'url', url: `${publicAttachmentBase}/${att.id}`, name: att.filename },
+            }));
+          } : (att) => {
+            // Auth viewer: open via the filename citation (resolves through searchDocuments).
+            window.dispatchEvent(new CustomEvent('ah:open-citation', {
+              detail: { kind: 'doc', filename: att.filename },
+            }));
+          }}
+          brandColor={brandColor}
         />
       )}
-    </div>
+      {section.kind === 'react_component' && (
+        <ReactComponentBlock section={section} editable={false} onSave={noop} brandColor={brandColor} />
+      )}
+    </section>
   );
 }

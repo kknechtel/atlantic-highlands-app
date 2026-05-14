@@ -46,24 +46,24 @@ export default function CombinedFYView({ entityType, fiscalYear, onClose }: Prop
 
   return (
     <div className="bg-white rounded-xl border border-gray-200">
-      <div className="px-5 py-4 border-b flex items-center justify-between">
-        <div>
-          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-            <DocumentMagnifyingGlassIcon className="w-5 h-5 text-primary-600" />
-            Combined FY {data.fiscal_year} View — {data.entity_type === "school" ? "School" : "Town"}
+      <div className="px-3 md:px-5 py-3 md:py-4 border-b flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2 text-sm md:text-base">
+            <DocumentMagnifyingGlassIcon className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="truncate">Combined FY {data.fiscal_year} View — {data.entity_type === "school" ? "School" : "Town"}</span>
           </h2>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-[11px] md:text-xs text-gray-500 mt-1">
             Merged from {data.sources.length} source statement(s) ·
             {data.accounting_basis === "gaap" ? " GAAP/GASB" : " NJ Regulatory"} ·
             {data.fiscal_calendar?.replace("_", " ")}
           </p>
         </div>
         {onClose && (
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-800">×</button>
+          <button onClick={onClose} className="text-base text-gray-500 hover:text-gray-800 flex-shrink-0 min-w-[32px] min-h-[32px]" aria-label="Close combined view">×</button>
         )}
       </div>
 
-      <div className="p-5 space-y-5">
+      <div className="p-3 md:p-5 space-y-5">
         {/* Merged totals */}
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Merged Totals (best source per metric)</h3>
@@ -104,7 +104,7 @@ export default function CombinedFYView({ entityType, fiscalYear, onClose }: Prop
                       </span>
                     </td>
                     <td className="py-2 pr-3 text-gray-700 capitalize">{s.statement_type}</td>
-                    <td className="py-2 pr-3 text-gray-500 truncate max-w-[180px]" title={s.entity_name ?? ""}>
+                    <td className="py-2 pr-3 text-gray-500 truncate max-w-[120px] md:max-w-[180px]" title={s.entity_name ?? ""}>
                       {s.entity_name ?? "—"}
                     </td>
                     <td className="py-2 pr-3 text-right text-gray-700">{s.line_item_count}</td>
@@ -180,7 +180,7 @@ export default function CombinedFYView({ entityType, fiscalYear, onClose }: Prop
                   .slice(0, 25)
                   .map((l, i) => (
                     <tr key={i} className="hover:bg-gray-50">
-                      <td className="py-1.5 pr-3 text-gray-800 truncate max-w-[280px]" title={l.line_name}>
+                      <td className="py-1.5 pr-3 text-gray-800 truncate max-w-[160px] md:max-w-[280px]" title={l.line_name}>
                         {l.line_name}
                       </td>
                       <td className="py-1.5 pr-3 text-gray-500">{l.section}</td>

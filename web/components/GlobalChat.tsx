@@ -4,7 +4,9 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, type Document } from "@/lib/api";
+import { useIsMobile } from "@/lib/hooks";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
+import FilePreviewModal from "@/components/FilePreviewModal";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
 import { createPresentationFromChat } from "@/lib/presentationsApi";
 import {
@@ -14,6 +16,7 @@ import {
   ArrowDownTrayIcon, ArrowUpTrayIcon, ClockIcon, ArrowPathIcon,
   LightBulbIcon, DocumentChartBarIcon, CpuChipIcon, PlusIcon,
   ClipboardDocumentIcon, CheckIcon, PaperClipIcon,
+  EllipsisVerticalIcon, EyeSlashIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -50,11 +53,15 @@ const DISMISSED_KEY = "ah_chat_dismissed";
 
 export default function GlobalChat() {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [unread, setUnread] = useState(0);
   const [convertingDeck, setConvertingDeck] = useState(false);
+  // Mobile-only: kebab menu sheet (replaces the row of header buttons that
+  // can't fit on a phone-width header).
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // Fully dismissed = no FAB, no panel. Re-summon via Cmd/Ctrl+/ keyboard
   // shortcut. Persisted across reloads via localStorage so a user who hides
   // the chat doesn't see it pop back on every navigation.
@@ -133,8 +140,19 @@ export default function GlobalChat() {
         setIsMinimized(false);
       }
     };
+    // MobileNav fires this when the user taps More → Show chat. Touch
+    // counterpart to the Cmd/Ctrl+/ shortcut above.
+    const onShowChat = () => {
+      setDismissed(false);
+      setIsOpen(true);
+      setIsMinimized(false);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("ah:show-chat", onShowChat);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("ah:show-chat", onShowChat);
+    };
   }, []);
   const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -683,34 +701,51 @@ export default function GlobalChat() {
     </div>
   );
 
-  // Layout matches bank-processor's RKCAIChatPanel: full-height slide-out
-  // anchored to the right edge, draggable left-edge handle, maximize toggles
-  // between default width and ~60% of viewport.
+  // Layout matches bank-processor's RKCAIChatPanel on desktop: full-height
+  // slide-out anchored to the right edge, draggable left-edge handle, maximize
+  // toggles between default width and ~60% of viewport. On mobile the panel
+  // takes the full viewport — no width math, no drag handle.
   const totalWidth = splitDoc ? `calc(${chatWidthPx}px + min(420px, 40vw))` : `${chatWidthPx}px`;
+  // On mobile, the split-doc viewer is rendered as a separate fullscreen
+  // overlay (after this panel) — never as an inline column.
+  const showInlineSplit = !!splitDoc && !isMobile;
 
   return (
+    <>
     <div
-      className={`fixed inset-y-0 right-0 z-50 bg-white shadow-2xl flex flex-row border-l border-gray-200 ${isResizing ? "" : "transition-[width] duration-200"}`}
-      style={{ width: totalWidth }}
+      className={
+        isMobile
+          ? "fixed top-0 left-0 right-0 z-40 bg-white flex flex-col"
+          : `fixed inset-y-0 right-0 z-50 bg-white shadow-2xl flex flex-row border-l border-gray-200 ${isResizing ? "" : "transition-[width] duration-200"}`
+      }
+      style={
+        isMobile
+          // Leave room for MobileNav (h-16 = 4rem) plus iOS safe-area padding.
+          ? { bottom: "calc(4rem + env(safe-area-inset-bottom))" }
+          : { width: totalWidth }
+      }
     >
-      {/* Drag handle on the LEFT edge — drag to resize, double-click to toggle wide */}
-      <div
-        onMouseDown={startResize}
-        onDoubleClick={toggleMaximize}
-        title="Drag to resize · double-click to toggle wide"
-        className="absolute top-0 bottom-0 left-0 w-1.5 -translate-x-1/2 cursor-col-resize z-10 group"
-      >
-        <div className="h-full w-full transition-colors" style={{ backgroundColor: isResizing ? brandColor : "transparent" }} />
+      {/* Drag handle on the LEFT edge — drag to resize, double-click to toggle wide.
+          Hidden on mobile (touch users can't grab a 1.5px handle). */}
+      {!isMobile && (
         <div
-          className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-1 h-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ backgroundColor: brandColor }}
-        />
-      </div>
+          onMouseDown={startResize}
+          onDoubleClick={toggleMaximize}
+          title="Drag to resize · double-click to toggle wide"
+          className="absolute top-0 bottom-0 left-0 w-1.5 -translate-x-1/2 cursor-col-resize z-10 group"
+        >
+          <div className="h-full w-full transition-colors" style={{ backgroundColor: isResizing ? brandColor : "transparent" }} />
+          <div
+            className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-1 h-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ backgroundColor: brandColor }}
+          />
+        </div>
+      )}
 
       {/* Chat column */}
       <div
-        className="flex flex-col border-r border-gray-200 bg-gray-50 min-w-0"
-        style={{ width: `${chatWidthPx}px`, minWidth: `${chatWidthPx}px` }}
+        className="flex flex-col border-r border-gray-200 bg-gray-50 min-w-0 flex-1"
+        style={isMobile ? undefined : { width: `${chatWidthPx}px`, minWidth: `${chatWidthPx}px` }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>
@@ -726,8 +761,10 @@ export default function GlobalChat() {
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            {messages.length > 1 && <CopyChatButton messages={messages} />}
-            {messages.filter(m => m.role === 'assistant' && (m.content || '').trim()).length > 0 && (
+            {/* Desktop header: full button row. Mobile collapses these into a
+                kebab menu below. */}
+            {!isMobile && messages.length > 1 && <CopyChatButton messages={messages} />}
+            {!isMobile && messages.filter(m => m.role === 'assistant' && (m.content || '').trim()).length > 0 && (
               <button
                 onClick={handleChatToPresentation}
                 disabled={convertingDeck}
@@ -738,30 +775,47 @@ export default function GlobalChat() {
                 <span>{convertingDeck ? "Building…" : "Presentation"}</span>
               </button>
             )}
-            <button
-              onClick={handleNewSession}
-              title="New chat"
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition"
-            >
-              <PlusIcon className="w-3.5 h-3.5" />
-              <span>New</span>
-            </button>
-            <button onClick={() => setShowHistory(!showHistory)}
-              title="Conversation history"
-              className={`p-1 rounded transition ${showHistory ? "bg-white/30" : "hover:bg-white/20"}`}
-            >
-              <ClockIcon className="w-4 h-4 opacity-80" />
-            </button>
-            <button onClick={toggleMaximize} title={isWide ? "Shrink to default width" : "Expand to wide"} className="p-1 hover:bg-white/20 rounded transition">
-              {isWide ? <ArrowsPointingInIcon className="w-4 h-4 opacity-80" /> : <ArrowsPointingOutIcon className="w-4 h-4 opacity-80" />}
-            </button>
+            {!isMobile && (
+              <button
+                onClick={handleNewSession}
+                title="New chat"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition"
+              >
+                <PlusIcon className="w-3.5 h-3.5" />
+                <span>New</span>
+              </button>
+            )}
+            {!isMobile && (
+              <button onClick={() => setShowHistory(!showHistory)}
+                title="Conversation history"
+                className={`p-1 rounded transition ${showHistory ? "bg-white/30" : "hover:bg-white/20"}`}
+              >
+                <ClockIcon className="w-4 h-4 opacity-80" />
+              </button>
+            )}
+            {!isMobile && (
+              <button onClick={toggleMaximize} title={isWide ? "Shrink to default width" : "Expand to wide"} className="p-1 hover:bg-white/20 rounded transition">
+                {isWide ? <ArrowsPointingInIcon className="w-4 h-4 opacity-80" /> : <ArrowsPointingOutIcon className="w-4 h-4 opacity-80" />}
+              </button>
+            )}
+            {isMobile && (
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="flex items-center justify-center min-w-[40px] min-h-[40px] hover:bg-white/20 rounded transition"
+                title="Menu"
+                aria-label="Open menu"
+              >
+                <EllipsisVerticalIcon className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={() => { setIsOpen(false); setSplitDoc(null); }}
-              onContextMenu={(e) => { e.preventDefault(); setDismissed(true); setIsOpen(false); setSplitDoc(null); }}
-              className="p-1 hover:bg-white/20 rounded transition"
-              title="Close (right-click to fully dismiss; Ctrl/Cmd+/ to summon)"
+              onContextMenu={isMobile ? undefined : (e) => { e.preventDefault(); setDismissed(true); setIsOpen(false); setSplitDoc(null); }}
+              className={`hover:bg-white/20 rounded transition ${isMobile ? "flex items-center justify-center min-w-[40px] min-h-[40px]" : "p-1"}`}
+              title={isMobile ? "Close" : "Close (right-click to fully dismiss; Ctrl/Cmd+/ to summon)"}
+              aria-label="Close chat"
             >
-              <XMarkIcon className="w-4 h-4" />
+              <XMarkIcon className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
             </button>
           </div>
         </div>
@@ -905,39 +959,42 @@ export default function GlobalChat() {
         )}
 
         {/* Input — toggles live in the top controls bar; this row is just
-            attach + textfield + send. */}
+            attach + textfield + send. On mobile, only the paperclip is
+            visible (which opens a picker that also offers upload-from-device). */}
         <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0">
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 items-center">
             <button
               onClick={() => setShowDocPicker(!showDocPicker)}
-              className={`p-2 rounded-lg border transition-colors ${
+              className={`rounded-lg border transition-colors ${isMobile ? "min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2"} ${
                 showDocPicker || selectedDoc
                   ? "border-gray-400 text-gray-700 bg-gray-100"
                   : "border-gray-300 text-gray-400 hover:text-gray-600"
               }`}
               title="Attach a document (search library or upload)"
             >
-              <PaperClipIcon className="w-4 h-4" />
+              <PaperClipIcon className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
             </button>
-            <button
-              onClick={handlePickFileToUpload}
-              disabled={!!uploading || isStreaming}
-              className={`p-2 rounded-lg border transition-colors ${
-                uploading
-                  ? "border-gray-400 text-gray-700 bg-gray-100"
-                  : "border-gray-300 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-              }`}
-              title="Upload a file from your device"
-            >
-              {uploading ? (
-                <div
-                  className="w-4 h-4 border-2 rounded-full animate-spin"
-                  style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }}
-                />
-              ) : (
-                <ArrowUpTrayIcon className="w-4 h-4" />
-              )}
-            </button>
+            {!isMobile && (
+              <button
+                onClick={handlePickFileToUpload}
+                disabled={!!uploading || isStreaming}
+                className={`p-2 rounded-lg border transition-colors ${
+                  uploading
+                    ? "border-gray-400 text-gray-700 bg-gray-100"
+                    : "border-gray-300 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                }`}
+                title="Upload a file from your device"
+              >
+                {uploading ? (
+                  <div
+                    className="w-4 h-4 border-2 rounded-full animate-spin"
+                    style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }}
+                  />
+                ) : (
+                  <ArrowUpTrayIcon className="w-4 h-4" />
+                )}
+              </button>
+            )}
             <input
               type="text"
               value={input}
@@ -949,24 +1006,26 @@ export default function GlobalChat() {
                 : webSearchEnabled ? "Ask anything (+ web search)..."
                 : "Ask about AH documents..."
               }
-              className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:border-transparent"
+              className={`flex-1 rounded-xl border border-gray-300 px-3 ${isMobile ? "py-2.5 text-base" : "py-2 text-sm"} focus:ring-2 focus:border-transparent`}
               style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
               disabled={isStreaming}
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}
-              className="px-3 py-2 text-white rounded-xl hover:opacity-90 disabled:opacity-50 shadow-lg"
+              className={`text-white rounded-xl hover:opacity-90 disabled:opacity-50 shadow-lg ${isMobile ? "min-w-[44px] min-h-[44px] flex items-center justify-center" : "px-3 py-2"}`}
               style={{ backgroundColor: brandColor }}
+              aria-label="Send"
             >
-              <PaperAirplaneIcon className="w-4 h-4" />
+              <PaperAirplaneIcon className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Split document viewer (when a citation was clicked) */}
-      {splitDoc && (
+      {/* Inline split document viewer (desktop only — mobile renders this as
+          a separate fullscreen overlay below). */}
+      {showInlineSplit && splitDoc && (
         <div className="flex-1 border-l border-gray-200 flex flex-col bg-white min-w-0">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <span className="text-xs font-medium text-gray-600 truncate flex-1">{splitDoc.filename}</span>
@@ -978,6 +1037,98 @@ export default function GlobalChat() {
         </div>
       )}
     </div>
+
+    {/* Mobile-only kebab menu sheet. Renders as a bottom sheet over the chat. */}
+    {isMobile && mobileMenuOpen && (
+      <div
+        className="fixed inset-0 z-[55] bg-black/40"
+        onClick={() => setMobileMenuOpen(false)}
+      >
+        <div
+          className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.5rem)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 rounded-full bg-gray-300" />
+          </div>
+          <div className="px-2 pb-2">
+            <button
+              onClick={() => { handleNewSession(); setMobileMenuOpen(false); }}
+              className="flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50"
+            >
+              <PlusIcon className="w-5 h-5 text-gray-600" />
+              <span className="text-sm font-medium text-gray-800">New chat</span>
+            </button>
+            <button
+              onClick={() => { setShowHistory(true); setMobileMenuOpen(false); }}
+              className="flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50"
+            >
+              <ClockIcon className="w-5 h-5 text-gray-600" />
+              <span className="text-sm font-medium text-gray-800">Conversation history</span>
+            </button>
+            {messages.length > 1 && (
+              <button
+                onClick={() => {
+                  const text = messages
+                    .filter(m => m.content)
+                    .map(m => `[${m.role}] ${m.content}`)
+                    .join("\n\n");
+                  navigator.clipboard?.writeText(text).catch(() => {});
+                  setMobileMenuOpen(false);
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50"
+              >
+                <ClipboardDocumentIcon className="w-5 h-5 text-gray-600" />
+                <span className="text-sm font-medium text-gray-800">Copy conversation</span>
+              </button>
+            )}
+            {messages.filter(m => m.role === 'assistant' && (m.content || '').trim()).length > 0 && (
+              <button
+                onClick={() => { handleChatToPresentation(); setMobileMenuOpen(false); }}
+                disabled={convertingDeck}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                <DocumentChartBarIcon className="w-5 h-5 text-gray-600" />
+                <span className="text-sm font-medium text-gray-800">
+                  {convertingDeck ? "Building presentation…" : "Convert to presentation"}
+                </span>
+              </button>
+            )}
+            <div className="border-t border-gray-100 my-1" />
+            <button
+              onClick={() => {
+                setDismissed(true);
+                setIsOpen(false);
+                setSplitDoc(null);
+                setMobileMenuOpen(false);
+              }}
+              className="flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50"
+            >
+              <EyeSlashIcon className="w-5 h-5 text-gray-600" />
+              <div>
+                <div className="text-sm font-medium text-gray-800">Hide chat</div>
+                <div className="text-[11px] text-gray-500">Re-open from More menu</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Mobile-only document popup. FilePreviewModal handles fullscreen layout,
+        PDF rendering, zoom, swipe page-nav, etc. — same modal used elsewhere
+        in the app for consistency. Closing returns to the chat with state
+        preserved. */}
+    {isMobile && splitDoc && (
+      <FilePreviewModal
+        isOpen
+        url={splitDoc.url}
+        filename={splitDoc.filename}
+        onClose={() => setSplitDoc(null)}
+      />
+    )}
+    </>
   );
 }
 

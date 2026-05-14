@@ -288,14 +288,15 @@ export default function OPRAPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <DocumentTextIcon className="w-6 h-6" style={{ color: brandColor }} />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">OPRA Request Generator</h1>
-            <p className="text-sm text-gray-500">
+    <div className="p-3 md:p-8 max-w-5xl mx-auto">
+      {/* Header — stacks vertically on mobile so the submission CTA doesn't
+          squeeze the title/subtitle into an unreadable single line. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3 min-w-0">
+          <DocumentTextIcon className="w-6 h-6 flex-shrink-0" style={{ color: brandColor }} />
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">OPRA Request Generator</h1>
+            <p className="text-xs md:text-sm text-gray-500 truncate">
               Open Public Records Act &mdash;{" "}
               {agency ? agency.agency_name : (entity === "school" ? "Henry Hudson Regional School District" : "Borough of Atlantic Highlands")}
             </p>
@@ -306,7 +307,7 @@ export default function OPRAPage() {
             href={GOVPILOT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow"
+            className="flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow flex-shrink-0 sm:w-auto w-full"
             style={{ backgroundColor: brandColor }}
           >
             <ArrowTopRightOnSquareIcon className="w-4 h-4" />
@@ -315,7 +316,7 @@ export default function OPRAPage() {
         ) : agency?.email ? (
           <a
             href={`mailto:${agency.email}?subject=${encodeURIComponent("OPRA Request — " + (categories[selectedCategory]?.label || ""))}`}
-            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow"
+            className="flex items-center justify-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow flex-shrink-0 sm:w-auto w-full"
             style={{ backgroundColor: brandColor }}
           >
             <ArrowTopRightOnSquareIcon className="w-4 h-4" />
@@ -408,7 +409,7 @@ export default function OPRAPage() {
       )}
 
       {/* Form */}
-      <div className="bg-white rounded-xl shadow border border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-xl shadow border border-gray-200 p-4 md:p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Request Details</h2>
 
         {/* Category Selection */}
@@ -567,7 +568,7 @@ export default function OPRAPage() {
               (Optional - leave blank for placeholders)
             </span>
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Full Name</label>
               <input
@@ -575,6 +576,7 @@ export default function OPRAPage() {
                 value={requestorName}
                 onChange={(e) => setRequestorName(e.target.value)}
                 placeholder="Your full legal name"
+                autoComplete="name"
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
               />
             </div>
@@ -585,16 +587,19 @@ export default function OPRAPage() {
                 value={requestorEmail}
                 onChange={(e) => setRequestorEmail(e.target.value)}
                 placeholder="your.email@example.com"
+                autoComplete="email"
+                inputMode="email"
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
               />
             </div>
-            <div>
+            <div className="sm:col-span-1">
               <label className="block text-xs font-medium text-gray-600 mb-1">Mailing Address</label>
               <input
                 type="text"
                 value={requestorAddress}
                 onChange={(e) => setRequestorAddress(e.target.value)}
                 placeholder="123 Main St, Atlantic Highlands, NJ 07716"
+                autoComplete="street-address"
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
               />
             </div>
@@ -605,6 +610,8 @@ export default function OPRAPage() {
                 value={requestorPhone}
                 onChange={(e) => setRequestorPhone(e.target.value)}
                 placeholder="(732) 555-0000"
+                autoComplete="tel"
+                inputMode="tel"
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
               />
             </div>
@@ -694,9 +701,9 @@ export default function OPRAPage() {
       {/* Generated Output */}
       {generatedRequest && (
         <div className="bg-white rounded-xl shadow border border-gray-200 mb-6">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-xl">
             <span className="text-sm font-medium text-gray-700">Generated OPRA Request</span>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-100"
@@ -746,7 +753,7 @@ export default function OPRAPage() {
           </div>
           <div
             ref={outputRef}
-            className="p-6 prose prose-sm max-w-none prose-strong:text-gray-900"
+            className="p-4 md:p-6 prose prose-sm max-w-none prose-strong:text-gray-900 overflow-x-auto"
             dangerouslySetInnerHTML={{ __html: renderFormatted(generatedRequest) }}
           />
           {isGenerating && (

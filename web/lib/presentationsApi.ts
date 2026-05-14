@@ -60,6 +60,17 @@ export interface DeckSection {
   tsx?: string;
   /** Structured data exposed to the TSX as the `data` identifier. */
   data?: unknown;
+  /** Optional cover-banner subtitle (only used when kind='cover-meta'-like). */
+  subtitle?: string;
+  /** Optional date string for cover banners. */
+  date?: string;
+  /** SourceChip — shown above the heading. Filename takes priority over URL. */
+  source_label?: string;
+  source_url?: string;
+  source_filename?: string;
+  /** When true, a section is treated as the cover banner — title + subtitle
+   *  fold into the deck-level cover instead of rendering as a normal section. */
+  is_cover?: boolean;
 }
 
 export interface DeckAttachment {

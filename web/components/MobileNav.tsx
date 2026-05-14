@@ -36,6 +36,8 @@ const moreItems = [
   { name: "Admin", href: "/admin" },
 ];
 
+const DISMISSED_CHAT_KEY = "ah_chat_dismissed";
+
 export default function MobileNav() {
   const pathname = usePathname();
   const [showMore, setShowMore] = useState(false);
@@ -57,6 +59,18 @@ export default function MobileNav() {
                   <span className="text-sm font-medium text-gray-700">{item.name}</span>
                 </Link>
               ))}
+              <button
+                onClick={() => {
+                  // Touch counterpart to Cmd/Ctrl+/ on desktop. The chat
+                  // listens for this event and re-opens itself.
+                  localStorage.removeItem(DISMISSED_CHAT_KEY);
+                  window.dispatchEvent(new Event("ah:show-chat"));
+                  setShowMore(false);
+                }}
+                className="flex flex-col items-center gap-1 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-sm font-medium text-gray-700">Show chat</span>
+              </button>
             </div>
           </div>
         </div>
@@ -71,26 +85,40 @@ export default function MobileNav() {
               tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href)
             );
             const Icon = isActive ? tab.activeIcon : tab.icon;
+            const baseClass = "flex flex-col items-center gap-0.5 px-3 py-1 min-w-0 min-h-[44px] justify-center";
+            const labelClass = `text-[10px] font-medium ${isActive ? "" : "text-gray-400"}`;
+            const labelStyle = isActive ? { color: brandColor } : {};
+            const iconStyle = isActive ? { color: brandColor } : { color: "#9ca3af" };
 
+            if (isMore) {
+              return (
+                <button
+                  key={tab.name}
+                  onClick={() => setShowMore(s => !s)}
+                  className={baseClass}
+                  aria-label="More navigation options"
+                  aria-expanded={showMore}
+                >
+                  <Icon className="w-6 h-6" style={iconStyle} />
+                  <span className={labelClass} style={labelStyle}>{tab.name}</span>
+                </button>
+              );
+            }
+
+            // Link uses Next router internally (no full page reload), so the
+            // chat panel, scroll position, and React Query cache survive
+            // navigation.
             return (
-              <button
+              <Link
                 key={tab.name}
-                onClick={() => {
-                  if (isMore) {
-                    setShowMore(!showMore);
-                  } else {
-                    setShowMore(false);
-                    window.location.href = tab.href;
-                  }
-                }}
-                className="flex flex-col items-center gap-0.5 px-3 py-1 min-w-0"
+                href={tab.href}
+                onClick={() => setShowMore(false)}
+                className={baseClass}
+                prefetch
               >
-                <Icon className="w-6 h-6" style={isActive ? { color: brandColor } : { color: "#9ca3af" }} />
-                <span className={`text-[10px] font-medium ${isActive ? "" : "text-gray-400"}`}
-                  style={isActive ? { color: brandColor } : {}}>
-                  {tab.name}
-                </span>
-              </button>
+                <Icon className="w-6 h-6" style={iconStyle} />
+                <span className={labelClass} style={labelStyle}>{tab.name}</span>
+              </Link>
             );
           })}
         </div>

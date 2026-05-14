@@ -74,18 +74,16 @@ export default function ScraperPage() {
   const isRunning = status?.running;
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Document Scraper</h1>
-          <p className="text-gray-500 mt-1">
-            Automatically download documents from town and school websites to S3
-          </p>
-        </div>
+    <div className="p-3 md:p-8">
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Document Scraper</h1>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">
+          Automatically download documents from town and school websites to S3
+        </p>
       </div>
 
       {/* Site selection */}
-      <div className="bg-white rounded-xl shadow p-6 mb-6">
+      <div className="bg-white rounded-xl shadow p-4 md:p-6 mb-4 md:mb-6">
         <h2 className="font-semibold text-gray-900 mb-4">Sources</h2>
         <div className="space-y-3">
           {SITES.map((site) => {
@@ -169,8 +167,8 @@ export default function ScraperPage() {
 
       {/* Status panel */}
       {status && (status.running || status.completed_at) && (
-        <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-xl shadow p-4 md:p-6 mb-4 md:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="font-semibold text-gray-900">
               {status.running ? "Scraper Running" : "Last Run"}
             </h2>
@@ -188,18 +186,18 @@ export default function ScraperPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-blue-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-blue-700">{status.documents_found}</p>
-              <p className="text-xs text-blue-500">Found</p>
+          <div className="grid grid-cols-3 gap-2 md:gap-4">
+            <div className="bg-blue-50 rounded-lg p-3 md:p-4 text-center">
+              <p className="text-xl md:text-2xl font-bold text-blue-700">{status.documents_found}</p>
+              <p className="text-[10px] md:text-xs text-blue-500">Found</p>
             </div>
-            <div className="bg-green-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-700">{status.documents_uploaded}</p>
-              <p className="text-xs text-green-500">Uploaded to S3</p>
+            <div className="bg-green-50 rounded-lg p-3 md:p-4 text-center">
+              <p className="text-xl md:text-2xl font-bold text-green-700">{status.documents_uploaded}</p>
+              <p className="text-[10px] md:text-xs text-green-500">Uploaded</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-gray-700">{status.documents_skipped}</p>
-              <p className="text-xs text-gray-500">Skipped (existing)</p>
+            <div className="bg-gray-50 rounded-lg p-3 md:p-4 text-center">
+              <p className="text-xl md:text-2xl font-bold text-gray-700">{status.documents_skipped}</p>
+              <p className="text-[10px] md:text-xs text-gray-500">Skipped</p>
             </div>
           </div>
 
@@ -231,7 +229,7 @@ export default function ScraperPage() {
       )}
 
       {/* Info */}
-      <div className="bg-gray-50 rounded-xl p-6 text-sm text-gray-600">
+      <div className="bg-gray-50 rounded-xl p-4 md:p-6 text-sm text-gray-600">
         <h3 className="font-medium text-gray-900 mb-2">How it works</h3>
         <ul className="list-disc list-inside space-y-1">
           <li>Crawls selected websites for downloadable documents (PDFs, DOCs, spreadsheets)</li>

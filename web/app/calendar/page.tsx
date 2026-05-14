@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getDocuments, getDocumentViewUrl, getCalendarEvents, type Document, type CalendarEvent } from "@/lib/api";
+import FilePreviewModal from "@/components/FilePreviewModal";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -106,20 +107,21 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="flex h-full">
-      {/* Calendar */}
-      <div className={`${viewerDoc ? "w-1/2" : "flex-1"} p-8 overflow-auto`}>
-        <div className="flex items-center justify-between mb-6">
+    <div className="h-full">
+      {/* Calendar — viewer is now a modal popup, so the calendar always uses
+          the full width. */}
+      <div className="p-3 md:p-8 overflow-auto h-full">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 md:mb-6">
           <div className="flex items-center gap-3">
-            <CalendarDaysIcon className="w-6 h-6" style={{ color: brandColor }} />
-            <h1 className="text-2xl font-bold text-gray-900">Meeting Calendar</h1>
+            <CalendarDaysIcon className="w-6 h-6 flex-shrink-0" style={{ color: brandColor }} />
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Meeting Calendar</h1>
           </div>
-          <p className="text-sm text-gray-500">{events.size} dates with {documents?.length || 0} documents</p>
+          <p className="text-xs md:text-sm text-gray-500">{events.size} dates · {documents?.length || 0} docs</p>
         </div>
 
         {/* Month navigation */}
-        <div className="bg-white rounded-xl shadow mb-6">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="bg-white rounded-xl shadow mb-4 md:mb-6">
+          <div className="flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-b border-gray-200">
             <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg">
               <ChevronLeftIcon className="w-5 h-5 text-gray-600" />
             </button>
@@ -196,8 +198,8 @@ export default function CalendarPage() {
 
         {/* Selected date documents */}
         {selectedDate && (
-          <div className="bg-white rounded-xl shadow p-6">
-            <div className="flex items-center justify-between mb-3">
+          <div className="bg-white rounded-xl shadow p-4 md:p-6">
+            <div className="flex items-center justify-between mb-3 gap-2">
               <h3 className="font-semibold text-gray-900">
                 {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", {
                   weekday: "long", month: "long", day: "numeric", year: "numeric",
@@ -273,19 +275,15 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {/* Document viewer */}
+      {/* Document viewer — popup modal with proper PDF rendering, zoom,
+          page nav, and swipe gestures (FilePreviewModal handles all viewports). */}
       {viewerDoc && (
-        <div className="w-1/2 border-l border-gray-200 flex flex-col bg-white">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
-            <span className="text-sm font-medium text-gray-600 truncate">{viewerDoc.filename}</span>
-            <button onClick={() => setViewerDoc(null)} className="p-1 text-gray-400 hover:text-gray-600 rounded">
-              <ChevronLeftIcon className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-hidden bg-gray-900">
-            <iframe src={viewerDoc.url} className="w-full h-full border-0" title={viewerDoc.filename} />
-          </div>
-        </div>
+        <FilePreviewModal
+          isOpen
+          url={viewerDoc.url}
+          filename={viewerDoc.filename}
+          onClose={() => setViewerDoc(null)}
+        />
       )}
     </div>
   );

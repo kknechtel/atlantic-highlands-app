@@ -4,6 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { X, Download, ExternalLink, Image as ImageIcon, FileText as FileTextIcon, File as FileIcon, Maximize2, Minimize2 } from 'lucide-react';
 import PDFViewer from './PDFViewer';
 import XlsxSheetViewer from './XlsxSheetViewer';
+import { useIsMobile } from '@/lib/hooks';
 
 interface FilePreviewModalProps {
     isOpen: boolean;
@@ -31,6 +32,8 @@ export default function FilePreviewModal({ isOpen, url, filename, onClose, initi
     const [textContent, setTextContent] = useState<string | null>(null);
     const [textError, setTextError] = useState<string | null>(null);
     const [maximized, setMaximized] = useState(false);
+    const isMobile = useIsMobile();
+    const fullscreen = isMobile || maximized;
 
     // Reset to default size when a new file opens.
     useEffect(() => { if (isOpen) setMaximized(false); }, [isOpen, url]);
@@ -72,11 +75,11 @@ export default function FilePreviewModal({ isOpen, url, filename, onClose, initi
 
     return (
         <div
-            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${maximized ? 'p-0' : 'p-4'}`}
+            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${fullscreen ? 'p-0' : 'p-4'}`}
             onClick={onClose}
         >
             <div
-                className={`bg-white shadow-xl flex flex-col ${maximized ? 'w-screen h-screen rounded-none' : 'w-full max-w-5xl h-[85vh] rounded-lg'}`}
+                className={`bg-white shadow-xl flex flex-col ${fullscreen ? 'w-screen h-screen rounded-none' : 'w-full max-w-5xl h-[85vh] rounded-lg'}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div
@@ -91,22 +94,24 @@ export default function FilePreviewModal({ isOpen, url, filename, onClose, initi
                             : <FileIcon className="w-5 h-5 text-gray-600" />}
                         <div className="truncate text-sm text-gray-800">{filename}</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="px-2 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-100 text-gray-700" title="Open in new tab">
-                            <ExternalLink className="w-4 h-4" />
+                    <div className="flex items-center gap-1 md:gap-2">
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-0 md:min-h-0 md:px-2 md:py-1 text-xs rounded-md md:border md:border-gray-200 hover:bg-gray-100 text-gray-700" title="Open in new tab">
+                            <ExternalLink className="w-5 h-5 md:w-4 md:h-4" />
                         </a>
-                        <a href={url} download={filename} className="px-2 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-100 text-gray-700" title="Download">
-                            <Download className="w-4 h-4" />
+                        <a href={url} download={filename} className="flex items-center justify-center min-w-[40px] min-h-[40px] md:min-w-0 md:min-h-0 md:px-2 md:py-1 text-xs rounded-md md:border md:border-gray-200 hover:bg-gray-100 text-gray-700" title="Download">
+                            <Download className="w-5 h-5 md:w-4 md:h-4" />
                         </a>
-                        <button
-                            onClick={() => setMaximized(m => !m)}
-                            className="p-2 hover:bg-gray-100 rounded"
-                            title={maximized ? 'Exit full screen' : 'Full screen'}
-                        >
-                            {maximized ? <Minimize2 className="w-4 h-4 text-gray-500" /> : <Maximize2 className="w-4 h-4 text-gray-500" />}
-                        </button>
-                        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded" title="Close">
-                            <X className="w-5 h-5 text-gray-500" />
+                        {!isMobile && (
+                            <button
+                                onClick={() => setMaximized(m => !m)}
+                                className="p-2 hover:bg-gray-100 rounded"
+                                title={maximized ? 'Exit full screen' : 'Full screen'}
+                            >
+                                {maximized ? <Minimize2 className="w-4 h-4 text-gray-500" /> : <Maximize2 className="w-4 h-4 text-gray-500" />}
+                            </button>
+                        )}
+                        <button onClick={onClose} className="flex items-center justify-center min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 md:p-2 hover:bg-gray-100 rounded" title="Close">
+                            <X className="w-6 h-6 md:w-5 md:h-5 text-gray-500" />
                         </button>
                     </div>
                 </div>

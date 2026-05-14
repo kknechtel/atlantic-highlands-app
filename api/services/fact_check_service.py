@@ -162,3 +162,101 @@ def fact_check_presentation(
         "summary": summary,
         "results": results,
     }
+
+
+def fact_check_presentation_stream(
+    db: Session,
+    sections: list,
+    *,
+    user_id: Optional[str] = None,
+    presentation_id: Optional[str] = None,
+):
+    """Generator version of fact_check_presentation — yields SSE-shaped dicts
+    per citation as they finish, plus a final 'complete' record. The route
+    handler turns each yield into a `data: {json}\\n\\n` SSE frame.
+
+    Yields:
+        {"type": "start", "total": int}
+        {"type": "verdict", "verdict": {...}}     (one per citation)
+        {"type": "complete", "ran_at": str, "summary": dict, "results": [...]}
+        {"type": "error", "message": str}         (on failure)
+    """
+    if not ANTHROPIC_API_KEY:
+        yield {"type": "error", "message": "anthropic_api_key_not_configured"}
+        return
+
+    # Pre-count citations so the UI can show "X of Y checked" progress.
+    total = 0
+    for section in sections or []:
+        if section.get("kind") != "narrative":
+            continue
+        body = section.get("body") or ""
+        for _ in _iter_citations(body):
+            total += 1
+    yield {"type": "start", "total": total}
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    results: list[dict] = []
+    summary = {"supported": 0, "partial": 0, "unsupported": 0, "unresolved": 0, "no_source": 0}
+    total_in = total_out = 0
+    claims_checked = 0
+
+    for section in sections or []:
+        if section.get("kind") != "narrative":
+            continue
+        body = section.get("body") or ""
+        section_id = section.get("id")
+        section_title = section.get("title")
+
+        for kind, key, label in _iter_citations(body):
+            doc = _fetch_doc(db, kind, key)
+            if not doc or not (doc.extracted_text and len(doc.extracted_text) > 100):
+                summary["no_source"] += 1
+                rec = {
+                    "section_id": section_id, "section_heading": section_title,
+                    "kind": kind, "id": key, "label": label, "verdict": "no_source",
+                    "evidence_quote": "", "claim": body[:400],
+                    "missing": ["source_text_unavailable"], "conflicting": [],
+                }
+                results.append(rec)
+                yield {"type": "verdict", "verdict": rec}
+                continue
+
+            verdict, in_t, out_t = _check_one_claim(client, body[:1500], doc.extracted_text)
+            total_in += in_t
+            total_out += out_t
+            claims_checked += 1
+            v = verdict["verdict"]
+            summary[v] = summary.get(v, 0) + 1
+            rec = {
+                "section_id": section_id, "section_heading": section_title,
+                "kind": kind, "id": str(doc.id), "label": label,
+                "verdict": v,
+                "evidence_quote": verdict["evidence_quote"],
+                "claim": body[:400],
+                "missing": verdict["missing"],
+                "conflicting": verdict["conflicting"],
+            }
+            results.append(rec)
+            yield {"type": "verdict", "verdict": rec}
+
+    if claims_checked:
+        try:
+            from services.usage import record_usage
+            record_usage(
+                db, source="fact_check", model="claude-sonnet-4-6",
+                input_tokens=total_in, output_tokens=total_out,
+                user_id=user_id,
+                resource_type="presentation", resource_id=presentation_id,
+                metadata={"claims_checked": claims_checked},
+            )
+        except Exception:
+            log.warning("fact_check usage record skipped", exc_info=True)
+
+    ran_at = datetime.utcnow().isoformat() + "Z"
+    yield {
+        "type": "complete",
+        "ran_at": ran_at,
+        "summary": summary,
+        "results": results,
+    }

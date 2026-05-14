@@ -117,14 +117,12 @@ export default function LocalBusinessPage() {
   }, [businesses, search, categoryFilter, sortBy]);
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Local Businesses</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {businesses.length} businesses in Atlantic Highlands
-          </p>
-        </div>
+    <div className="p-3 md:p-8 max-w-6xl mx-auto">
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Local Businesses</h1>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">
+          {businesses.length} businesses in Atlantic Highlands
+        </p>
       </div>
 
       {/* Category pills */}
@@ -183,7 +181,7 @@ export default function LocalBusinessPage() {
         {filtered.map((biz, i) => (
           <div
             key={`${biz.name}-${i}`}
-            className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow"
+            className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-5 hover:shadow-md transition-shadow"
           >
             {/* Header */}
             <div className="flex items-start justify-between mb-2">

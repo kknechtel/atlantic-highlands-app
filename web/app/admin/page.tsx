@@ -197,12 +197,12 @@ export default function AdminPage() {
           </div>
           <div className="divide-y divide-amber-100">
             {pendingUsers.map((u) => (
-              <div key={u.id} className="px-6 py-3 flex items-center justify-between hover:bg-amber-50/50">
-                <div>
-                  <p className="font-medium text-gray-900">{u.full_name || u.username}</p>
-                  <p className="text-xs text-gray-500">{u.email}</p>
+              <div key={u.id} className="px-4 md:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-amber-50/50">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 truncate">{u.full_name || u.username}</p>
+                  <p className="text-xs text-gray-500 truncate">{u.email}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => approveMut.mutate(u.id)}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs text-white rounded-lg font-medium"

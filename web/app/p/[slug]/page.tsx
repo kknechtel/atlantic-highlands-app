@@ -4,7 +4,7 @@ import React, { useEffect, useState, use } from 'react';
 import { Lock, Loader2 } from 'lucide-react';
 import {
   type DeckSection, type DeckAttachment,
-  fetchPublicMeta, fetchPublicDeck, fetchPublicCitation,
+  fetchPublicMeta, fetchPublicDeck,
 } from '@/lib/presentationsApi';
 import PresentationViewer from '@/components/presentations/PresentationViewer';
 
@@ -55,6 +55,9 @@ export default function PublicPresentationPage({ params }: PageProps) {
     try {
       const d = await fetchPublicDeck(slug, pwInput);
       sessionStorage.setItem(`deck-pw-${slug}`, pwInput);
+      // Mirror the slug pw into the key CitationPreview reads when fetching
+      // citations on a password-protected public deck.
+      sessionStorage.setItem(`ah-deck-pw:${slug}`, pwInput);
       setDeck(d);
     } catch {
       setError('Incorrect password');
@@ -110,10 +113,8 @@ export default function PublicPresentationPage({ params }: PageProps) {
         title={deck.title}
         sections={deck.sections}
         attachments={deck.attachments}
-        onResolveCitation={(filename) => {
-          const pw = typeof window !== 'undefined' ? sessionStorage.getItem(`deck-pw-${slug}`) : null;
-          return fetchPublicCitation(slug, filename, pw || undefined);
-        }}
+        mode="public"
+        publicSlug={slug}
       />
     </div>
   );

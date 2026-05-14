@@ -55,16 +55,18 @@ export default function NarrativePage() {
 
   return (
     <div className="flex h-full">
-      {/* Main narrative */}
-      <div className={`flex-1 overflow-auto ${splitDoc ? "w-1/2" : ""}`}>
-        <div className="p-8 max-w-4xl">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Financial Narrative</h1>
-          <p className="text-sm text-gray-500 mb-6">
+      {/* Main narrative — on mobile the doc viewer becomes a fullscreen
+          overlay (handled inside SplitDocViewer) so the narrative keeps
+          the full width. */}
+      <div className={`flex-1 overflow-auto ${splitDoc ? "md:w-1/2" : ""}`}>
+        <div className="p-3 md:p-8 max-w-4xl">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-1">Financial Narrative</h1>
+          <p className="text-xs md:text-sm text-gray-500 mb-4 md:mb-6">
             Year-over-year analysis with supporting documents
           </p>
 
           {/* Tab switcher */}
-          <div className="flex gap-2 mb-8">
+          <div className="flex flex-wrap gap-2 mb-6 md:mb-8">
             <button
               onClick={() => setActiveTab("town")}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -353,7 +355,7 @@ function NarrativeSection({
 }) {
   const borderColor = color === "blue" ? "border-blue-200" : "border-orange-200";
   return (
-    <div className={`bg-white rounded-xl shadow p-6 border-l-4 ${borderColor}`}>
+    <div className={`bg-white rounded-xl shadow p-4 md:p-6 border-l-4 ${borderColor}`}>
       <h3 className="font-semibold text-gray-900 mb-4">{title}</h3>
       {children}
     </div>

@@ -236,7 +236,7 @@ async def _call_claude(prompt: str) -> Optional[Dict]:
     response = await loop.run_in_executor(
         None,
         lambda: client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         ),
@@ -246,7 +246,7 @@ async def _call_claude(prompt: str) -> Optional[Dict]:
         return None
 
     _record_v1_usage(
-        "claude-sonnet-4-20250514",
+        "claude-sonnet-4-6",
         getattr(response.usage, "input_tokens", 0) or 0,
         getattr(response.usage, "output_tokens", 0) or 0,
     )

@@ -16,7 +16,7 @@ import {
   Quote, Code as CodeIcon, Link as LinkIcon, Table as TableIcon,
   Heading2, Heading3, Minus, Undo2, Redo2, ImageIcon,
 } from 'lucide-react';
-import EnhancedMarkdownRenderer from '@/components/EnhancedMarkdownRenderer';
+import MarkdownWithCharts from '@/components/MarkdownWithCharts';
 import type { DeckSection } from '@/lib/presentationsApi';
 
 interface Props {
@@ -34,8 +34,9 @@ interface Props {
  * bank-processor's deck editor: H2/H3, bold, italic, code, lists,
  * quote, link, table, image, HR, undo/redo.
  *
- * Read-only mode renders via EnhancedMarkdownRenderer so charts +
- * citations + chart blocks behave the same as in chat.
+ * Read-only mode renders via MarkdownWithCharts so charts (Recharts)
+ * and citation pills behave identically here, in the chat panel, and
+ * in the AskAIPanel proposal preview.
  */
 export default function NarrativeBlock({
   section, editable, onSave, onCitationClick, brandColor = '#385854',
@@ -50,7 +51,7 @@ export default function NarrativeBlock({
           <h2 className="text-xl font-semibold text-gray-900">{section.title}</h2>
         )}
         {body ? (
-          <EnhancedMarkdownRenderer
+          <MarkdownWithCharts
             content={body}
             onCitationClick={onCitationClick}
             brandColor={brandColor}

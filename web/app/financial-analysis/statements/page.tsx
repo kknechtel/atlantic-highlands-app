@@ -92,16 +92,16 @@ export default function StatementsPage() {
   const latestRaw = latest ? (latest as any).raw_extraction : null;
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Financial Statements</h1>
-          <p className="text-sm text-gray-500">P&L, Balance Sheet, and Detailed Analysis</p>
+    <div className="p-3 md:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 md:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Financial Statements</h1>
+          <p className="text-xs md:text-sm text-gray-500">P&L, Balance Sheet, and Detailed Analysis</p>
         </div>
         <div className="flex gap-3">
           <a
             href={`${API_BASE}/api/export/financial-statements`}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            className="flex items-center justify-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 w-full sm:w-auto"
           >
             <ArrowDownTrayIcon className="w-4 h-4" /> Download Excel
           </a>
@@ -132,7 +132,7 @@ export default function StatementsPage() {
       {revenueExpChart.length > 1 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Revenue vs Expenditures */}
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4 md:p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Revenue vs. Expenditures</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={revenueExpChart}>
@@ -149,7 +149,7 @@ export default function StatementsPage() {
 
           {/* Fund Balance Trend */}
           {fundBalanceChart.length > 1 && (
-            <div className="bg-white rounded-xl shadow p-6">
+            <div className="bg-white rounded-xl shadow p-4 md:p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Fund Balance Trend</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={fundBalanceChart}>
@@ -165,7 +165,7 @@ export default function StatementsPage() {
 
           {/* Debt Trend */}
           {debtChart.length > 1 && (
-            <div className="bg-white rounded-xl shadow p-6">
+            <div className="bg-white rounded-xl shadow p-4 md:p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Total Debt Outstanding</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={debtChart}>
@@ -180,7 +180,7 @@ export default function StatementsPage() {
           )}
 
           {/* Key Ratios */}
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4 md:p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Key Financial Ratios</h3>
             <div className="space-y-3">
               {stmtsWithData.filter((s) => s.total_revenue && s.total_expenditures).map((s) => {
@@ -221,7 +221,7 @@ export default function StatementsPage() {
       <div className="bg-white rounded-xl shadow overflow-hidden mb-6">
         <button
           onClick={() => toggleSection("revenue")}
-          className="w-full flex items-center justify-between px-6 py-4 bg-primary-50 border-b hover:bg-primary-100"
+          className="w-full flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-primary-50 border-b hover:bg-primary-100"
         >
           <h3 className="font-semibold text-primary-700">Income Statement - Revenue</h3>
           {expandedSections.has("revenue") ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
@@ -263,7 +263,7 @@ export default function StatementsPage() {
       <div className="bg-white rounded-xl shadow overflow-hidden mb-6">
         <button
           onClick={() => toggleSection("expenditures")}
-          className="w-full flex items-center justify-between px-6 py-4 bg-red-50 border-b hover:bg-red-100"
+          className="w-full flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-red-50 border-b hover:bg-red-100"
         >
           <h3 className="font-semibold text-red-800">Income Statement - Expenditures</h3>
           {expandedSections.has("expenditures") ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
@@ -303,7 +303,7 @@ export default function StatementsPage() {
       <div className="bg-white rounded-xl shadow overflow-hidden mb-6">
         <button
           onClick={() => toggleSection("balance")}
-          className="w-full flex items-center justify-between px-6 py-4 bg-blue-50 border-b hover:bg-blue-100"
+          className="w-full flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-blue-50 border-b hover:bg-blue-100"
         >
           <h3 className="font-semibold text-blue-800">Balance Sheet</h3>
           {expandedSections.has("balance") ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
@@ -331,7 +331,7 @@ export default function StatementsPage() {
       </div>
 
       {/* Summary stats */}
-      <div className="bg-white rounded-xl shadow p-6">
+      <div className="bg-white rounded-xl shadow p-4 md:p-6">
         <h3 className="font-semibold text-gray-900 mb-4">Year-over-Year Summary</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

@@ -154,14 +154,14 @@ export default function EventsPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto">
+    <div className="p-3 md:p-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Events & Entertainment</h1>
-          <p className="text-sm text-gray-500 mt-0.5">What's happening in Atlantic Highlands</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Events &amp; Entertainment</h1>
+          <p className="text-xs md:text-sm text-gray-500 mt-0.5">What&apos;s happening in Atlantic Highlands</p>
         </div>
-        <Link href="/local-business" className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50">
+        <Link href="/local-business" className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 self-start sm:self-auto">
           <BuildingStorefrontIcon className="w-3.5 h-3.5" /> Local Businesses
         </Link>
       </div>
@@ -246,12 +246,12 @@ export default function EventsPage() {
           </div>
           <div className="grid grid-cols-7">
             {calendarDays.map((day, i) => {
-              if (day === null) return <div key={`e-${i}`} className="min-h-[90px] border-r border-b border-gray-100" />;
+              if (day === null) return <div key={`e-${i}`} className="min-h-[60px] md:min-h-[90px] border-r border-b border-gray-100" />;
               const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const dayEvents = eventsByDate.get(dateStr) || [];
               const isToday = new Date().toISOString().slice(0, 10) === dateStr;
               return (
-                <div key={day} className={`min-h-[90px] p-1 border-r border-b border-gray-100 ${isToday ? "bg-blue-50" : ""}`}>
+                <div key={day} className={`min-h-[60px] md:min-h-[90px] p-1 border-r border-b border-gray-100 ${isToday ? "bg-blue-50" : ""}`}>
                   <div className={`text-xs font-medium mb-0.5 ${isToday ? "text-blue-600" : "text-gray-500"}`}>{day}</div>
                   {dayEvents.slice(0, 4).map((ev, ei) => {
                     const venue = VENUE_LINKS[ev.source];

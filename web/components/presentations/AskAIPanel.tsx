@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { Sparkles, Send, X, Wand2, Check, Loader2 } from 'lucide-react';
-import EnhancedMarkdownRenderer from '@/components/EnhancedMarkdownRenderer';
+import MarkdownWithCharts from '@/components/MarkdownWithCharts';
+
 import type { DeckSection, SectionKind } from '@/lib/presentationsApi';
 
 interface Proposal {
@@ -150,7 +151,7 @@ export default function AskAIPanel({ presentationId, brandColor = '#385854', onA
                 </div>
               )}
               {t.role === 'assistant' ? (
-                t.text ? <EnhancedMarkdownRenderer content={t.text} brandColor={brandColor} />
+                t.text ? <MarkdownWithCharts content={t.text} brandColor={brandColor} />
                        : <span className="text-xs text-gray-400 italic">thinking…</span>
               ) : (
                 <span className="whitespace-pre-wrap">{t.text}</span>

@@ -52,7 +52,7 @@ from models.presentation import Presentation
 from models.user import User
 from services.deck_chat_service import build_sections_summary, stream_deck_chat
 from services.deck_export import export_docx, export_pptx
-from services.fact_check_service import fact_check_presentation
+from services.fact_check_service import fact_check_presentation, fact_check_presentation_stream
 
 logger = logging.getLogger(__name__)
 
@@ -412,6 +412,54 @@ def fact_check(presentation_id: str, db: Session = Depends(get_db),
     p.last_fact_check = result
     db.commit()
     return result
+
+
+@router.post("/{presentation_id}/fact-check/stream")
+def fact_check_stream(presentation_id: str, db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """SSE: stream per-citation verdicts as they complete. The final
+    'complete' event also carries the full results array so the client
+    can drop it into local state without a follow-up fetch. Persisted
+    server-side once the stream ends so a page reload sees the same
+    `last_fact_check` record the synchronous endpoint produces."""
+    p = _get_editable_or_404(db, presentation_id, user)
+    sections = p.sections or []
+    pid = str(p.id)
+    uid = str(user.id)
+
+    def event_stream():
+        last_complete: dict | None = None
+        try:
+            for ev in fact_check_presentation_stream(
+                db, sections, user_id=uid, presentation_id=pid,
+            ):
+                if ev.get("type") == "complete":
+                    last_complete = ev
+                yield f"data: {json.dumps(ev)}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+        # Persist the final summary so a reload doesn't have to re-run.
+        if last_complete:
+            try:
+                p.last_fact_check = {
+                    "ran_at": last_complete["ran_at"],
+                    "summary": last_complete["summary"],
+                    "results": last_complete["results"],
+                }
+                db.commit()
+            except Exception:  # noqa: BLE001
+                logger.warning("fact_check persist failed", exc_info=True)
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ─── Export (PPTX / DOCX) ───────────────────────────────────────────────────

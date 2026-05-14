@@ -28,7 +28,10 @@ import {
   Line, Bar, Pie, Area, Radar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, Cell, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
-import { KPICard, Callout, Stat, Section, AH_BRAND } from './AHPrimitives';
+import {
+  KPICard, Callout, Stat, Section, Timeline, RiskMatrix, ComparisonRow,
+  PartiesGrid, Cite, AH_BRAND,
+} from './AHPrimitives';
 
 interface Props {
   /** TSX source. May define `function Foo() {}` at top level — we auto-`render(<Foo />)`. */
@@ -71,8 +74,14 @@ const CURATED_SCOPE = {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle,
   Calendar, DollarSign, Users, FileText, Globe, Sparkles,
   ChevronRight, ArrowRight, BarChart2,
-  // AH-branded primitives.
-  KPICard, Callout, Stat, Section,
+  // AH-branded primitives — preferred over raw divs so output matches
+  // the rest of the deck. Keep this list in sync with the system prompt
+  // that lists the components Claude is allowed to emit.
+  KPICard, Callout, Stat, Section, Timeline, RiskMatrix, ComparisonRow,
+  PartiesGrid,
+  // Inline citation chip for use INSIDE JSX (string literals inside a
+  // component don't get the markdown `[source: ...]` rewrite).
+  Cite,
   // Brand color constant for inline styling.
   BRAND: AH_BRAND,
 };
@@ -135,7 +144,39 @@ export default function LiveTSXRender({
     <LiveProvider code={cleanCode} scope={scope} noInline enableTypeScript>
       <ErrorWatcher onError={handleErr} />
       <div className={framed ? 'rounded-lg border border-gray-200 bg-white p-3' : ''}>
-        <LivePreview />
+        {/* Click delegate — re-route bare `<a href="ah://cite/...">` and any
+            stray external links to the same side-panel events the markdown
+            renderer uses. The model occasionally emits raw <a> tags inside
+            its TSX instead of invoking <Cite>; without this they'd open in
+            a new tab (or do nothing for the ah:// scheme). */}
+        <div
+          className="ah-live-preview"
+          onClickCapture={(e) => {
+            const a = (e.target as HTMLElement | null)?.closest('a');
+            if (!a) return;
+            const href = a.getAttribute('href') || '';
+            const m = href.match(/^ah:\/\/cite\/(.+)$/);
+            if (m) {
+              e.preventDefault();
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent('ah:open-citation', {
+                detail: { kind: 'doc', filename: decodeURIComponent(m[1]) },
+              }));
+              return;
+            }
+            // External http(s) — route to WebReferencePreview when mounted,
+            // otherwise let the browser open the link normally.
+            if (/^https?:\/\//i.test(href) && (window as { __ahWebRefPanelMounted?: boolean }).__ahWebRefPanelMounted) {
+              e.preventDefault();
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent('ah:open-web-reference', {
+                detail: { url: href, title: a.textContent?.trim() || href },
+              }));
+            }
+          }}
+        >
+          <LivePreview />
+        </div>
         {!readOnly && (
           <LiveError className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 whitespace-pre-wrap font-mono" />
         )}

@@ -13,7 +13,7 @@ import {
     WrenchScrewdriverIcon,
     PlusIcon,
 } from '@heroicons/react/24/outline';
-import EnhancedMarkdownRenderer from './EnhancedMarkdownRenderer';
+import MarkdownWithCharts from './MarkdownWithCharts';
 import TypingIndicator from './TypingIndicator';
 import { useAuth } from '@/app/contexts/AuthContext';
 
@@ -419,7 +419,7 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         <span className="whitespace-pre-wrap">{message.content}</span>
                     ) : message.content ? (
                         <div className={message.toolActivity?.length || message.thinking ? 'mt-2' : ''}>
-                            <EnhancedMarkdownRenderer
+                            <MarkdownWithCharts
                                 content={message.content}
                                 onCitationClick={onCitationClick}
                                 brandColor={brandColor}

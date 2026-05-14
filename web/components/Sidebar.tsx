@@ -7,7 +7,7 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import {
   FolderIcon, ChartBarIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon,
   DocumentTextIcon, BuildingOfficeIcon, AcademicCapIcon, GlobeAltIcon,
-  CalendarDaysIcon, Bars3Icon, XMarkIcon,
+  CalendarDaysIcon,
   ChevronLeftIcon, ChevronRightIcon, UserIcon, BuildingStorefrontIcon,
   MusicalNoteIcon, ClipboardDocumentListIcon, PresentationChartLineIcon,
 } from "@heroicons/react/24/outline";
@@ -41,7 +41,6 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!user) return null;
 
@@ -87,7 +86,7 @@ export default function Sidebar() {
 
           return (
             <div key={item.name}>
-              <Link href={item.href} onClick={() => setMobileOpen(false)}
+              <Link href={item.href}
                 className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all ${
                   isActive ? "text-white shadow-md" : "text-gray-700 hover:bg-gray-50"
                 }`}
@@ -102,7 +101,7 @@ export default function Sidebar() {
                   {item.children.map((child) => {
                     const childActive = pathname === child.href;
                     return (
-                      <Link key={child.name} href={child.href} onClick={() => setMobileOpen(false)}
+                      <Link key={child.name} href={child.href}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors ${
                           childActive ? "font-medium" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                         }`}
@@ -138,25 +137,8 @@ export default function Sidebar() {
     </aside>
   );
 
-  return (
-    <>
-      {/* Mobile hamburger */}
-      <button onClick={() => setMobileOpen(true)} className="md:hidden fixed top-3 left-3 z-40 p-2 bg-white text-gray-700 rounded-lg shadow-lg border border-gray-200">
-        <Bars3Icon className="w-5 h-5" />
-      </button>
-
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="w-64">{sidebar}</div>
-          <div className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)}>
-            <button className="absolute top-3 right-3 p-2 text-white"><XMarkIcon className="w-5 h-5" /></button>
-          </div>
-        </div>
-      )}
-
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex">{sidebar}</div>
-    </>
-  );
+  // Sidebar is only mounted in the desktop branch of AuthGate (Providers.tsx)
+  // — mobile uses MobileNav instead. So we render the sidebar directly with
+  // no mobile-specific overlay logic.
+  return sidebar;
 }

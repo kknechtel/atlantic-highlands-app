@@ -130,7 +130,7 @@ export default function DrillPanel({ statement }: Props) {
       )}
 
       {/* Tabs */}
-      <div className="border-b px-5 flex gap-1 overflow-x-auto">
+      <div className="border-b px-3 md:px-5 flex gap-1 overflow-x-auto">
         {tabs.map(({ key, label, count }) => (
           <button
             key={key}
@@ -442,7 +442,7 @@ function FundBalanceView({ fundBalance, accountingBasis }: { fundBalance: any; a
       {isSchool && fundBalance.gasb54_components && (
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-700 mb-2">GASB 54 Components</h4>
-          <div className="grid grid-cols-5 gap-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs">
             {(["nonspendable", "restricted", "committed", "assigned", "unassigned"] as const).map((k) => (
               <div key={k} className="rounded bg-gray-50 p-2 border">
                 <p className="text-[10px] uppercase text-gray-500">{k}</p>

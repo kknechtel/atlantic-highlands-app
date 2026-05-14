@@ -42,8 +42,8 @@ export default function Dashboard() {
       </div>
 
       {/* Recent activity */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-        <div className="bg-white rounded-xl shadow p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mt-6 md:mt-8">
+        <div className="bg-white rounded-xl shadow p-4 md:p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Projects</h2>
           {projects?.length ? (
             <ul className="space-y-3">
@@ -59,7 +59,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl shadow p-6">
+        <div className="bg-white rounded-xl shadow p-4 md:p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Financial Statements</h2>
           {statements?.length ? (
             <ul className="space-y-3">
@@ -104,11 +104,11 @@ function StatCard({
   value: number;
 }) {
   return (
-    <div className="bg-white rounded-xl shadow p-6 flex items-center gap-4">
-      {icon}
-      <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-sm text-gray-500">{label}</p>
+    <div className="bg-white rounded-xl shadow p-3 md:p-6 flex items-center gap-3 md:gap-4">
+      <div className="flex-shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <p className="text-xl md:text-2xl font-bold text-gray-900">{value}</p>
+        <p className="text-xs md:text-sm text-gray-500 truncate">{label}</p>
       </div>
     </div>
   );

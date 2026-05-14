@@ -175,6 +175,15 @@ async def run_scraper(
                 site_stats["documents_found"] = len(docs)
                 logger.info(f"  Found {len(docs)} documents on {site_name}")
 
+                # Surface connect-level failures (e.g. host firewalled our IP) to the UI.
+                basic = getattr(crawler, "basic", None)
+                if basic is not None and getattr(basic, "errors", None):
+                    for msg in basic.errors:
+                        if msg not in _scraper_status["errors"]:
+                            _scraper_status["errors"].append(msg)
+                            site_stats["errors"] += 1
+                    basic.errors.clear()
+
                 if dry_run:
                     logger.info(f"  [DRY RUN] Would download {len(docs)} files")
                     site_stats["status"] = "done"
@@ -262,6 +271,14 @@ async def run_scraper(
                         logger.error(err)
                         _scraper_status["errors"].append(err)
                         site_stats["errors"] += 1
+
+                # Harvest any new connect-failure messages picked up by the shared downloader.
+                if getattr(downloader, "errors", None):
+                    for msg in downloader.errors:
+                        if msg not in _scraper_status["errors"]:
+                            _scraper_status["errors"].append(msg)
+                            site_stats["errors"] += 1
+                    downloader.errors.clear()
 
                 # Commit after each site
                 db.commit()

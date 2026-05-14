@@ -7,6 +7,7 @@ import io
 import time
 import logging
 import requests
+from requests.exceptions import ConnectTimeout, ConnectionError as RequestsConnectionError
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 
@@ -23,6 +24,10 @@ from .utils import url_to_filename, categorize_url
 logger = logging.getLogger("ah_scraper")
 
 
+_HOST_FAIL_THRESHOLD = 3
+_CONNECT_TIMEOUT = 10  # short connect TO so blocked hosts fail fast; read TO stays at REQUEST_TIMEOUT
+
+
 class BasicScraper:
     """Level 1 scraper using requests + BeautifulSoup."""
 
@@ -33,19 +38,50 @@ class BasicScraper:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
         })
+        # Per-host circuit breaker. Some target hosts (e.g. small municipal CMS
+        # behind a firewall) silently drop TCP from AWS IP ranges. Without this,
+        # the scraper grinds for hours retrying every URL on a dead host.
+        self._host_fails: dict[str, int] = {}
+        self._dead_hosts: set[str] = set()
+        self.errors: list[str] = []  # consumed by runner to surface in UI
+
+    @staticmethod
+    def _host(url: str) -> str:
+        return urlparse(url).netloc.lower()
+
+    def _is_host_dead(self, url: str) -> bool:
+        return self._host(url) in self._dead_hosts
+
+    def _record_connect_failure(self, url: str) -> None:
+        host = self._host(url)
+        self._host_fails[host] = self._host_fails.get(host, 0) + 1
+        if self._host_fails[host] >= _HOST_FAIL_THRESHOLD and host not in self._dead_hosts:
+            self._dead_hosts.add(host)
+            msg = (
+                f"{host}: unreachable after {self._host_fails[host]} connect failures "
+                f"(firewall block or host offline) — skipping remaining URLs"
+            )
+            logger.error(msg)
+            self.errors.append(msg)
+
+    def _record_success(self, url: str) -> None:
+        # Reset on a clean response so a transient hiccup doesn't permanently kill a host.
+        self._host_fails.pop(self._host(url), None)
 
     def fetch_page(self, url: str) -> BeautifulSoup | None:
         """Fetch a page and return parsed HTML."""
-        # Skip media files that aren't HTML pages
         url_lower = url.lower()
         if any(url_lower.endswith(ext) for ext in SKIP_EXTENSIONS):
             logger.debug(f"Skipping media file: {url}")
             return None
+        if self._is_host_dead(url):
+            return None
         for attempt in range(MAX_RETRIES):
             try:
                 logger.info(f"Fetching: {url}")
-                resp = self.session.get(url, timeout=REQUEST_TIMEOUT)
+                resp = self.session.get(url, timeout=(_CONNECT_TIMEOUT, REQUEST_TIMEOUT))
                 resp.raise_for_status()
+                self._record_success(url)
                 time.sleep(REQUEST_DELAY)
                 return BeautifulSoup(resp.text, "html.parser")
             except requests.HTTPError as e:
@@ -54,6 +90,12 @@ class BasicScraper:
                     logger.warning(f"HTTP {status} for {url} — skipping")
                     return None
                 logger.warning(f"Attempt {attempt+1}/{MAX_RETRIES} failed for {url}: {e}")
+                time.sleep(REQUEST_DELAY * 2)
+            except (ConnectTimeout, RequestsConnectionError) as e:
+                logger.warning(f"Connect failure {attempt+1}/{MAX_RETRIES} for {url}: {e}")
+                self._record_connect_failure(url)
+                if self._is_host_dead(url):
+                    return None
                 time.sleep(REQUEST_DELAY * 2)
             except requests.RequestException as e:
                 logger.warning(f"Attempt {attempt+1}/{MAX_RETRIES} failed for {url}: {e}")
@@ -113,17 +155,24 @@ class BasicScraper:
     def download_file_to_bytes(self, url: str) -> tuple[bytes | None, str]:
         """Download a file and return (content_bytes, filename). Returns (None, '') on failure."""
         filename = url_to_filename(url)
+        if self._is_host_dead(url):
+            return None, filename
         try:
             logger.info(f"  [DOWNLOAD] {filename}")
-            resp = self.session.get(url, timeout=REQUEST_TIMEOUT, stream=True)
+            resp = self.session.get(url, timeout=(_CONNECT_TIMEOUT, REQUEST_TIMEOUT), stream=True)
             resp.raise_for_status()
 
             buf = io.BytesIO()
             for chunk in resp.iter_content(chunk_size=8192):
                 buf.write(chunk)
 
+            self._record_success(url)
             time.sleep(REQUEST_DELAY)
             return buf.getvalue(), filename
+        except (ConnectTimeout, RequestsConnectionError) as e:
+            logger.error(f"  [FAIL] Connect failure for {url}: {e}")
+            self._record_connect_failure(url)
+            return None, filename
         except requests.RequestException as e:
             logger.error(f"  [FAIL] Download failed for {url}: {e}")
             return None, filename

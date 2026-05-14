@@ -233,7 +233,38 @@ export default function GlobalChat() {
     queryKey: ["chat-sessions"], queryFn: getChatSessions, enabled: showHistory,
   });
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // `block: "end"` is explicit so the sentinel lands at the BOTTOM of the
+  // scrollport — without it the default "start" can push the sentinel to
+  // the top of the viewport, which on mobile sometimes scrolls the message
+  // off-screen mid-stream.
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
+  // iOS soft-keyboard handling: when the input is focused, Safari shrinks
+  // the visual viewport but NOT the layout viewport. A fixed panel
+  // positioned with `bottom: 4rem` keeps its layout-viewport height — so
+  // the keyboard covers the input and the messages area. Listen to the
+  // VisualViewport API and lift the panel's bottom by the keyboard height
+  // so the input + last messages stay visible. Falls back to a no-op on
+  // browsers without VisualViewport (Firefox Android handles this itself).
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onChange = () => {
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffset(overlap);
+    };
+    vv.addEventListener("resize", onChange);
+    vv.addEventListener("scroll", onChange);
+    onChange();
+    return () => {
+      vv.removeEventListener("resize", onChange);
+      vv.removeEventListener("scroll", onChange);
+    };
+  }, []);
 
   // When the chat opens (or comes back from minimized), clear the unread count.
   useEffect(() => {
@@ -818,7 +849,9 @@ export default function GlobalChat() {
       style={
         isMobile
           // Leave room for MobileNav (h-16 = 4rem) plus iOS safe-area padding.
-          ? { bottom: "calc(4rem + env(safe-area-inset-bottom))" }
+          // When the soft keyboard is open, `keyboardOffset` raises the
+          // panel above it so the input + last messages stay visible.
+          ? { bottom: `calc(4rem + env(safe-area-inset-bottom) + ${keyboardOffset}px)` }
           : { width: totalWidth }
       }
     >
@@ -1058,8 +1091,13 @@ export default function GlobalChat() {
           </div>
         ) : null}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+        {/* Messages. `overscroll-contain` stops the chat's pull-to-refresh
+            and rubber-band from bleeding into the underlying page scroll
+            on iOS — without it, scrolling past the top/bottom of the
+            messages list scrolls the route behind the chat panel and the
+            user can't reach the messages they want. `touch-pan-y` keeps
+            vertical-pan gestures owned by this scrollport. */}
+        <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 min-h-0">
           {messages.map(msg => (
             <EnhancedMessageComponent
               key={msg.id}

@@ -7,6 +7,7 @@ import {
   Plus, Trash2, Wand2, Loader2, ChevronUp, ChevronDown, ChevronsUpDown,
   Eye, X, Lock, Unlock, ShieldCheck, Upload, FileStack, Paperclip,
   AlignLeft, Table as TableIcon, Sparkles, ExternalLink, RefreshCw,
+  History, Search,
 } from 'lucide-react';
 import {
   type Presentation, type DeckSection, type DeckAttachment, type SectionKind,
@@ -24,6 +25,8 @@ import PresentationViewer from './PresentationViewer';
 import SourceChip from './SourceChip';
 import CitationPreview from './CitationPreview';
 import WebReferencePreview from './WebReferencePreview';
+import VersionsPanel from './VersionsPanel';
+import CitationAuditPanel from './CitationAuditPanel';
 
 interface Props {
   presentationId: string;
@@ -69,6 +72,8 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [previewing, setPreviewing] = useState(initialPreviewing);
   const [showFactCheck, setShowFactCheck] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
   const [showAttachments, setShowAttachments] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [collapsedSet, setCollapsedSet] = useState<Set<string>>(new Set());
@@ -598,6 +603,20 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
               <ShieldCheck className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Fact-check</span>
             </button>
             <button
+              onClick={() => setShowAudit(true)}
+              className="px-2.5 py-1.5 rounded text-xs flex items-center gap-1 flex-shrink-0 border border-gray-300 text-gray-600 hover:bg-gray-50"
+              title="Audit [DOC:id] citation labels vs actual filenames (draft-only)"
+            >
+              <Search className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Audit cites</span>
+            </button>
+            <button
+              onClick={() => setShowVersions(true)}
+              className="px-2.5 py-1.5 rounded text-xs flex items-center gap-1 flex-shrink-0 border border-gray-300 text-gray-600 hover:bg-gray-50"
+              title="Publish history (versions + rollback)"
+            >
+              <History className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Versions</span>
+            </button>
+            <button
               onClick={() => setPreviewing(true)}
               className="px-2.5 py-1.5 rounded text-xs flex items-center gap-1 border border-gray-300 text-gray-700 hover:bg-gray-50 flex-shrink-0"
               title="Full-screen preview (exactly how this publishes)"
@@ -884,6 +903,32 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
       {/* Side preview panels — citations + external URLs from narrative bodies */}
       {!previewing && <CitationPreview mode="auth" />}
       {!previewing && <WebReferencePreview />}
+
+      {/* Slide-in side panels — versions + citation audit */}
+      <VersionsPanel
+        presentationId={presentationId}
+        open={showVersions}
+        onClose={() => setShowVersions(false)}
+        brandColor={brandColor}
+        onAfterRollback={async () => {
+          try {
+            const fresh = await getPresentation(presentationId);
+            setDeck(fresh);
+          } catch { /* swallow — panel error already shown */ }
+        }}
+      />
+      <CitationAuditPanel
+        presentationId={presentationId}
+        open={showAudit}
+        onClose={() => setShowAudit(false)}
+        brandColor={brandColor}
+        onAfterApply={async () => {
+          try {
+            const fresh = await getPresentation(presentationId);
+            setDeck(fresh);
+          } catch { /* swallow */ }
+        }}
+      />
 
       {/* Full-screen preview overlay */}
       {previewing && (

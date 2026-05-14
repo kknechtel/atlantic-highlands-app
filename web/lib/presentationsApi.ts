@@ -96,6 +96,12 @@ export interface FactCheckRecord {
   }>;
 }
 
+export interface DisclosureConfig {
+  enabled: boolean;
+  is_draft: boolean;
+  custom_text: string | null;
+}
+
 export interface Presentation {
   id: string;
   title: string;
@@ -106,12 +112,52 @@ export interface Presentation {
   attachments: DeckAttachment[];
   theme: Record<string, unknown>;
   last_fact_check: FactCheckRecord | null;
+  disclosure?: DisclosureConfig | null;
   has_password: boolean;
   published_at: string | null;
   created_at: string;
   updated_at: string;
   is_owner?: boolean;
   share_role?: "viewer" | "editor" | null;
+}
+
+export interface VersionSummary {
+  version_no: number;
+  title: string;
+  published_at: string | null;
+  published_by: string | null;
+  is_current_public: boolean;
+  rolled_back_from_version_no: number | null;
+  section_count: number;
+  doc_snapshot_count: number;
+}
+
+export interface ChangesSincePublish {
+  ever_published: boolean;
+  title_changed: boolean;
+  sections_added: number;
+  sections_removed: number;
+  sections_changed: number;
+  total_changes: number;
+}
+
+export interface CitationAuditRow {
+  id: string;
+  labels: string[];
+  label: string | null;
+  filename: string | null;
+  found: boolean;
+  mismatch_score: number;
+  looks_mismatched: boolean;
+  size_bytes: number | null;
+}
+
+export interface CitationAuditResponse {
+  presentation_id: string;
+  total_citations: number;
+  missing: number;
+  likely_mismatched: number;
+  rows: CitationAuditRow[];
 }
 
 export const listPresentations = () => request<Presentation[]>("/api/presentations");
@@ -193,3 +239,94 @@ export async function fetchPublicCitation(slug: string, filename: string, passwo
   if (!res.ok) throw new Error(`Citation lookup failed: ${res.status}`);
   return res.json();
 }
+
+// ─── Versions / publish history ──────────────────────────────────────────
+
+export const listVersions = (id: string) =>
+  request<{ versions: VersionSummary[] }>(`/api/presentations/${id}/versions`);
+
+export const getVersion = (id: string, versionNo: number) =>
+  request<VersionSummary & {
+    sections: DeckSection[];
+    attachments: DeckAttachment[];
+    disclosure: DisclosureConfig | null;
+    doc_snapshots: Record<string, unknown>;
+  }>(`/api/presentations/${id}/versions/${versionNo}`);
+
+export const rollbackToVersion = (id: string, versionNo: number) =>
+  request<{ new_version_no: number; rolled_back_from_version_no: number; is_current_public: boolean }>(
+    `/api/presentations/${id}/rollback-to/${versionNo}`,
+    { method: "POST" },
+  );
+
+export const changesSincePublish = (id: string) =>
+  request<ChangesSincePublish>(`/api/presentations/${id}/changes-since-publish`);
+
+// ─── Citation audit ──────────────────────────────────────────────────────
+
+export const auditCitations = (id: string) =>
+  request<CitationAuditResponse>(`/api/presentations/${id}/audit-citations`);
+
+export type CitationFix =
+  | { id: string; action: "strip"; section_id?: string }
+  | { id: string; action: "swap"; new_id: string; section_id?: string };
+
+export const applyCitationFixes = (id: string, fixes: CitationFix[]) =>
+  request<{ edits: number; sections_changed: number }>(
+    `/api/presentations/${id}/fix-citations`,
+    { method: "POST", body: JSON.stringify({ fixes }) },
+  );
+
+// ─── Disclosure (public viewer first-visit modal) ────────────────────────
+
+export const setDisclosure = (id: string, body: DisclosureConfig) =>
+  request<DisclosureConfig>(`/api/presentations/${id}/disclosure`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+
+// ─── Comments (review threads) ───────────────────────────────────────────
+
+export interface CommentAnchor {
+  quote?: string;
+  prefix?: string;
+  suffix?: string;
+}
+
+export interface CommentRecord {
+  id: string;
+  presentation_id: string;
+  section_id: string | null;
+  parent_comment_id: string | null;
+  author_email: string | null;
+  author_name: string | null;
+  body: string;
+  resolved: boolean;
+  resolved_by_email: string | null;
+  anchor?: CommentAnchor | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export const listComments = (id: string) =>
+  request<CommentRecord[]>(`/api/presentations/${id}/comments`);
+
+export const addComment = (id: string, body: {
+  section_id: string | null;
+  body: string;
+  parent_comment_id?: string | null;
+  anchor?: CommentAnchor | null;
+}) =>
+  request<CommentRecord>(`/api/presentations/${id}/comments`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const patchComment = (id: string, commentId: string, body: { body?: string; resolved?: boolean }) =>
+  request<CommentRecord>(`/api/presentations/${id}/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+
+export const deleteComment = (id: string, commentId: string) =>
+  request<{ ok: boolean }>(`/api/presentations/${id}/comments/${commentId}`, { method: "DELETE" });

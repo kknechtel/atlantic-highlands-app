@@ -3,13 +3,15 @@ Site-specific crawlers adapted for S3 upload.
 Each crawler finds documents and uploads them to S3 via the provided callback.
 """
 import logging
+import re
 import time
-from urllib.parse import urljoin, urlparse
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin, urlparse, unquote
 from bs4 import BeautifulSoup
 
 from .scraper import BasicScraper, SeleniumScraper
 from .utils import categorize_url
-from .config import SOURCES, REQUEST_DELAY
+from .config import SOURCES, RECORDING_SOURCES, REQUEST_DELAY
 
 logger = logging.getLogger("ah_scraper")
 
@@ -57,6 +59,9 @@ class AHNJCrawler:
         self.config = SOURCES["ahnj"]
         self.basic = BasicScraper()
         self.selenium = None
+        # When False, skip historical_pages (2005-2013 archive years).
+        # Runner toggles this from the recent_only request flag.
+        self.historical = True
 
     def _get_scraper(self):
         if self.selenium is None:
@@ -99,7 +104,10 @@ class AHNJCrawler:
                     break
                 _crawl(subpage, depth - 1)
 
-        for page_path in self.config["pages_to_crawl"]:
+        seed_paths = list(self.config["pages_to_crawl"])
+        if self.historical:
+            seed_paths += list(self.config.get("historical_pages", []))
+        for page_path in seed_paths:
             url = self.config["base_url"] + page_path
             _crawl(url, depth=2)
 
@@ -403,6 +411,228 @@ class HighlandsMeetingsCrawler:
                     logger.info(f"  Highlands Meetings portal: found {len(docs)} documents")
             except Exception as e:
                 logger.warning(f"Highlands Meetings scrape failed for {url}: {e}")
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
+# ─── Meeting-recording crawlers ────────────────────────────────────
+# Output records look like normal docs but always include `recording`
+# metadata that runner.py reads to populate Document.metadata_:
+#   { "url", "title", "source_page", "doc_type",
+#     "recording": {
+#       "platform":     "audio" | "youtube",
+#       "meeting_body": "Borough Council" | "Planning Board" | ...,
+#       "meeting_date": "YYYY-MM-DD",    # parsed from filename or page label
+#       "youtube_id":   "..."            # YouTube only
+#     }
+#   }
+
+# Year regex used by AH recording-folder discovery. Year-only links live next
+# to month/day named subfolders we don't want to recurse into.
+_YEAR_FOLDER_RE = re.compile(r"/(20\d{2})(?:%20Recordings)?/?$", re.I)
+
+# Parse common AH filename date formats: 2024.03.05, 2024-03-05, 3.5.2024,
+# 03-05-2024, "March 5, 2024", "Mar 5, 2024".
+_DATE_PATTERNS = [
+    (re.compile(r"(20\d{2})[.\-_](\d{1,2})[.\-_](\d{1,2})"), "ymd"),
+    (re.compile(r"(\d{1,2})[.\-_](\d{1,2})[.\-_](20\d{2}|\d{2})"), "mdy"),
+    (re.compile(
+        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(20\d{2})",
+        re.I,
+    ), "month_name"),
+]
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
+def _parse_meeting_date(text: str) -> str | None:
+    """Return YYYY-MM-DD or None. Try several formats found across AH portals."""
+    text = unquote(text)
+    for pat, kind in _DATE_PATTERNS:
+        m = pat.search(text)
+        if not m:
+            continue
+        try:
+            if kind == "ymd":
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            elif kind == "mdy":
+                mo, d, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if y < 100:
+                    y += 2000
+            else:  # month_name
+                mo = _MONTHS.get(m.group(1)[:3].lower())
+                d, y = int(m.group(2)), int(m.group(3))
+                if not mo:
+                    continue
+            datetime(y, mo, d)  # validate
+            return f"{y:04d}-{mo:02d}-{d:02d}"
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+class AHRecordingsCrawler:
+    """Crawler for Atlantic Highlands meeting recordings (audio files on ahnj.com).
+
+    Three bodies — Council (flat), Planning Board (year subfolders),
+    Harbor (year subfolders). Filters to last 12 months by parsed filename
+    date when present, else keeps the file if its source page is the
+    current-year folder."""
+
+    def __init__(self):
+        self.source_name = "ah_recordings"
+        self.config = RECORDING_SOURCES["ah_recordings"]
+        self.basic = BasicScraper()
+        self.progress_callback = None
+        # 12 months back from today. We compare to the parsed file date.
+        self.cutoff = (datetime.now(timezone.utc) - timedelta(days=365)).date()
+
+    def find_documents(self) -> list[dict]:
+        all_docs: list[dict] = []
+        for body in self.config["bodies"]:
+            base = self.config["base_url"] + body["path"]
+            try:
+                soup = self.basic.fetch_page(base)
+            except Exception as e:
+                logger.warning(f"AH recordings ({body['name']}) parent fetch failed: {e}")
+                continue
+            if not soup:
+                continue
+
+            pages_to_scan = [base]
+            if body.get("year_subfolders"):
+                # Two patterns in the wild:
+                #   Harbor:  /Harbor Meeting Recordings/<YEAR> Recordings/<file>.wma
+                #   Planning: /_Agendas and Minutes/<YEAR>/Recordings/<file>.wma
+                # Walk year folders, then if the year folder has no media itself
+                # look for a "Recordings" subfolder inside it.
+                subs = self.basic.find_subpage_links(soup, base, same_domain=True)
+                for s in subs:
+                    m = _YEAR_FOLDER_RE.search(s)
+                    if not m:
+                        continue
+                    year = int(m.group(1))
+                    if year < self.cutoff.year - 1:
+                        continue
+                    pages_to_scan.append(s)
+                    # Speculatively also add the per-year Recordings subfolder.
+                    if not s.rstrip("/").lower().endswith("recordings"):
+                        pages_to_scan.append(s.rstrip("/") + "/Recordings/")
+
+            body_docs: list[dict] = []
+            for page_url in pages_to_scan:
+                try:
+                    page_soup = self.basic.fetch_page(page_url) if page_url != base else soup
+                    if not page_soup:
+                        continue
+                    media = self.basic.find_media_links(page_soup, page_url)
+                except Exception as e:
+                    logger.warning(f"AH recordings page failed {page_url}: {e}")
+                    continue
+
+                for item in media:
+                    title_with_url = item["title"] + " " + item["url"]
+                    meeting_date = _parse_meeting_date(title_with_url)
+                    if meeting_date:
+                        d = datetime.strptime(meeting_date, "%Y-%m-%d").date()
+                        if d < self.cutoff:
+                            continue
+                    body_docs.append({
+                        **item,
+                        "doc_type": body["doc_type"],
+                        "category": "town",
+                        "recording": {
+                            "platform": "audio",
+                            "meeting_body": body["name"],
+                            "meeting_date": meeting_date,
+                        },
+                    })
+
+            if body_docs:
+                logger.info(f"  AH recordings — {body['name']}: {len(body_docs)} files")
+                if self.progress_callback:
+                    self.progress_callback(len(body_docs))
+                all_docs.extend(body_docs)
+
+        return _deduplicate_docs(all_docs)
+
+    def _cleanup(self):
+        pass
+
+
+_YOUTUBE_ID_RE = re.compile(
+    r"(?:youtu\.be/|youtube\.com/watch\?v=|youtube\.com/embed/)([A-Za-z0-9_-]{11})"
+)
+
+
+class HHRSDRecordingsCrawler:
+    """Crawler for the HHRSD ('tri-district') Board Meeting Recordings page.
+
+    The page is a flat list of <a href="https://youtu.be/<id>">Month Day, Year
+    Board of Education Meeting</a> entries. We extract the YouTube video ID
+    and the meeting date from the anchor text; no download is performed —
+    transcripts come from YouTube's auto-captions and the player is embedded
+    in the UI."""
+
+    def __init__(self):
+        self.source_name = "hhrsd_recordings"
+        self.config = RECORDING_SOURCES["hhrsd_recordings"]
+        self.basic = BasicScraper()
+        self.progress_callback = None
+        self.cutoff = (datetime.now(timezone.utc) - timedelta(days=365)).date()
+
+    def find_documents(self) -> list[dict]:
+        all_docs: list[dict] = []
+        seen_ids: set[str] = set()
+        for path in self.config["pages_to_crawl"]:
+            url = self.config["base_url"] + path
+            try:
+                soup = self.basic.fetch_page(url)
+            except Exception as e:
+                logger.warning(f"HHRSD recordings page failed: {e}")
+                continue
+            if not soup:
+                continue
+
+            for link in soup.find_all("a", href=True):
+                m = _YOUTUBE_ID_RE.search(link["href"])
+                if not m:
+                    continue
+                yt_id = m.group(1)
+                if yt_id in seen_ids:
+                    continue
+                seen_ids.add(yt_id)
+
+                anchor_text = link.get_text(strip=True) or f"HHRSD BOE Meeting {yt_id}"
+                meeting_date = _parse_meeting_date(anchor_text)
+                if meeting_date:
+                    d = datetime.strptime(meeting_date, "%Y-%m-%d").date()
+                    if d < self.cutoff:
+                        continue
+
+                # Use a stable synthetic URL so dedup against existing rows works.
+                synthetic_url = f"https://www.youtube.com/watch?v={yt_id}"
+                all_docs.append({
+                    "url": synthetic_url,
+                    "title": anchor_text,
+                    "source_page": url,
+                    "doc_type": self.config["doc_type"],
+                    "category": "school",
+                    "recording": {
+                        "platform": "youtube",
+                        "meeting_body": "HHRSD Board of Education",
+                        "meeting_date": meeting_date,
+                        "youtube_id": yt_id,
+                    },
+                })
+
+        if all_docs:
+            logger.info(f"  HHRSD recordings: {len(all_docs)} YouTube videos")
+            if self.progress_callback:
+                self.progress_callback(len(all_docs))
         return _deduplicate_docs(all_docs)
 
     def _cleanup(self):

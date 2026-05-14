@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { startScraper, getScraperStatus, type ScraperStatus } from "@/lib/api";
+import { startScraper, getScraperStatus, getScraperRuns, type ScraperStatus, type ScraperRunSummary } from "@/lib/api";
 import {
   GlobeAltIcon,
   PlayIcon,
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
+  ClockIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
 type Site = { key: string; name: string; desc: string; siteId: string; note?: string };
@@ -33,12 +36,26 @@ const SITES: Site[] = [
 export default function ScraperPage() {
   const [selectedSites, setSelectedSites] = useState<string[]>(["ahnj", "ecode", "tri", "nj_state"]);
   const [polling, setPolling] = useState(false);
+  const [recentOnly, setRecentOnly] = useState(false);
+  const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
   const { data: status, refetch } = useQuery({
     queryKey: ["scraper-status"],
     queryFn: getScraperStatus,
     refetchInterval: polling ? 2000 : false,
   });
+
+  // Run history. Refetch when a run finishes (running flips false) so the
+  // newly-persisted row shows up without a manual reload.
+  const { data: runs, refetch: refetchRuns } = useQuery({
+    queryKey: ["scraper-runs"],
+    queryFn: () => getScraperRuns(10),
+  });
+  useEffect(() => {
+    if (status && !status.running && status.completed_at) {
+      refetchRuns();
+    }
+  }, [status?.running, status?.completed_at]);
 
   // Start/stop polling based on running state
   useEffect(() => {
@@ -52,7 +69,10 @@ export default function ScraperPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const startMutation = useMutation({
-    mutationFn: () => startScraper(selectedSites.length > 0 ? selectedSites : undefined),
+    mutationFn: () => startScraper(
+      selectedSites.length > 0 ? selectedSites : undefined,
+      { historical: !recentOnly },
+    ),
     onSuccess: (data) => {
       // Backend returns "Scraper is already running" when a previous run is still active.
       // Surface that to the user so the click doesn't appear to do nothing.
@@ -137,10 +157,26 @@ export default function ScraperPage() {
           })}
         </div>
 
+        <label className="mt-4 flex items-start gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={recentOnly}
+            onChange={(e) => setRecentOnly(e.target.checked)}
+            disabled={isRunning}
+            className="mt-0.5 rounded"
+          />
+          <span className="text-sm text-gray-700">
+            <span className="font-medium">Skip historical archives</span>
+            <span className="block text-xs text-gray-500">
+              Don't re-crawl frozen content (AHNJ 2005-2013 archives, older Planning Board years). ~30-40% faster.
+            </span>
+          </span>
+        </label>
+
         <button
           onClick={() => startMutation.mutate()}
           disabled={isRunning || selectedSites.length === 0}
-          className="mt-4 flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          className="mt-3 flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
           {isRunning ? (
             <>
@@ -225,6 +261,78 @@ export default function ScraperPage() {
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Recent runs */}
+      {runs && runs.length > 0 && (
+        <div className="bg-white rounded-xl shadow p-4 md:p-6 mb-4 md:mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <ClockIcon className="w-4 h-4 text-gray-400" />
+            <h2 className="font-semibold text-gray-900">Recent runs</h2>
+            <span className="text-xs text-gray-400">({runs.length})</span>
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {runs.map((r) => {
+              const isOpen = expandedRun === r.id;
+              const startedAt = new Date(r.started_at);
+              return (
+                <li key={r.id} className="py-2">
+                  <button
+                    onClick={() => setExpandedRun(isOpen ? null : r.id)}
+                    className="w-full flex items-center gap-2 text-left hover:bg-gray-50 rounded px-2 py-1"
+                  >
+                    {isOpen ? (
+                      <ChevronDownIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                    ) : (
+                      <ChevronRightIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                    )}
+                    <span className="text-xs text-gray-500 w-36 shrink-0">
+                      {startedAt.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    <span className="text-sm flex-1 min-w-0 truncate">
+                      <span className="font-semibold text-green-700">+{r.documents_uploaded}</span>
+                      <span className="text-gray-400"> new</span>
+                      <span className="text-gray-400 mx-1">·</span>
+                      <span className="text-gray-500">{r.documents_skipped} skipped</span>
+                      {r.errors_count > 0 && (
+                        <>
+                          <span className="text-gray-400 mx-1">·</span>
+                          <span className="text-red-600">{r.errors_count} error{r.errors_count > 1 ? "s" : ""}</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400 shrink-0">
+                      {r.mode === "recent_only" ? "recent" : "full"}
+                      {r.triggered_by === "schedule" && " · auto"}
+                    </span>
+                  </button>
+                  {isOpen && r.new_docs.length > 0 && (
+                    <ul className="mt-2 ml-6 space-y-1 max-h-64 overflow-y-auto">
+                      {r.new_docs.map((d, i) => (
+                        <li key={i} className="text-xs text-gray-600 truncate">
+                          <span className="text-gray-400">{d.source}</span>
+                          <span className="mx-1">·</span>
+                          <a
+                            href={d.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-600 hover:underline"
+                            title={d.filename}
+                          >
+                            {d.filename}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {isOpen && r.new_docs.length === 0 && (
+                    <p className="ml-6 mt-2 text-xs text-gray-400">No new documents — everything was already in the library.</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

@@ -529,12 +529,38 @@ export interface ScraperStatus {
   sites_completed?: string[];
 }
 
-export async function startScraper(sites?: string[], projectId?: string, dryRun?: boolean) {
-  return request<{ detail: string; status?: ScraperStatus }>("/api/scraper/run", { method: "POST", body: JSON.stringify({ sites, project_id: projectId, dry_run: dryRun }) });
+export async function startScraper(sites?: string[], opts?: { projectId?: string; dryRun?: boolean; historical?: boolean }) {
+  return request<{ detail: string; sites?: string[]; mode?: string }>("/api/scraper/run", {
+    method: "POST",
+    body: JSON.stringify({
+      sites,
+      project_id: opts?.projectId,
+      dry_run: opts?.dryRun,
+      historical: opts?.historical,
+    }),
+  });
 }
 
 export async function getScraperStatus(): Promise<ScraperStatus> {
   return request<ScraperStatus>("/api/scraper/status");
+}
+
+export interface ScraperRunSummary {
+  id: string;
+  started_at: string;
+  completed_at: string | null;
+  sites: string[];
+  mode: string;
+  triggered_by: string | null;
+  documents_found: number;
+  documents_uploaded: number;
+  documents_skipped: number;
+  errors_count: number;
+  new_docs: { filename: string; source: string; category?: string; doc_type?: string; url: string }[];
+}
+
+export async function getScraperRuns(limit = 20): Promise<ScraperRunSummary[]> {
+  return request<ScraperRunSummary[]>(`/api/scraper/runs?limit=${limit}`);
 }
 
 // ─── Web Search ───────────────────────────────────────────────────────

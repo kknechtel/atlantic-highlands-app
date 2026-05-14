@@ -20,6 +20,8 @@ from .crawlers import (
     CensusCrawler,
     HighlandsBoroughCrawler,
     HighlandsMeetingsCrawler,
+    AHRecordingsCrawler,
+    HHRSDRecordingsCrawler,
 )
 from .scraper import BasicScraper
 from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, detect_doc_type_from_name, detect_fiscal_year
@@ -68,13 +70,23 @@ async def run_scraper(
     project_id: str | None = None,
     user_id: str | None = None,
     dry_run: bool = False,
+    historical: bool = True,
+    triggered_by: str | None = None,
 ):
     """
     Main scraper entry point. Crawls sites, downloads files, uploads to S3,
     and creates Document records in the database.
+
+    historical: when False, crawlers skip seed paths flagged as archive
+        material (AHNJ 2005-2013, older Planning Board archive trees). The
+        UI "Skip historical archives" checkbox passes False.
+    triggered_by: arbitrary string written to scraper_runs.triggered_by
+        for later auditing — typically "ui:<user_id>", "schedule", or
+        "manual" (when invoked from a CLI script).
     """
     from database import SessionLocal
     from models.document import Document, Project
+    from models.scraper_run import ScraperRun
     from services.s3_service import S3Service
 
     global _scraper_status
@@ -130,6 +142,7 @@ async def run_scraper(
             "ahnj", "ecode", "tri", "nj_state", "opra",
             "police", "fire", "county", "census",
             "highlands_borough", "highlands_meetings",
+            "ah_recordings", "hhrsd_recordings",
         ]
         all_uploaded = []
 
@@ -146,6 +159,8 @@ async def run_scraper(
             "census": ("Census ACS Data", CensusCrawler),
             "highlands_borough": ("highlandsnj.gov", HighlandsBoroughCrawler),
             "highlands_meetings": ("highlands-nj.municodemeetings.com", HighlandsMeetingsCrawler),
+            "ah_recordings": ("AH meeting recordings (audio)", AHRecordingsCrawler),
+            "hhrsd_recordings": ("HHRSD BOE recordings (YouTube)", HHRSDRecordingsCrawler),
         }
 
         # Pre-populate the planned site list so the UI can render the full list
@@ -170,6 +185,10 @@ async def run_scraper(
 
             try:
                 crawler = CrawlerClass()
+                # Crawlers that support recent-only mode read this flag.
+                # AHNJCrawler skips its historical_pages when False.
+                if hasattr(crawler, "historical"):
+                    crawler.historical = historical
                 # Live progress: each crawler calls this after every page so the
                 # UI's documents_found ticks up during the crawl instead of jumping
                 # at the end. Closure captures site_stats for the current site.
@@ -206,6 +225,58 @@ async def run_scraper(
                 # Download and upload each document
                 for doc_info in docs:
                     try:
+                        recording = doc_info.get("recording")  # set by recording crawlers
+
+                        # ── YouTube recordings: no download, metadata-only row ──
+                        if recording and recording.get("platform") == "youtube":
+                            yt_id = recording.get("youtube_id")
+                            if not yt_id:
+                                continue
+                            mdate = recording.get("meeting_date") or "undated"
+                            descriptive_name = f"HHRSD BOE - {mdate} - {doc_info.get('title') or yt_id}.youtube"
+                            raw_filename = f"youtube_{yt_id}.json"
+                            s3_key = f"recordings/youtube/{yt_id}"
+                            if (descriptive_name.lower() in existing_filenames
+                                    or s3_key in existing_keys):
+                                _scraper_status["documents_skipped"] += 1
+                                site_stats["documents_skipped"] += 1
+                                continue
+                            doc_record = Document(
+                                project_id=project.id,
+                                filename=descriptive_name,
+                                original_filename=raw_filename,
+                                s3_key=s3_key,
+                                s3_bucket=s3.bucket,
+                                file_size=0,
+                                content_type="video/youtube",
+                                doc_type=doc_info.get("doc_type") or "recording_school_board",
+                                category=doc_info.get("category") or "school",
+                                fiscal_year=detect_fiscal_year(doc_info.get("title", "") + " " + mdate),
+                                uploaded_by=user_id or project.created_by,
+                                status="uploaded",
+                                metadata_={
+                                    "source_url": doc_info["url"],
+                                    "source_page": doc_info.get("source_page"),
+                                    "source_site": crawler.source_name,
+                                    "title": doc_info.get("title"),
+                                    "scraped_at": datetime.utcnow().isoformat(),
+                                    "recording": recording,
+                                },
+                            )
+                            db.add(doc_record)
+                            existing_filenames.add(descriptive_name.lower())
+                            existing_keys.add(s3_key)
+                            _scraper_status["documents_uploaded"] += 1
+                            site_stats["documents_uploaded"] += 1
+                            all_uploaded.append({
+                                "filename": descriptive_name,
+                                "source": crawler.source_name,
+                                "category": doc_info.get("category") or "school",
+                                "doc_type": doc_record.doc_type,
+                                "url": doc_info["url"],
+                            })
+                            continue
+
                         # Use descriptive name from URL tree
                         descriptive_name = url_to_descriptive_name(
                             doc_info["url"],
@@ -229,9 +300,15 @@ async def run_scraper(
                         # Categorize from URL and descriptive name
                         category = categorize_url(doc_info["url"])
                         entity_type = source_to_entity_type(crawler.source_name)
-                        doc_type = detect_doc_type_from_name(descriptive_name)
+                        # Recording crawlers pre-tag doc_type/category; honor that.
+                        doc_type = doc_info.get("doc_type") or detect_doc_type_from_name(descriptive_name)
+                        if doc_info.get("category"):
+                            entity_type = doc_info["category"]
                         fiscal_year = detect_fiscal_year(descriptive_name)
-                        s3_key = f"scraped/{crawler.source_name}/{category}/{descriptive_name}"
+                        # Recordings live under a distinct prefix so the audio
+                        # bucket stays browsable separately from documents.
+                        prefix = "recordings" if recording else "scraped"
+                        s3_key = f"{prefix}/{crawler.source_name}/{category}/{descriptive_name}"
 
                         if s3_key in existing_keys:
                             _scraper_status["documents_skipped"] += 1
@@ -243,6 +320,16 @@ async def run_scraper(
                         s3.upload_file(content, s3_key, content_type)
 
                         # Create database record with rich metadata
+                        metadata = {
+                            "source_url": doc_info["url"],
+                            "source_page": doc_info.get("source_page"),
+                            "source_site": crawler.source_name,
+                            "title": doc_info.get("title"),
+                            "scraped_at": datetime.utcnow().isoformat(),
+                        }
+                        if recording:
+                            metadata["recording"] = recording
+
                         doc_record = Document(
                             project_id=project.id,
                             filename=descriptive_name,
@@ -256,13 +343,7 @@ async def run_scraper(
                             fiscal_year=fiscal_year,
                             uploaded_by=user_id or project.created_by,
                             status="uploaded",
-                            metadata_={
-                                "source_url": doc_info["url"],
-                                "source_page": doc_info.get("source_page"),
-                                "source_site": crawler.source_name,
-                                "title": doc_info.get("title"),
-                                "scraped_at": datetime.utcnow().isoformat(),
-                            },
+                            metadata_=metadata,
                         )
                         db.add(doc_record)
                         existing_filenames.add(descriptive_name.lower())
@@ -309,6 +390,27 @@ async def run_scraper(
         _scraper_status["current_site"] = None
         _scraper_status["running"] = False
         _scraper_status["completed_at"] = datetime.utcnow().isoformat()
+
+        # Persist the run for the UI history panel + scheduled-job auditing.
+        # Wrapped in try so a row-write failure can't poison the response.
+        try:
+            run = ScraperRun(
+                started_at=datetime.fromisoformat(_scraper_status["started_at"]),
+                completed_at=datetime.utcnow(),
+                sites=list(all_sites),
+                mode="recent_only" if not historical else "all",
+                triggered_by=triggered_by,
+                documents_found=_scraper_status["documents_found"],
+                documents_uploaded=_scraper_status["documents_uploaded"],
+                documents_skipped=_scraper_status["documents_skipped"],
+                errors=list(_scraper_status["errors"]),
+                new_docs=list(all_uploaded),
+            )
+            db.add(run)
+            db.commit()
+            logger.info(f"  scraper_runs row written: {run.id}")
+        except Exception as e:
+            logger.error(f"Failed to persist ScraperRun row: {e}", exc_info=True)
 
         logger.info(f"\nScraper complete: {_scraper_status['documents_uploaded']} uploaded, "
                      f"{_scraper_status['documents_skipped']} skipped, "

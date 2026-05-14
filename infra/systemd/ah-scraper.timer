@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily scheduled run of the Atlantic Highlands scraper
+
+[Timer]
+# 11:00 UTC = 7am ET (6am during EST). Catch borough/school docs posted
+# overnight before the workday starts.
+OnCalendar=*-*-* 11:00:00
+# Run on next boot if the machine was down at the scheduled time.
+Persistent=true
+Unit=ah-scraper.service
+
+[Install]
+WantedBy=timers.target

@@ -8,6 +8,9 @@ SOURCES = {
     "ahnj": {
         "base_url": "https://www.ahnj.com",
         "description": "Borough of Atlantic Highlands Official Site",
+        # `pages_to_crawl` are visited on every run (current activity).
+        # `historical_pages` are only visited when historical=True (the default for
+        # manual runs from the UI; recent_only mode skips them).
         "pages_to_crawl": [
             # Government & Administration
             "/ahnj/Government",
@@ -15,26 +18,13 @@ SOURCES = {
             "/ahnj/Government/Borough%20Ordinances/",
             "/ahnj/Government/Government%20Records/",
             "/ahnj/Government/Government%20Records/Most%20Referenced%20Ordinances/",
-            # Meetings & Agendas (current + archives)
-            # Note: /ahnj/Agendas/Archives/ only contains 2005-2013 historical;
-            # current/recent meeting docs live under Planning Board archive trees.
+            # Meetings & Agendas (current)
             "/ahnj/Meetings%20and%20Agendas/",
             "/ahnj/Agendas/",
-            "/ahnj/Agendas/Archives/",
-            "/ahnj/Agendas/Archives/2005/",
-            "/ahnj/Agendas/Archives/2006/",
-            "/ahnj/Agendas/Archives/2007/",
-            "/ahnj/Agendas/Archives/2008/",
-            "/ahnj/Agendas/Archives/2009/",
-            "/ahnj/Agendas/Archives/2010/",
-            "/ahnj/Agendas/Archives/2011/",
-            "/ahnj/Agendas/Archives/2012/",
-            "/ahnj/Agendas/Archives/2013/",
-            # Planning Board archive (current site path uses long folder name)
+            # Planning Board — current year + the two prior years (where revisions
+            # to recent meetings still land). Older years are in historical_pages.
             "/ahnj/Departments/Planning%20Board/",
             "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/",
-            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2022/",
-            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2023/",
             "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2024/",
             "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2025/",
             "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2026/",
@@ -42,7 +32,6 @@ SOURCES = {
             "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2024/",
             "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2025/",
             "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2026/",
-            "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/Archives/",
             # Departments
             "/ahnj/Departments",
             "/ahnj/Departments/Building%20Department/",
@@ -66,8 +55,25 @@ SOURCES = {
             # Events calendar - has all meeting schedules with times
             "/ahnj/Upcoming%20Events/",
             "/ahnj/Upcoming%20Events/#gsc.tab=0",
-            "/ahnj/Events/",
             "/ahnj/Events/Community%20Events/",
+        ],
+        "historical_pages": [
+            # 2005-2013 Council Agenda archives — frozen content. Skipped in
+            # recent_only mode.
+            "/ahnj/Agendas/Archives/",
+            "/ahnj/Agendas/Archives/2005/",
+            "/ahnj/Agendas/Archives/2006/",
+            "/ahnj/Agendas/Archives/2007/",
+            "/ahnj/Agendas/Archives/2008/",
+            "/ahnj/Agendas/Archives/2009/",
+            "/ahnj/Agendas/Archives/2010/",
+            "/ahnj/Agendas/Archives/2011/",
+            "/ahnj/Agendas/Archives/2012/",
+            "/ahnj/Agendas/Archives/2013/",
+            # Older Planning Board archive tree
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2022/",
+            "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2023/",
+            "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/Archives/",
         ],
     },
     "ecode360": {
@@ -245,6 +251,53 @@ SKIP_EXTENSIONS = {
     ".wav", ".wma", ".mp3", ".mp4", ".avi", ".mov", ".wmv",
     ".zip", ".rar", ".7z", ".tar", ".gz",
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
+}
+
+# Meeting recording audio/video — the *recordings* crawlers explicitly look for
+# these (the general document crawlers still skip them via SKIP_EXTENSIONS).
+RECORDING_EXTENSIONS = {
+    ".wma", ".wav", ".m4a", ".mp3", ".mp4", ".mov", ".dcr",
+}
+
+# ─── Meeting-recording sources ─────────────────────────────────────
+# Last-12-months filter is applied by the crawler at scrape time so we don't
+# pull every back-year on every run. Set RECORDINGS_BACKFILL=full to disable.
+RECORDING_SOURCES = {
+    "ah_recordings": {
+        "base_url": "https://www.ahnj.com",
+        "description": "Atlantic Highlands meeting recordings (Council, Planning, Harbor)",
+        "bodies": [
+            {
+                "name": "Borough Council",
+                "path": "/ahnj/Administration/Council%20Recordings/",
+                "doc_type": "recording_council",
+            },
+            {
+                "name": "Planning Board",
+                # Year folders live under _Agendas and Minutes/<YYYY>/Recordings/;
+                # the parent index page lists them. Crawler walks year subfolders.
+                "path": "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/",
+                "doc_type": "recording_planning",
+                "year_subfolders": True,
+            },
+            {
+                "name": "Harbor Commission",
+                "path": "/ahnj/AH%20Harbor/Harbor%20Meeting%20Recordings/",
+                "doc_type": "recording_harbor",
+                "year_subfolders": True,
+            },
+        ],
+    },
+    "hhrsd_recordings": {
+        "base_url": "https://www.tridistrict.org",
+        "description": "Henry Hudson Regional School District BOE meeting recordings (YouTube)",
+        # The "Board Meeting Recordings" page on tridistrict.org is a flat list
+        # of anchors → youtu.be/<id>, grouped by school year. We scrape anchors.
+        "pages_to_crawl": [
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2596745",
+        ],
+        "doc_type": "recording_school_board",
+    },
 }
 
 # ─── Scraper settings ──────────────────────────────────────────────

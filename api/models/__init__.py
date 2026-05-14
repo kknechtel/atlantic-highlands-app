@@ -6,3 +6,4 @@ from .presentation import Presentation, PresentationComment
 from .presentation_version import PresentationVersion
 from .contract import Vendor, Contract, Payment
 from .parcel import Parcel
+from .scraper_run import ScraperRun

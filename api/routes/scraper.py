@@ -5,7 +5,9 @@ import threading
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from database import get_db
 from models.user import User
 from auth import get_current_user
 
@@ -17,6 +19,7 @@ class ScrapeRequest(BaseModel):
     sites: List[str] | None = None  # ["ahnj", "ecode", "tri"]
     project_id: str | None = None
     dry_run: bool = False
+    historical: bool = True  # False = recent-only (skips AHNJ 2005-2013 archives)
 
 
 class SiteStats(BaseModel):
@@ -43,7 +46,7 @@ class ScrapeStatusResponse(BaseModel):
     sites_completed: List[str] = []
 
 
-def _run_scraper_in_thread(sites, project_id, user_id, dry_run):
+def _run_scraper_in_thread(sites, project_id, user_id, dry_run, historical, triggered_by):
     """Run the async scraper inside its own OS thread + event loop.
 
     The scraper does long-running synchronous I/O (requests.get with up to
@@ -58,6 +61,8 @@ def _run_scraper_in_thread(sites, project_id, user_id, dry_run):
             project_id=project_id,
             user_id=user_id,
             dry_run=dry_run,
+            historical=historical,
+            triggered_by=triggered_by,
         ))
     except Exception:
         logger.exception("Scraper thread crashed")
@@ -82,11 +87,17 @@ async def start_scraper(
             "project_id": req.project_id,
             "user_id": str(user.id),
             "dry_run": req.dry_run,
+            "historical": req.historical,
+            "triggered_by": f"ui:{user.id}",
         },
         daemon=True,
     ).start()
 
-    return {"detail": "Scraper started", "sites": req.sites or ["ahnj", "ecode", "tri"]}
+    return {
+        "detail": "Scraper started",
+        "sites": req.sites or ["ahnj", "ecode", "tri"],
+        "mode": "recent_only" if not req.historical else "all",
+    }
 
 
 @router.get("/status", response_model=ScrapeStatusResponse)
@@ -94,3 +105,51 @@ def get_status(user: User = Depends(get_current_user)):
     """Get current scraper status."""
     from services.scraper.runner import get_scraper_status
     return get_scraper_status()
+
+
+class ScraperRunSummary(BaseModel):
+    id: str
+    started_at: str
+    completed_at: str | None
+    sites: List[str]
+    mode: str
+    triggered_by: str | None
+    documents_found: int
+    documents_uploaded: int
+    documents_skipped: int
+    errors_count: int
+    new_docs: List[Dict[str, Any]]  # [{filename, source, category, doc_type, url}, …]
+
+
+@router.get("/runs", response_model=List[ScraperRunSummary])
+def list_runs(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the last N completed scraper runs, most recent first.
+    Each run includes its full new_docs list so the UI can show 'what was
+    added' without a second round-trip per row."""
+    from models.scraper_run import ScraperRun
+    rows = (
+        db.query(ScraperRun)
+        .order_by(ScraperRun.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        ScraperRunSummary(
+            id=str(r.id),
+            started_at=r.started_at.isoformat(),
+            completed_at=r.completed_at.isoformat() if r.completed_at else None,
+            sites=r.sites or [],
+            mode=r.mode or "all",
+            triggered_by=r.triggered_by,
+            documents_found=r.documents_found or 0,
+            documents_uploaded=r.documents_uploaded or 0,
+            documents_skipped=r.documents_skipped or 0,
+            errors_count=len(r.errors or []),
+            new_docs=r.new_docs or [],
+        )
+        for r in rows
+    ]

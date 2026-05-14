@@ -335,13 +335,16 @@ def remove_attachment(presentation_id: str, att_id: str,
 @router.post("/{presentation_id}/publish")
 def publish(presentation_id: str, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
+    """Publish (or republish) a deck. Creates a new PresentationVersion
+    snapshot — the public viewer reads from the snapshot, NOT from the
+    live draft sections, so edits stay private until republish."""
+    from services.version_publisher import publish_new_version
     p = _get_or_404(db, presentation_id)
     require_owner_or_admin(p.created_by, user)
     if not p.public_slug:
         # short slugs are easier to share; collisions are negligible at this scale
         p.public_slug = secrets.token_urlsafe(9).replace("_", "").replace("-", "")[:12].lower()
-    p.status = "published"
-    p.published_at = datetime.utcnow()
+    publish_new_version(p, db, user_id=getattr(user, "email", None) or str(user.id))
     db.commit(); db.refresh(p)
     return _serialize(p, user)
 
@@ -778,6 +781,16 @@ class CommentBody(BaseModel):
     section_id: Optional[str] = None
     body: str
     parent_comment_id: Optional[str] = None
+    # Inline-range anchor: {quote, prefix?, suffix?}. NULL for section-level.
+    # When set, the viewer highlights the matched text and the panel shows
+    # a "Commenting on …" preview above the comment body.
+    anchor: Optional[dict] = None
+
+
+class CommentPatchBody(BaseModel):
+    """Edit body OR resolve/unresolve. Both fields optional."""
+    body: Optional[str] = None
+    resolved: Optional[bool] = None
 
 
 def _serialize_comment(c) -> dict:
@@ -790,6 +803,8 @@ def _serialize_comment(c) -> dict:
         "author_name": c.author_name,
         "body": c.body,
         "resolved": c.resolved,
+        "resolved_by_email": c.resolved_by_email,
+        "anchor": getattr(c, "anchor", None),
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
     }
@@ -816,7 +831,7 @@ def add_comment(presentation_id: str, body: CommentBody,
     if not body.body.strip():
         raise HTTPException(400, "body cannot be empty")
     _get_viewable_or_404(db, presentation_id, user)
-    c = PresentationComment(
+    kwargs = dict(
         presentation_id=presentation_id,
         section_id=body.section_id,
         parent_comment_id=body.parent_comment_id,
@@ -824,7 +839,40 @@ def add_comment(presentation_id: str, body: CommentBody,
         author_name=getattr(user, "full_name", None) or user.email,
         body=body.body.strip(),
     )
+    # Only pass anchor if the column exists on the model — guarded for
+    # back-compat with older deploys that haven't run the inline migration.
+    if hasattr(PresentationComment, "anchor") and body.anchor:
+        kwargs["anchor"] = body.anchor
+    c = PresentationComment(**kwargs)
     db.add(c); db.commit(); db.refresh(c)
+    return _serialize_comment(c)
+
+
+@router.patch("/{presentation_id}/comments/{comment_id}")
+def patch_comment(presentation_id: str, comment_id: str, body: CommentPatchBody,
+                  db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Edit body and/or resolve state of a single comment. Body edits
+    require the comment author; anyone with view access can toggle resolve."""
+    from models.presentation import PresentationComment
+    p = _get_viewable_or_404(db, presentation_id, user)
+    c = (
+        db.query(PresentationComment)
+        .filter(PresentationComment.id == comment_id,
+                PresentationComment.presentation_id == presentation_id)
+        .first()
+    )
+    if not c:
+        raise HTTPException(404, "Comment not found")
+    if body.body is not None:
+        is_author = c.author_email and user.email and c.author_email.lower() == user.email.lower()
+        is_owner = str(p.created_by) == str(user.id)
+        if not (is_author or is_owner or user.is_admin):
+            raise HTTPException(403, "You can only edit your own comments")
+        c.body = body.body.strip()
+    if body.resolved is not None:
+        c.resolved = bool(body.resolved)
+        c.resolved_by_email = user.email if c.resolved else None
+    db.commit(); db.refresh(c)
     return _serialize_comment(c)
 
 
@@ -949,6 +997,10 @@ def public_meta(slug: str, db: Session = Depends(get_db)):
 def public_view(slug: str,
                 x_deck_password: Optional[str] = Header(None, alias="X-Deck-Password"),
                 db: Session = Depends(get_db)):
+    """Serve the public deck. Reads from the current PresentationVersion
+    snapshot when one exists; falls back to the parent presentation's
+    live sections for back-compat with pre-versioning decks."""
+    from services.version_publisher import get_current_public_version
     p = db.query(Presentation).filter(Presentation.public_slug == slug).first()
     if not p or p.status != "published":
         raise HTTPException(404, "Not found")
@@ -958,12 +1010,25 @@ def public_view(slug: str,
         ):
             raise HTTPException(401, "Password required or incorrect")
 
+    v = get_current_public_version(db, p)
+    if v is not None:
+        return {
+            "title": v.title,
+            "sections": v.sections or [],
+            "attachments": v.attachments or [],
+            "theme": p.theme or {},
+            "disclosure": v.disclosure,
+            "published_at": v.published_at.isoformat() if v.published_at else None,
+            "version_no": v.version_no,
+        }
     return {
         "title": p.title,
         "sections": p.sections or [],
         "attachments": p.attachments or [],
         "theme": p.theme or {},
+        "disclosure": getattr(p, "disclosure", None),
         "published_at": p.published_at.isoformat() if p.published_at else None,
+        "version_no": None,
     }
 
 
@@ -1014,3 +1079,353 @@ def public_citation_view(
     s3 = S3Service()
     url = s3.get_presigned_url(doc.s3_key, expires_in=900)
     return {"url": url, "filename": doc.filename}
+
+
+# ─── Versions / publish history ─────────────────────────────────────────────
+
+@router.get("/{presentation_id}/versions")
+def list_versions(presentation_id: str,
+                  db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """Return the publish history of a deck, newest first. Each entry has
+    the bits the editor's Versions panel needs (no full content blob —
+    clients fetch a single version's body from /versions/{n})."""
+    from models.presentation_version import PresentationVersion
+    p = _get_viewable_or_404(db, presentation_id, user)
+    rows = (
+        db.query(PresentationVersion)
+        .filter(PresentationVersion.presentation_id == p.id)
+        .order_by(PresentationVersion.version_no.desc())
+        .all()
+    )
+    return {
+        "versions": [
+            {
+                "version_no": v.version_no,
+                "title": v.title,
+                "published_at": v.published_at.isoformat() if v.published_at else None,
+                "published_by": v.published_by,
+                "is_current_public": v.is_current_public,
+                "rolled_back_from_version_no": v.rolled_back_from_version_no,
+                "section_count": len(v.sections or []),
+                "doc_snapshot_count": len(v.doc_snapshots or {}),
+            }
+            for v in rows
+        ],
+    }
+
+
+@router.get("/{presentation_id}/versions/{version_no}")
+def get_version(presentation_id: str, version_no: int,
+                db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    """Full snapshot of a specific version — used by the
+    Preview-this-version button in the editor's Versions panel."""
+    from models.presentation_version import PresentationVersion
+    p = _get_viewable_or_404(db, presentation_id, user)
+    v = (
+        db.query(PresentationVersion)
+        .filter(PresentationVersion.presentation_id == p.id,
+                PresentationVersion.version_no == version_no)
+        .first()
+    )
+    if not v:
+        raise HTTPException(404, "Version not found")
+    return {
+        "version_no": v.version_no,
+        "title": v.title,
+        "sections": v.sections or [],
+        "attachments": v.attachments or [],
+        "disclosure": v.disclosure,
+        "doc_snapshots": v.doc_snapshots or {},
+        "is_current_public": v.is_current_public,
+        "published_at": v.published_at.isoformat() if v.published_at else None,
+        "published_by": v.published_by,
+        "rolled_back_from_version_no": v.rolled_back_from_version_no,
+    }
+
+
+@router.post("/{presentation_id}/rollback-to/{version_no}")
+def rollback_to_version(presentation_id: str, version_no: int,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """Make an older version the current public version by REPLACING the
+    draft with that older snapshot AND re-publishing it. This creates a
+    new version row whose content matches the target — linear history is
+    preserved, nothing in `presentation_versions` is mutated."""
+    from models.presentation_version import PresentationVersion
+    from services.version_publisher import publish_new_version
+    from sqlalchemy.orm.attributes import flag_modified
+    import copy as _copy
+
+    p = _get_or_404(db, presentation_id)
+    require_owner_or_admin(p.created_by, user)
+    target = (
+        db.query(PresentationVersion)
+        .filter(PresentationVersion.presentation_id == p.id,
+                PresentationVersion.version_no == version_no)
+        .first()
+    )
+    if not target:
+        raise HTTPException(404, "Version not found")
+
+    p.title = target.title
+    p.sections = _copy.deepcopy(target.sections or [])
+    p.attachments = _copy.deepcopy(target.attachments or [])
+    if hasattr(p, "disclosure"):
+        p.disclosure = _copy.deepcopy(target.disclosure) if target.disclosure else None
+        if p.disclosure is not None:
+            flag_modified(p, "disclosure")
+    flag_modified(p, "sections")
+    flag_modified(p, "attachments")
+
+    user_id = getattr(user, "email", None) or str(user.id)
+    new_v = publish_new_version(p, db, user_id=user_id, rolled_back_from=version_no)
+    db.commit()
+    return {
+        "new_version_no": new_v.version_no,
+        "rolled_back_from_version_no": version_no,
+        "is_current_public": True,
+    }
+
+
+@router.get("/{presentation_id}/changes-since-publish")
+def changes_since_publish(presentation_id: str,
+                          db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    """Cheap structural diff for the editor's "X unpublished changes"
+    badge. Compares draft (presentations.sections) against the row where
+    is_current_public=True."""
+    from services.version_publisher import get_current_public_version, diff_summary
+    p = _get_viewable_or_404(db, presentation_id, user)
+    cur = get_current_public_version(db, p)
+    return diff_summary(p, cur)
+
+
+# ─── Citation audit (draft-only — public viewer is untouched) ───────────────
+
+@router.get("/{presentation_id}/audit-citations")
+def audit_citations(presentation_id: str,
+                    db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """For every [DOC:id|label] token in the deck draft, return the token
+    id, the label the AI wrote, and the actual filename of the document
+    at that PK. Lets the operator spot citations the model hallucinated
+    wrong ids for (chip label says "Master PG List" but the file at PK is
+    a TD Bank statement → mismatch_score ~0).
+
+    Mismatch score is Jaccard similarity over tokenized words
+    (label vs filename, lowercased, alphanumeric-only). 1.0 means the
+    label and filename share the same key terms; 0.0 means no overlap.
+    Below ~0.2 is almost certainly wrong.
+    """
+    import re as _re
+    from models.document import Document
+    p = _get_viewable_or_404(db, presentation_id, user)
+
+    DOC_TOKEN_FULL = _re.compile(r"\[DOC:([A-Za-z0-9_\-]+)(?:\|([^\]]*))?\]")
+
+    def _walk(blob):
+        if isinstance(blob, str):
+            yield blob
+        elif isinstance(blob, dict):
+            for v in blob.values():
+                yield from _walk(v)
+        elif isinstance(blob, list):
+            for v in blob:
+                yield from _walk(v)
+
+    occurrences: dict[str, list[str]] = {}  # id -> labels seen
+    for sec in (p.sections or []):
+        for text_blob in _walk(sec):
+            for m in DOC_TOKEN_FULL.finditer(text_blob):
+                cid = m.group(1)
+                label = (m.group(2) or "").strip()
+                occurrences.setdefault(cid, [])
+                if label and label not in occurrences[cid]:
+                    occurrences[cid].append(label)
+
+    def _tokens(s: str) -> set[str]:
+        return {t for t in _re.findall(r"[a-z0-9]+", (s or "").lower()) if len(t) >= 2}
+
+    rows: list[dict] = []
+    for cid, labels in occurrences.items():
+        # AH document IDs are UUIDs (string).
+        doc = None
+        try:
+            doc = db.query(Document).filter(Document.id == cid).first()
+        except Exception:
+            doc = None
+        filename = doc.filename if doc else None
+        best_score = 0.0
+        chosen_label = labels[0] if labels else None
+        if filename and labels:
+            f_tok = _tokens(filename)
+            for lab in labels:
+                l_tok = _tokens(lab)
+                if not l_tok or not f_tok:
+                    score = 0.0
+                else:
+                    score = len(l_tok & f_tok) / max(1, len(l_tok | f_tok))
+                if score > best_score:
+                    best_score = score
+                    chosen_label = lab
+        rows.append({
+            "id": cid,
+            "labels": labels,
+            "label": chosen_label,
+            "filename": filename,
+            "found": bool(doc),
+            "mismatch_score": round(best_score, 2),
+            "looks_mismatched": bool(doc) and bool(labels) and best_score < 0.20,
+            "size_bytes": doc.file_size if doc else None,
+        })
+
+    rows.sort(key=lambda r: (r["found"], r["mismatch_score"], r["id"]))
+    return {
+        "presentation_id": str(p.id),
+        "total_citations": len(rows),
+        "missing": sum(1 for r in rows if not r["found"]),
+        "likely_mismatched": sum(1 for r in rows if r["looks_mismatched"]),
+        "rows": rows,
+    }
+
+
+@router.post("/{presentation_id}/fix-citations")
+def apply_citation_fixes(presentation_id: str,
+                        body: dict,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """Apply per-citation fixes to the DRAFT.
+
+    Body shape:
+        {
+          "fixes": [
+            {"id": "<uuid>", "action": "strip"},
+            {"id": "<uuid>", "action": "swap", "new_id": "<uuid>"}
+          ]
+        }
+
+    Each entry rewrites every [DOC:<id>|label] occurrence:
+        - swap → [DOC:<new_id>|label]
+        - strip → label text only (chip dropped, prose preserved)
+
+    Returns the number of token occurrences mutated. The public viewer is
+    untouched until the operator republishes; this only edits the draft.
+    """
+    import re as _re
+    from sqlalchemy.orm.attributes import flag_modified
+
+    p = _get_editable_or_404(db, presentation_id, user)
+    fixes = body.get("fixes") or []
+    plan: dict[tuple, dict] = {}
+    for f in fixes:
+        if not isinstance(f, dict):
+            continue
+        cid = str(f.get("id") or "").strip()
+        action = str(f.get("action") or "").strip()
+        if not cid or action not in ("swap", "strip"):
+            continue
+        section_scope = str(f.get("section_id") or "").strip() or "*"
+        if action == "swap":
+            new_id = str(f.get("new_id") or "").strip()
+            if not new_id:
+                continue
+            plan[(section_scope, cid)] = {"action": "swap", "to_id": new_id}
+        else:
+            plan[(section_scope, cid)] = {"action": "strip"}
+    if not plan:
+        return {"edits": 0, "sections_changed": 0}
+
+    DOC_TOKEN = _re.compile(r"\[DOC:([A-Za-z0-9_\-]+)(?:\|([^\]]*))?\]")
+
+    def _spec_for(section_id: str, doc_id: str):
+        """Section-scoped fix wins over a deck-wide '*' fix."""
+        return plan.get((section_id, doc_id)) or plan.get(("*", doc_id))
+
+    def _rewrite_str(text_in: str, section_id: str) -> tuple[str, int]:
+        out_parts: list[str] = []
+        last = 0
+        edits = 0
+        for m in DOC_TOKEN.finditer(text_in):
+            cid = m.group(1)
+            label = (m.group(2) or "").strip()
+            spec = _spec_for(section_id, cid)
+            out_parts.append(text_in[last:m.start()])
+            if spec and spec["action"] == "swap":
+                new_id = spec["to_id"]
+                out_parts.append(f"[DOC:{new_id}|{label}]" if label else f"[DOC:{new_id}]")
+                edits += 1
+            elif spec and spec["action"] == "strip":
+                out_parts.append(label)
+                edits += 1
+            else:
+                out_parts.append(m.group(0))
+            last = m.end()
+        out_parts.append(text_in[last:])
+        return ("".join(out_parts), edits)
+
+    def _rewrite_blob(b, section_id: str):
+        if isinstance(b, str):
+            return _rewrite_str(b, section_id)
+        if isinstance(b, dict):
+            out: dict = {}
+            total = 0
+            for k, v in b.items():
+                nv, e = _rewrite_blob(v, section_id)
+                total += e
+                out[k] = nv
+            return (out, total)
+        if isinstance(b, list):
+            out_l: list = []
+            total = 0
+            for v in b:
+                nv, e = _rewrite_blob(v, section_id)
+                total += e
+                out_l.append(nv)
+            return (out_l, total)
+        return (b, 0)
+
+    sections_changed = 0
+    edits_total = 0
+    new_sections = []
+    for sec in (p.sections or []):
+        sid = str(sec.get("id") or "")
+        new_sec, e = _rewrite_blob(sec, sid)
+        if e:
+            sections_changed += 1
+        edits_total += e
+        new_sections.append(new_sec)
+    if edits_total > 0:
+        p.sections = new_sections
+        flag_modified(p, "sections")
+        db.commit()
+    return {"edits": edits_total, "sections_changed": sections_changed}
+
+
+# ─── Disclosure (public viewer modal) ───────────────────────────────────────
+
+class DisclosureBody(BaseModel):
+    enabled: bool = False
+    is_draft: bool = False
+    custom_text: Optional[str] = None
+
+
+@router.put("/{presentation_id}/disclosure")
+def set_disclosure(presentation_id: str, body: DisclosureBody,
+                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Configure the first-visit disclosure modal shown on the public
+    viewer. Edit-only; the public viewer reads disclosure from the
+    current published version, so changes take effect on Republish."""
+    from sqlalchemy.orm.attributes import flag_modified
+    p = _get_editable_or_404(db, presentation_id, user)
+    if not hasattr(p, "disclosure"):
+        raise HTTPException(500, "disclosure column not provisioned yet — restart API")
+    p.disclosure = {
+        "enabled": bool(body.enabled),
+        "is_draft": bool(body.is_draft),
+        "custom_text": (body.custom_text or "").strip() or None,
+    }
+    flag_modified(p, "disclosure")
+    db.commit(); db.refresh(p)
+    return p.disclosure

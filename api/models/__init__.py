@@ -3,5 +3,6 @@ from .document_chunk import DocumentChunk
 from .user import User
 from .financial import FinancialStatement, FinancialLineItem, FinancialAnalysis
 from .presentation import Presentation, PresentationComment
+from .presentation_version import PresentationVersion
 from .contract import Vendor, Contract, Payment
 from .parcel import Parcel

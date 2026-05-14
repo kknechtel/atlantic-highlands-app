@@ -191,6 +191,11 @@ def _migrate():
         ("financial_line_items", "yoy_change_pct", "FLOAT"),
         ("financial_line_items", "variance_pct", "FLOAT"),
         ("financial_line_items", "anomaly_flags", "JSONB DEFAULT '[]'::jsonb"),
+        # Presentations: disclosure modal config (added with versions feature)
+        ("presentations", "disclosure", "JSONB"),
+        # Comment threads: inline-range anchor for highlight-comment
+        ("presentation_comments", "anchor", "JSONB"),
+        ("presentation_comments", "resolved_at", "TIMESTAMP"),
     ]
 
     with engine.connect() as conn:

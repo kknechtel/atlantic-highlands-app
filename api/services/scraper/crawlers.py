@@ -414,6 +414,13 @@ class HighlandsMeetingsCrawler:
                 if not soup:
                     break
                 docs = self.basic.find_document_links(soup, url)
+                # Filter out ecode360-hosted PDFs: they're Cloudflare-Turnstile
+                # protected and 403 on every retry from our IP. Each download
+                # attempt costs ~5s (3 retries × delay), and a typical run
+                # finds ~170 of them — that's ~15 min of guaranteed-wasted
+                # time per run. ecode360 content is crawled separately by the
+                # local scrape_ecode_local.py script.
+                docs = [d for d in docs if "ecode360.com" not in urlparse(d["url"]).netloc.lower()]
                 if not docs:
                     # Empty page = past the end of the infinite-scroll list.
                     logger.info(f"  Highlands Meetings portal: no docs at page={page}, stopping")

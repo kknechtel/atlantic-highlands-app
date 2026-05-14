@@ -264,6 +264,7 @@ async def run_scraper(
                                 },
                             )
                             db.add(doc_record)
+                            db.commit()  # per-doc commit so partial work survives a worker restart
                             existing_filenames.add(descriptive_name.lower())
                             existing_keys.add(s3_key)
                             _scraper_status["documents_uploaded"] += 1
@@ -346,6 +347,7 @@ async def run_scraper(
                             metadata_=metadata,
                         )
                         db.add(doc_record)
+                        db.commit()  # per-doc commit so partial work survives a worker restart
                         existing_filenames.add(descriptive_name.lower())
                         existing_filenames.add(raw_filename.lower())
                         existing_keys.add(s3_key)
@@ -360,6 +362,9 @@ async def run_scraper(
                         })
 
                     except Exception as e:
+                        # Rollback any partial state from the failing add so the
+                        # session stays usable for the next doc in this loop.
+                        db.rollback()
                         err = f"Error processing {doc_info.get('url', '?')}: {e}"
                         logger.error(err)
                         _scraper_status["errors"].append(err)

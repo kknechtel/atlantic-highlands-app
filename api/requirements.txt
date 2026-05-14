@@ -21,6 +21,13 @@ bcrypt==4.2.0
 anthropic>=0.40.0
 google-genai==1.0.0
 duckduckgo-search>=6.2.0
+openai>=1.40.0  # Whisper API fallback for meeting-recording transcription
+
+# Meeting-recording transcription
+# faster-whisper bundles PyAV which decodes .wma/.wav/.m4a natively (no ffmpeg required for these).
+# YouTube transcripts come from auto-captions via youtube-transcript-api — no download needed.
+faster-whisper>=1.0.0
+youtube-transcript-api>=0.6.2
 
 # RAG
 numpy>=1.26.0

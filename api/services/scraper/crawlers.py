@@ -433,8 +433,21 @@ class HighlandsMeetingsCrawler:
 # to month/day named subfolders we don't want to recurse into.
 _YEAR_FOLDER_RE = re.compile(r"/(20\d{2})(?:%20Recordings)?/?$", re.I)
 
-# Parse common AH filename date formats: 2024.03.05, 2024-03-05, 3.5.2024,
-# 03-05-2024, "March 5, 2024", "Mar 5, 2024".
+# Match a year segment anywhere in a URL path: /2024/, /2024%20Recordings/,
+# / 2024 Recordings/. Used as fallback when the filename has no year — many
+# Harbor files are like "Harbor Commission 04.07.wma" inside /2020 Recordings/.
+_URL_YEAR_RE = re.compile(r"/(20\d{2})(?:%20Recordings|\s+Recordings)?/", re.I)
+
+
+def _year_from_url(url: str) -> int | None:
+    m = _URL_YEAR_RE.search(unquote(url))
+    return int(m.group(1)) if m else None
+
+# Parse common AH filename date formats:
+#   2024.03.05, 2024-03-05  → ymd
+#   3.5.2024, 03-05-2024    → mdy
+#   "March 5, 2024"         → month_name
+#   Council_20240208_130626 → compact (YYYYMMDD with non-digit boundaries)
 _DATE_PATTERNS = [
     (re.compile(r"(20\d{2})[.\-_](\d{1,2})[.\-_](\d{1,2})"), "ymd"),
     (re.compile(r"(\d{1,2})[.\-_](\d{1,2})[.\-_](20\d{2}|\d{2})"), "mdy"),
@@ -442,6 +455,7 @@ _DATE_PATTERNS = [
         r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(20\d{2})",
         re.I,
     ), "month_name"),
+    (re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)"), "compact"),
 ]
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun",
@@ -462,6 +476,8 @@ def _parse_meeting_date(text: str) -> str | None:
                 mo, d, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
                 if y < 100:
                     y += 2000
+            elif kind == "compact":
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
             else:  # month_name
                 mo = _MONTHS.get(m.group(1)[:3].lower())
                 d, y = int(m.group(2)), int(m.group(3))
@@ -539,6 +555,16 @@ class AHRecordingsCrawler:
                     if meeting_date:
                         d = datetime.strptime(meeting_date, "%Y-%m-%d").date()
                         if d < self.cutoff:
+                            continue
+                    else:
+                        # Filename has no year (Harbor's "M.D" naming inside a
+                        # /YYYY Recordings/ folder). Fall back to the URL path.
+                        url_year = _year_from_url(item["url"])
+                        if url_year is not None and url_year < self.cutoff.year - 1:
+                            continue
+                        if url_year is None:
+                            # No year anywhere — refuse to ingest rather than
+                            # silently keep undated audio.
                             continue
                     body_docs.append({
                         **item,

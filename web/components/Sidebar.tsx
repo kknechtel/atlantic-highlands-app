@@ -10,6 +10,7 @@ import {
   CalendarDaysIcon,
   ChevronLeftIcon, ChevronRightIcon, UserIcon, BuildingStorefrontIcon,
   MusicalNoteIcon, ClipboardDocumentListIcon, PresentationChartLineIcon,
+  MicrophoneIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -29,12 +30,12 @@ const navItems = [
     ],
   },
   { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon },
+  { name: "Meetings", href: "/meetings", icon: MicrophoneIcon },
   { name: "Local Business", href: "/local-business", icon: BuildingStorefrontIcon },
   { name: "Events", href: "/events", icon: MusicalNoteIcon },
   { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
   { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
   { name: "Scraper", href: "/scraper", icon: GlobeAltIcon },
-  { name: "Admin", href: "/admin", icon: Cog6ToothIcon, adminOnly: true },
 ];
 
 export default function Sidebar() {
@@ -77,10 +78,9 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
+      {/* Nav — Admin link moved to the bottom panel next to email/logout. */}
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
-          if (item.adminOnly && !user.is_admin) return null;
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
 
@@ -118,7 +118,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* User */}
+      {/* User — admin link lives here next to the email so it's clearly an
+          account-level surface, not part of the primary product nav. */}
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
@@ -128,6 +129,17 @@ export default function Sidebar() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user.email}</p>
             </div>
+          )}
+          {user.is_admin && (
+            <Link
+              href="/admin"
+              className={`p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 ${
+                pathname === "/admin" || pathname.startsWith("/admin/") ? "bg-gray-100 text-gray-900" : ""
+              }`}
+              title="Admin"
+            >
+              <Cog6ToothIcon className="w-4 h-4" />
+            </Link>
           )}
           <button onClick={logout} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700" title="Logout">
             <ArrowRightOnRectangleIcon className="w-4 h-4" />

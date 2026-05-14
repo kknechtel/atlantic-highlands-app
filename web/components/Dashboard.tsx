@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import { getProjects, getStatements } from "@/lib/api";
 import { FolderIcon, DocumentTextIcon, ChartBarIcon } from "@heroicons/react/24/outline";
@@ -14,8 +15,25 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 md:p-8">
-      <h1 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p className="text-gray-500 mt-1 text-sm md:text-base">Atlantic Highlands Document Library & Financial Analysis</p>
+      {/* Banner — sunset over Raritan Bay, with title overlay. The bottom-to-top
+          gradient keeps the white text legible against the bright sky. */}
+      <div className="relative h-40 md:h-56 rounded-xl overflow-hidden shadow mb-6 md:mb-8">
+        <Image
+          src="/dashboard-banner.jpg"
+          alt="Sunset over Raritan Bay from Atlantic Highlands"
+          fill
+          priority
+          sizes="(min-width: 768px) 80vw, 100vw"
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 text-white">
+          <h1 className="text-2xl md:text-3xl font-bold drop-shadow-lg">Dashboard</h1>
+          <p className="text-sm md:text-base text-white/90 drop-shadow">
+            Atlantic Highlands Document Library &amp; Financial Analysis
+          </p>
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mt-6 md:mt-8">

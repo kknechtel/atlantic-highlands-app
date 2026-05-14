@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from .config import (
     DOWNLOAD_EXTENSIONS,
     SKIP_EXTENSIONS,
+    RECORDING_EXTENSIONS,
     REQUEST_DELAY,
     REQUEST_TIMEOUT,
     MAX_RETRIES,
@@ -154,6 +155,26 @@ class BasicScraper:
                     "source_page": base_url,
                 })
         return documents
+
+    def find_media_links(self, soup: BeautifulSoup, base_url: str) -> list[dict]:
+        """Extract links to audio/video recording files. Counterpart to
+        find_document_links — *intentionally* keeps RECORDING_EXTENSIONS that
+        find_document_links() filters out."""
+        media = []
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+            full_url = urljoin(base_url, href)
+            parsed = urlparse(full_url)
+            path_lower = parsed.path.lower()
+            if not any(path_lower.endswith(ext) for ext in RECORDING_EXTENSIONS):
+                continue
+            link_text = link.get_text(strip=True) or url_to_filename(full_url)
+            media.append({
+                "url": full_url,
+                "title": link_text,
+                "source_page": base_url,
+            })
+        return media
 
     def find_subpage_links(self, soup: BeautifulSoup, base_url: str, same_domain: bool = True) -> list[str]:
         """Find links to other pages on the same site to crawl deeper."""

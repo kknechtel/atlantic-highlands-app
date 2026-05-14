@@ -23,7 +23,14 @@
 // secret, the Worker 403s; even with the secret it will only fetch the
 // allowlisted hosts, so it can't be turned into a generic open proxy.
 
-const ALLOWED_HOSTS = new Set(["www.ahnj.com", "ahnj.com"]);
+// Hosts the EC2 scraper can't reach directly. ahnj.com firewalls AWS source
+// IPs; highlands-nj.municodemeetings.com appears to throttle datacenter IPs
+// (pagination returns ~6 docs vs. ~600 from a residential IP).
+const ALLOWED_HOSTS = new Set([
+  "www.ahnj.com",
+  "ahnj.com",
+  "highlands-nj.municodemeetings.com",
+]);
 
 const FORWARD_REQUEST_HEADERS = [
   "user-agent",

@@ -29,13 +29,15 @@ logger = logging.getLogger("ah_scraper")
 _HOST_FAIL_THRESHOLD = 3
 _CONNECT_TIMEOUT = 10  # short connect TO so blocked hosts fail fast; read TO stays at REQUEST_TIMEOUT
 
-# Per-host proxy routing. ahnj.com firewalls AWS source IPs, so when an
-# AHNJ_PROXY_URL is set we route ahnj.com requests through a Cloudflare
-# Worker that fetches the target from a residential-class IP and returns
-# the bytes verbatim. The Worker source is in workers/ahnj-proxy/.
+# Per-host proxy routing. Some target hosts firewall or throttle AWS source
+# IPs (ahnj.com outright firewalls; highlands-nj.municodemeetings.com appears
+# to throttle pagination from datacenter IPs). When AHNJ_PROXY_URL is set we
+# route requests to listed hosts through a Cloudflare Worker that fetches
+# the target from a residential-class IP and returns the bytes verbatim.
+# The Worker source is in workers/ahnj-proxy/.
 _PROXY_URL = (os.getenv("AHNJ_PROXY_URL") or "").rstrip("/")
 _PROXY_SECRET = os.getenv("AHNJ_PROXY_SECRET") or ""
-_PROXIED_HOSTS = {"www.ahnj.com", "ahnj.com"}
+_PROXIED_HOSTS = {"www.ahnj.com", "ahnj.com", "highlands-nj.municodemeetings.com"}
 
 
 def _proxy_for(url: str) -> tuple[str, dict]:

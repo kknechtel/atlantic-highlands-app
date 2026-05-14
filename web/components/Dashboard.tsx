@@ -24,7 +24,9 @@ export default function Dashboard() {
           fill
           priority
           sizes="(min-width: 768px) 80vw, 100vw"
-          className="object-cover"
+          // object-bottom keeps the horizon + water in frame on the short
+          // banner crop; default (center) showed only sky.
+          className="object-cover object-bottom"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 text-white">

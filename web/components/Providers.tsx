@@ -188,13 +188,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
-      {/* Mobile layout. pb-32 on the scrollable main reserves room for both
-          MobileNav (h-16 = 64px) AND the floating chat FAB (~46px tall,
-          anchored 80px above the viewport bottom). Without this padding, the
-          FAB hovers over the bottom-right of every page and clips the last
-          row of content. */}
+      {/* Mobile layout. pb-36 on the scrollable main reserves room for both
+          MobileNav (h-16 = 64px) AND the floating chat FAB. The FAB is
+          ~46px tall, anchored 80px above the viewport bottom — so its top
+          edge sits at viewport-126px. Padding the scroll area by 144px
+          (pb-36) gives the last row of content 18px of breathing room
+          above the FAB, instead of having it clipped underneath. */}
       <div className="md:hidden flex flex-col h-screen">
-        <main className="flex-1 overflow-auto pb-32">{children}</main>
+        <main className="flex-1 overflow-auto pb-36">{children}</main>
         <MobileNav />
       </div>
       <GlobalChat />

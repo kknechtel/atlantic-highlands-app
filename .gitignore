@@ -16,6 +16,9 @@ venv/
 out/
 dist/
 *.egg-info/
+*.tsbuildinfo
+# Cloudflare Wrangler local state
+.wrangler/
 
 # IDE
 .vscode/
@@ -36,3 +39,10 @@ pgdata/
 
 # Local storage (document refs)
 api/storage/
+
+# Scratch / local-only working files
+tmp/
+# Playwright test scaffolding holds storageState.json (auth tokens)
+web/screenshots/
+# Claude Code project config (personal)
+.claude/

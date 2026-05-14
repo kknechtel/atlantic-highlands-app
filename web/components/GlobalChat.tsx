@@ -16,7 +16,7 @@ import {
   ArrowDownTrayIcon, ArrowUpTrayIcon, ClockIcon, ArrowPathIcon,
   LightBulbIcon, DocumentChartBarIcon, CpuChipIcon, PlusIcon,
   ClipboardDocumentIcon, CheckIcon, PaperClipIcon,
-  EllipsisVerticalIcon, EyeSlashIcon,
+  EllipsisVerticalIcon, EyeSlashIcon, FunnelIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -50,6 +50,50 @@ function useHiddenRef(isOpen: boolean, isMinimized: boolean, dismissed: boolean)
 }
 
 const DISMISSED_KEY = "ah_chat_dismissed";
+
+/** Multi-scope picker — narrows what Claude searches over for this turn.
+ *  - `all`: no filter; default
+ *  - `entity`: restrict to Borough (id="town") or School (id="school")
+ *  - `fiscal_year`: restrict to FY{id} (e.g., "2024")
+ *  - `doc_type`: restrict to a category (budget|audit|minutes|resolution|ordinance) */
+type ChatScopeType = "all" | "entity" | "fiscal_year" | "doc_type";
+interface ChatScope {
+  type: ChatScopeType;
+  id?: string;
+  label: string;
+}
+
+const SCOPE_PRESETS: ChatScope[] = [
+  { type: "all", label: "All Atlantic Highlands" },
+  { type: "entity", id: "town", label: "Borough only" },
+  { type: "entity", id: "school", label: "School (HHRSD) only" },
+  { type: "fiscal_year", id: "2024", label: "FY 2024" },
+  { type: "fiscal_year", id: "2023", label: "FY 2023" },
+  { type: "fiscal_year", id: "2022", label: "FY 2022" },
+  { type: "doc_type", id: "budget", label: "Budgets" },
+  { type: "doc_type", id: "audit", label: "Audits" },
+  { type: "doc_type", id: "minutes", label: "Meeting minutes" },
+  { type: "doc_type", id: "resolution", label: "Resolutions" },
+  { type: "doc_type", id: "ordinance", label: "Ordinances" },
+];
+
+/** Build a one-line scope hint appended to the user's query so Claude
+ *  constrains its tool calls (search_chunks / search_documents accept
+ *  fiscal_year + category filters). Empty string when scope is "all". */
+function scopeHint(scope: ChatScope): string {
+  switch (scope.type) {
+    case "all": return "";
+    case "entity":
+      return scope.id === "school"
+        ? "[Scope: Henry Hudson Regional School District (HHRSD) documents only — pass category='school' to search tools.]"
+        : "[Scope: Borough of Atlantic Highlands documents only — pass category='town' to search tools.]";
+    case "fiscal_year":
+      return `[Scope: FY${scope.id} only — pass fiscal_year='${scope.id}' to search tools.]`;
+    case "doc_type":
+      return `[Scope: ${scope.id} documents only — pass doc_type='${scope.id}' to list_recent_documents and filter search results accordingly.]`;
+    default: return "";
+  }
+}
 
 export default function GlobalChat() {
   const router = useRouter();
@@ -164,6 +208,12 @@ export default function GlobalChat() {
   // don't break, but the toggle UI is gone — presentations replace formal reports.
   const reportMode = false;
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  // Multi-scope picker — narrows what Claude searches over for this turn.
+  // The backend already accepts scope_type/scope_id (saved with chat_history)
+  // and Claude reads the appended scope hint in the user message to constrain
+  // its search_chunks / search_documents tool calls.
+  const [chatScope, setChatScope] = useState<ChatScope>({ type: "all", label: "All Atlantic Highlands" });
+  const [showScopePicker, setShowScopePicker] = useState(false);
   const [splitDoc, setSplitDoc] = useState<{ url: string; filename: string } | null>(null);
   const [showDocPicker, setShowDocPicker] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -351,6 +401,49 @@ export default function GlobalChat() {
     }
   };
 
+  /** Pre-fill the OPRA Request Generator from a single chat message. The
+   *  message body lands in `additional_context` (and as `specific_records`
+   *  if it's short). User picks the entity + category on the OPRA page. */
+  const handleMessageToOpra = (msg: ChatMessage) => {
+    const body = (msg.content || "").trim();
+    if (!body) return;
+    const seed: Record<string, unknown> = { additional_context: body };
+    // Short messages double as the records description; longer ones stay
+    // in additional_context so they don't blow out the "specific records"
+    // textarea on /opra.
+    if (body.length <= 400) seed.specific_records = body;
+    try {
+      window.sessionStorage.setItem("ah-opra-seed", JSON.stringify(seed));
+    } catch { /* sessionStorage disabled — fall through to plain navigation */ }
+    router.push("/opra");
+  };
+
+  /** Pre-fill the OPRA Request Generator from the WHOLE conversation —
+   *  used by the chat header's "OPRA" button. Aggregates the user's
+   *  questions + the assistant's recommendations as additional_context. */
+  const handleChatToOpra = () => {
+    const lines: string[] = [];
+    for (const m of messages) {
+      const content = (m.content || "").trim();
+      if (!content) continue;
+      if (m.role === "user") lines.push(`USER: ${content}`);
+      else if (m.role === "assistant") lines.push(`ASSISTANT: ${content}`);
+    }
+    if (!lines.length) return;
+    const transcript = lines.join("\n\n");
+    const firstUser = messages.find(m => m.role === "user")?.content?.trim() || "";
+    const seed: Record<string, unknown> = {
+      additional_context: transcript,
+    };
+    // Use the first user question as the initial specific_records text —
+    // operator will usually edit it down on /opra anyway.
+    if (firstUser) seed.specific_records = firstUser.slice(0, 800);
+    try {
+      window.sessionStorage.setItem("ah-opra-seed", JSON.stringify(seed));
+    } catch { /* ignore */ }
+    router.push("/opra");
+  };
+
   /** Send an assistant message body to the active deck as a new narrative section. */
   const handleSendMessageToDeck = async (msg: ChatMessage) => {
     if (!activeDeck) {
@@ -470,13 +563,17 @@ export default function GlobalChat() {
     setIsStreaming(true);
 
     try {
+      const hint = scopeHint(chatScope);
+      const scopedQuery = hint ? `${hint}\n\n${text}` : text;
       const body: Record<string, unknown> = {
-        query: text,
+        query: scopedQuery,
         model: "claude",
         session_id: sessionId,
         web_search: webSearchEnabled,
         deep_thinking: deepThinking,
         report_mode: reportMode,
+        scope_type: chatScope.type,
+        scope_id: chatScope.id,
       };
       if (selectedDoc) body.document_id = selectedDoc.id;
       // Deck-mode hint to the backend so it adds propose_section to the tool surface.
@@ -775,6 +872,16 @@ export default function GlobalChat() {
                 <span>{convertingDeck ? "Building…" : "Presentation"}</span>
               </button>
             )}
+            {!isMobile && messages.some(m => (m.role === 'user' || m.role === 'assistant') && (m.content || '').trim()) && (
+              <button
+                onClick={handleChatToOpra}
+                title="Seed an OPRA records request from this conversation"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-white/20 rounded hover:bg-white/30 transition"
+              >
+                <DocumentTextIcon className="w-3.5 h-3.5" />
+                <span>OPRA</span>
+              </button>
+            )}
             {!isMobile && (
               <button
                 onClick={handleNewSession}
@@ -841,6 +948,40 @@ export default function GlobalChat() {
             Web
           </label>
           <div className="flex-1" />
+          <div className="relative">
+            <button
+              onClick={() => setShowScopePicker(v => !v)}
+              className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border ${
+                chatScope.type !== "all"
+                  ? "bg-emerald-50 border-emerald-200 font-semibold"
+                  : "bg-white border-gray-300 text-gray-600 hover:bg-gray-100"
+              }`}
+              style={chatScope.type !== "all" ? { color: brandColor } : undefined}
+              title="Narrow the chat to an entity / fiscal year / document type"
+            >
+              <FunnelIcon className="w-3 h-3" />
+              {chatScope.type === "all" ? "Scope" : chatScope.label}
+            </button>
+            {showScopePicker && (
+              <div className="absolute right-0 bottom-full mb-1 w-60 bg-white border border-gray-200 rounded shadow-lg z-20 py-1 max-h-72 overflow-y-auto">
+                {SCOPE_PRESETS.map(s => {
+                  const active = s.type === chatScope.type && s.id === chatScope.id;
+                  return (
+                    <button
+                      key={`${s.type}:${s.id || ""}`}
+                      onClick={() => { setChatScope(s); setShowScopePicker(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${
+                        active ? "font-semibold" : "text-gray-700"
+                      }`}
+                      style={active ? { color: brandColor } : undefined}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setShowDocPicker(!showDocPicker)}
             className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border ${
@@ -922,6 +1063,7 @@ export default function GlobalChat() {
               onDownload={handleDownloadMessage}
               onApplyProposal={activeDeck ? handleApplyProposal : undefined}
               onDismissProposal={activeDeck ? handleDismissProposal : undefined}
+              onMessageToOpra={handleMessageToOpra}
               onSendMessageToDeck={activeDeck ? handleSendMessageToDeck : undefined}
               activeDeckTitle={activeDeck?.title}
               onMessageToNewPresentation={!activeDeck && !convertingDeck ? handleMessageToNewPresentation : undefined}
@@ -1093,6 +1235,15 @@ export default function GlobalChat() {
                 <span className="text-sm font-medium text-gray-800">
                   {convertingDeck ? "Building presentation…" : "Convert to presentation"}
                 </span>
+              </button>
+            )}
+            {messages.some(m => (m.role === 'user' || m.role === 'assistant') && (m.content || '').trim()) && (
+              <button
+                onClick={() => { handleChatToOpra(); setMobileMenuOpen(false); }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50"
+              >
+                <DocumentTextIcon className="w-5 h-5 text-gray-600" />
+                <span className="text-sm font-medium text-gray-800">Convert to OPRA request</span>
               </button>
             )}
             <div className="border-t border-gray-100 my-1" />

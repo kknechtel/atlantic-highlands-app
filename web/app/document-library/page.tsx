@@ -14,7 +14,7 @@ import {
 } from "@/lib/api";
 import dynamic from "next/dynamic";
 import UploadModal from "@/components/UploadModal";
-import DocumentChatModal from "@/components/DocumentChatModal";
+import DocumentChatModal from "@/components/EnhancedDocumentChatModal";
 import type { SearchResult } from "@/lib/api";
 
 // react-pdf depends on browser-only globals (DOMMatrix, etc.) — must not SSR.

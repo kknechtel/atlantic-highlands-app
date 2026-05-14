@@ -17,10 +17,49 @@ import React, { createContext, useCallback, useContext, useMemo, useRef, useStat
 
 export type SectionKind = "narrative" | "table" | "attachment" | "react_component";
 
+/**
+ * Discriminator for the richer propose_* tool family ported from
+ * bank-processor's deck_chat_service. When absent (legacy `propose_section`
+ * tool call), the editor falls back to the create-or-replace-section path
+ * driven by `kind` + `section_id`.
+ */
+export type ProposalType =
+  | "section_edit"
+  | "new_section"
+  | "inline_chart"
+  | "diagram"
+  | "react_component"
+  | "section_data_edit"
+  | "section_data_patch";
+
+export type ChartType = "bar" | "line" | "pie" | "stacked_bar" | "area";
+
+export interface DataPatchArrayItem {
+  key: unknown;
+  set?: Record<string, unknown>;
+  unset?: string[];
+}
+export interface DataPatchArrayPatch {
+  path: string;
+  key_field: string;
+  items: DataPatchArrayItem[];
+}
+export interface DataPatchAppend {
+  path: string;
+  items: unknown[];
+}
+export interface DataPatchRemove {
+  path: string;
+  key_field: string;
+  keys: unknown[];
+}
+
 export interface DeckProposal {
+  /** Discriminator for the richer propose_* tools. */
+  proposal_type?: ProposalType;
   /** If present, REPLACE this existing section. If absent, APPEND a new one. */
   section_id?: string;
-  kind: SectionKind;
+  kind?: SectionKind;
   title?: string;
   body?: string;
   headers?: string[];
@@ -29,6 +68,37 @@ export interface DeckProposal {
   tsx?: string;
   data?: unknown;
   rationale?: string;
+
+  // section_edit fields
+  new_markdown?: string;
+
+  // new_section fields
+  heading?: string;
+  markdown?: string;
+  after_section_id?: string;
+
+  // inline_chart fields
+  chart_type?: ChartType;
+  x?: string;
+  y?: string[];
+
+  // diagram fields
+  source?: string;
+  theme?: "default" | "dark" | "forest" | "neutral";
+
+  // react_component fields
+  name?: string;
+  deps_used?: string[];
+
+  // section_data_edit fields
+  new_data?: unknown;
+
+  // section_data_patch fields
+  array_patches?: DataPatchArrayPatch[];
+  scalar_set?: Record<string, unknown>;
+  scalar_unset?: string[];
+  appends?: DataPatchAppend[];
+  removes?: DataPatchRemove[];
 }
 
 export interface ActiveDeck {

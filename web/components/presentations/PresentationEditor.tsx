@@ -42,6 +42,65 @@ function newSectionId(): string {
 }
 
 /**
+ * Apply a section_data_patch proposal to a react_component section's
+ * `data` payload. Ops apply in order:
+ *   array_patches → scalar_set → scalar_unset → appends → removes
+ * The function is total — missing/empty ops are no-ops. Pure (no in-place
+ * mutation) so React state updates work as expected.
+ */
+function applyDataPatches(
+  current: unknown,
+  patch: DeckProposal,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = current && typeof current === 'object' && !Array.isArray(current)
+    ? { ...(current as Record<string, unknown>) }
+    : {};
+
+  // array_patches: shallow-merge `set` and delete `unset` keys on each matched element.
+  for (const ap of patch.array_patches || []) {
+    const arr = Array.isArray(base[ap.path]) ? (base[ap.path] as unknown[]).slice() : [];
+    for (const it of ap.items || []) {
+      const idx = arr.findIndex(el =>
+        el && typeof el === 'object' && (el as Record<string, unknown>)[ap.key_field] === it.key,
+      );
+      if (idx < 0) continue;
+      const cur = arr[idx] as Record<string, unknown>;
+      const next = { ...cur, ...(it.set || {}) };
+      for (const u of it.unset || []) delete next[u];
+      arr[idx] = next;
+    }
+    base[ap.path] = arr;
+  }
+
+  // scalar_set: top-level field assignments
+  if (patch.scalar_set) {
+    for (const [k, v] of Object.entries(patch.scalar_set)) base[k] = v;
+  }
+
+  // scalar_unset: top-level field deletions
+  for (const k of patch.scalar_unset || []) delete base[k];
+
+  // appends: push to arrays
+  for (const ap of patch.appends || []) {
+    const arr = Array.isArray(base[ap.path]) ? (base[ap.path] as unknown[]).slice() : [];
+    arr.push(...ap.items);
+    base[ap.path] = arr;
+  }
+
+  // removes: drop array elements matching keys
+  for (const rm of patch.removes || []) {
+    const arr = Array.isArray(base[rm.path]) ? (base[rm.path] as unknown[]) : [];
+    base[rm.path] = arr.filter(el => {
+      if (!el || typeof el !== 'object') return true;
+      const v = (el as Record<string, unknown>)[rm.key_field];
+      return !(rm.keys || []).includes(v as never);
+    });
+  }
+
+  return base;
+}
+
+/**
  * PresentationEditor — full-featured deck editor mirroring the
  * bank-processor chrome:
  *
@@ -455,26 +514,151 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
   };
 
   // ─── DeckChat binding so the chat panel can propose into this deck ─────
+  // Each propose_* tool from deck_chat_service emits a `proposal` SSE event
+  // with a `proposal_type` discriminator. Dispatch here. Legacy
+  // `propose_section` calls (no proposal_type) fall through to the
+  // create-or-replace path keyed on `kind` + `section_id`.
   const handleAcceptProposal = useCallback(async (proposal: DeckProposal) => {
     if (!deck) return false;
-    const fields: Partial<DeckSection> = {
-      body: proposal.body,
-      headers: proposal.headers,
-      rows: proposal.rows,
-      caption: proposal.caption,
-      tsx: proposal.tsx,
-    };
-    if (proposal.section_id) {
-      updateSection(proposal.section_id, { kind: proposal.kind as SectionKind, title: proposal.title, ...fields });
-    } else {
-      const id = newSectionId();
-      setDeck(prev => prev ? {
-        ...prev,
-        sections: [...prev.sections, { id, kind: proposal.kind as SectionKind, title: proposal.title || '', ...fields }],
-      } : prev);
+
+    const insertAfterId = (id: string, blank: DeckSection) => {
+      setDeck(prev => {
+        if (!prev) return prev;
+        const idx = prev.sections.findIndex(s => s.id === id);
+        if (idx < 0) return { ...prev, sections: [...prev.sections, blank] };
+        return {
+          ...prev,
+          sections: [...prev.sections.slice(0, idx + 1), blank, ...prev.sections.slice(idx + 1)],
+        };
+      });
       setDirty(true);
+    };
+
+    const appendToSectionBody = (sectionId: string, suffix: string) => {
+      setDeck(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sections: prev.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            const cur = s.body || '';
+            const sep = cur && !cur.endsWith('\n\n') ? '\n\n' : '';
+            return { ...s, body: cur + sep + suffix };
+          }),
+        };
+      });
+      setDirty(true);
+    };
+
+    switch (proposal.proposal_type) {
+      case 'section_edit': {
+        if (!proposal.section_id || proposal.new_markdown == null) return false;
+        updateSection(proposal.section_id, { body: proposal.new_markdown });
+        return true;
+      }
+      case 'new_section': {
+        const id = newSectionId();
+        const blank: DeckSection = {
+          id, kind: 'narrative',
+          title: proposal.heading || 'New section',
+          body: proposal.markdown || '',
+        };
+        if (proposal.after_section_id) insertAfterId(proposal.after_section_id, blank);
+        else {
+          setDeck(prev => prev ? { ...prev, sections: [...prev.sections, blank] } : prev);
+          setDirty(true);
+        }
+        return true;
+      }
+      case 'inline_chart': {
+        if (!proposal.section_id || !proposal.headers || !proposal.rows) return false;
+        const spec: Record<string, unknown> = {
+          type: proposal.chart_type || 'bar',
+          headers: proposal.headers,
+          rows: proposal.rows,
+        };
+        if (proposal.title) spec.title = proposal.title;
+        if (proposal.x) spec.x = proposal.x;
+        if (proposal.y) spec.y = proposal.y;
+        appendToSectionBody(proposal.section_id, '```chart\n' + JSON.stringify(spec, null, 2) + '\n```');
+        return true;
+      }
+      case 'diagram': {
+        if (!proposal.section_id || !proposal.source) return false;
+        appendToSectionBody(proposal.section_id, '```mermaid\n' + proposal.source + '\n```');
+        return true;
+      }
+      case 'react_component': {
+        const fields: Partial<DeckSection> = {
+          tsx: proposal.tsx,
+          data: proposal.data,
+        };
+        if (proposal.section_id) {
+          updateSection(proposal.section_id, {
+            kind: 'react_component',
+            title: proposal.name || proposal.title,
+            ...fields,
+          });
+        } else {
+          const id = newSectionId();
+          setDeck(prev => prev ? {
+            ...prev,
+            sections: [...prev.sections, {
+              id, kind: 'react_component',
+              title: proposal.name || proposal.title || 'Component',
+              ...fields,
+            }],
+          } : prev);
+          setDirty(true);
+        }
+        return true;
+      }
+      case 'section_data_edit': {
+        if (!proposal.section_id) return false;
+        updateSection(proposal.section_id, { data: proposal.new_data });
+        return true;
+      }
+      case 'section_data_patch': {
+        if (!proposal.section_id) return false;
+        // Apply patches to the CURRENT live data so two patches compose
+        // instead of the second clobbering the first.
+        setDeck(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            sections: prev.sections.map(s => {
+              if (s.id !== proposal.section_id) return s;
+              const next = applyDataPatches(s.data, proposal);
+              return { ...s, data: next };
+            }),
+          };
+        });
+        setDirty(true);
+        return true;
+      }
+      default: {
+        // Legacy propose_section path — kind + section_id + body/headers/rows/tsx
+        const fields: Partial<DeckSection> = {
+          body: proposal.body,
+          headers: proposal.headers,
+          rows: proposal.rows,
+          caption: proposal.caption,
+          tsx: proposal.tsx,
+          data: proposal.data,
+        };
+        if (proposal.section_id) {
+          updateSection(proposal.section_id, { kind: proposal.kind as SectionKind, title: proposal.title, ...fields });
+        } else {
+          const id = newSectionId();
+          setDeck(prev => prev ? {
+            ...prev,
+            sections: [...prev.sections, { id, kind: (proposal.kind || 'narrative') as SectionKind, title: proposal.title || '', ...fields }],
+          } : prev);
+          setDirty(true);
+        }
+        return true;
+      }
     }
-    return true;
   }, [deck, updateSection]);
 
   useEffect(() => {

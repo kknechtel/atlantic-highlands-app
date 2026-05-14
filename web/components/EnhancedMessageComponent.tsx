@@ -12,6 +12,7 @@ import {
     LightBulbIcon,
     WrenchScrewdriverIcon,
     PlusIcon,
+    DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import MarkdownWithCharts from './MarkdownWithCharts';
 import TypingIndicator from './TypingIndicator';
@@ -40,21 +41,14 @@ export interface ChatCost {
     tool_calls_made?: number;
 }
 
-/** Deck-mode proposal shape — duplicated here to avoid a circular import
- *  with DeckChatContext. Keep in sync with DeckProposal there. */
-export interface DeckProposalLite {
-    section_id?: string;
-    kind: "narrative" | "table" | "attachment" | "react_component";
-    title?: string;
-    body?: string;
-    headers?: string[];
-    rows?: string[][];
-    caption?: string;
-    tsx?: string;
-    rationale?: string;
-    /** Local UI status — set when the user clicks Apply/Dismiss. */
+import type { DeckProposal } from "@/app/contexts/DeckChatContext";
+
+/** Deck-mode proposal as displayed in chat. Extends the canonical
+ *  DeckProposal with a local UI status flag set when the user clicks
+ *  Apply/Dismiss in the message bubble. */
+export type DeckProposalLite = DeckProposal & {
     applied?: "pending" | "applied" | "dismissed";
-}
+};
 
 export interface ChatMessage {
     id: string;
@@ -95,6 +89,9 @@ interface EnhancedMessageComponentProps {
     activeDeckTitle?: string;
     /** When NOT in deck-mode, called to spin up a brand new presentation from this single message. */
     onMessageToNewPresentation?: (message: ChatMessage) => void;
+    /** Called to seed an OPRA records request from this single message
+     *  (navigates to /opra with additional_context pre-filled). */
+    onMessageToOpra?: (message: ChatMessage) => void;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -252,7 +249,7 @@ function ProposalCard({
                         : "text-amber-700"
                 }`}>
                     {isApplied ? "Applied" : isDismissed ? "Dismissed" : "Proposal"}
-                    {" — "}{p.kind}{p.section_id ? " (rewrite)" : " (new)"}
+                    {" — "}{proposalLabel(p)}
                 </span>
                 {!isApplied && !isDismissed && onApply && (
                     <div className="flex gap-1">
@@ -274,25 +271,89 @@ function ProposalCard({
                     </div>
                 )}
             </div>
-            {p.title && <p className="text-xs font-semibold text-gray-800">{p.title}</p>}
-            {p.rationale && <p className="text-[11px] text-gray-600 italic mt-0.5">{p.rationale}</p>}
-            {p.kind === "narrative" && p.body && (
-                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">
-                    {p.body.slice(0, 600)}{p.body.length > 600 ? "…" : ""}
-                </pre>
-            )}
-            {p.kind === "table" && p.headers && (
-                <div className="text-[11px] text-gray-700 mt-1">
-                    {p.headers.length} cols × {(p.rows || []).length} rows
-                </div>
-            )}
-            {p.kind === "react_component" && p.tsx && (
-                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-mono mt-1 max-h-32 overflow-y-auto">
-                    {p.tsx.slice(0, 600)}{p.tsx.length > 600 ? "…" : ""}
-                </pre>
-            )}
+            <ProposalBody p={p} />
         </div>
     );
+}
+
+function proposalLabel(p: DeckProposalLite): string {
+    switch (p.proposal_type) {
+        case "section_edit": return "edit section";
+        case "new_section": return "new section";
+        case "inline_chart": return `${p.chart_type || "bar"} chart`;
+        case "diagram": return "mermaid diagram";
+        case "react_component": return p.section_id ? "replace component" : "new component";
+        case "section_data_edit": return "replace component data";
+        case "section_data_patch": return "patch component data";
+        default: return `${p.kind || "section"}${p.section_id ? " (rewrite)" : " (new)"}`;
+    }
+}
+
+function ProposalBody({ p }: { p: DeckProposalLite }) {
+    const heading = p.heading || p.name || p.title;
+    const proseBody =
+        p.proposal_type === "section_edit" ? p.new_markdown
+        : p.proposal_type === "new_section" ? p.markdown
+        : p.proposal_type === undefined && p.kind === "narrative" ? p.body
+        : undefined;
+    const codeBody =
+        p.proposal_type === "diagram" ? p.source
+        : p.proposal_type === "react_component" ? p.tsx
+        : p.proposal_type === "section_data_edit" ? safeJson(p.new_data)
+        : p.proposal_type === undefined && p.kind === "react_component" ? p.tsx
+        : undefined;
+    const meta =
+        p.proposal_type === "inline_chart"
+            ? `${p.headers?.length ?? 0} cols × ${p.rows?.length ?? 0} rows`
+            : p.proposal_type === "section_data_patch"
+                ? summarizePatchOps(p)
+                : p.proposal_type === undefined && p.kind === "table" && p.headers
+                    ? `${p.headers.length} cols × ${(p.rows || []).length} rows`
+                    : undefined;
+
+    return (
+        <>
+            {heading && <p className="text-xs font-semibold text-gray-800">{heading}</p>}
+            {p.rationale && <p className="text-[11px] text-gray-600 italic mt-0.5">{p.rationale}</p>}
+            {proseBody && (
+                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">
+                    {proseBody.slice(0, 600)}{proseBody.length > 600 ? "…" : ""}
+                </pre>
+            )}
+            {codeBody && (
+                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-mono mt-1 max-h-32 overflow-y-auto">
+                    {codeBody.slice(0, 600)}{codeBody.length > 600 ? "…" : ""}
+                </pre>
+            )}
+            {meta && <div className="text-[11px] text-gray-700 mt-1">{meta}</div>}
+        </>
+    );
+}
+
+function safeJson(v: unknown): string {
+    try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+}
+
+function summarizePatchOps(p: DeckProposalLite): string {
+    const parts: string[] = [];
+    const ap = (p.array_patches || []).reduce<number>(
+        (n, x) => n + (Array.isArray((x as { items?: unknown[] }).items) ? (x as { items: unknown[] }).items.length : 0),
+        0,
+    );
+    if (ap) parts.push(`${ap} row patch${ap === 1 ? "" : "es"}`);
+    if (p.scalar_set && Object.keys(p.scalar_set).length) parts.push(`${Object.keys(p.scalar_set).length} field set`);
+    if (p.scalar_unset?.length) parts.push(`${p.scalar_unset.length} field unset`);
+    const apx = (p.appends || []).reduce<number>(
+        (n, x) => n + (Array.isArray((x as { items?: unknown[] }).items) ? (x as { items: unknown[] }).items.length : 0),
+        0,
+    );
+    if (apx) parts.push(`${apx} append${apx === 1 ? "" : "s"}`);
+    const rmx = (p.removes || []).reduce<number>(
+        (n, x) => n + (Array.isArray((x as { keys?: unknown[] }).keys) ? (x as { keys: unknown[] }).keys.length : 0),
+        0,
+    );
+    if (rmx) parts.push(`${rmx} remove${rmx === 1 ? "" : "s"}`);
+    return parts.join(", ") || "no-op";
 }
 
 const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
@@ -306,6 +367,7 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     onSendMessageToDeck,
     activeDeckTitle,
     onMessageToNewPresentation,
+    onMessageToOpra,
 }) => {
     const [copied, setCopied] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
@@ -451,7 +513,7 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         </div>
                     )}
 
-                    {!isUser && !message.isStreaming && message.content && (onSendMessageToDeck || onMessageToNewPresentation) && (
+                    {!isUser && !message.isStreaming && message.content && (onSendMessageToDeck || onMessageToNewPresentation || onMessageToOpra) && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                             {onSendMessageToDeck && (
                                 <button
@@ -473,6 +535,16 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                                 >
                                     <PlusIcon className="w-3 h-3" />
                                     New presentation
+                                </button>
+                            )}
+                            {onMessageToOpra && (
+                                <button
+                                    onClick={() => onMessageToOpra(message)}
+                                    className="text-[11px] px-2.5 py-1 rounded-full border hover:opacity-90 inline-flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50/60"
+                                    title="Use this answer to seed an OPRA records request"
+                                >
+                                    <DocumentTextIcon className="w-3 h-3" />
+                                    Make OPRA request
                                 </button>
                             )}
                         </div>

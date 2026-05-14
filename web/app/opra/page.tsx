@@ -99,6 +99,35 @@ export default function OPRAPage() {
       .catch(console.error);
   }, []);
 
+  /** One-shot seed handoff from GlobalChat: when the user clicks
+   *  "Make this an OPRA request" on a chat message, GlobalChat writes a
+   *  payload to sessionStorage and navigates here. We consume + clear it
+   *  on mount so a refresh doesn't re-apply. Recognized keys:
+   *    entity, category, specific_records, additional_context,
+   *    date_range_start, date_range_end, preferred_format. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let seed: Record<string, unknown> | null = null;
+    try {
+      const raw = window.sessionStorage.getItem("ah-opra-seed");
+      if (!raw) return;
+      seed = JSON.parse(raw);
+      window.sessionStorage.removeItem("ah-opra-seed");
+    } catch {
+      return;
+    }
+    if (!seed) return;
+    if (typeof seed.entity === "string" && (seed.entity === "borough" || seed.entity === "school")) {
+      setEntity(seed.entity);
+    }
+    if (typeof seed.category === "string") setSelectedCategory(seed.category);
+    if (typeof seed.specific_records === "string") setSpecificRecords(seed.specific_records);
+    if (typeof seed.additional_context === "string") setAdditionalContext(seed.additional_context);
+    if (typeof seed.date_range_start === "string") setDateStart(seed.date_range_start);
+    if (typeof seed.date_range_end === "string") setDateEnd(seed.date_range_end);
+    if (typeof seed.preferred_format === "string") setPreferredFormat(seed.preferred_format);
+  }, []);
+
   // Re-load categories whenever the entity changes (school vs borough have
   // different applicable categories and different example wording).
   useEffect(() => {

@@ -4,20 +4,10 @@ import React, { useState } from 'react';
 import { Sparkles, Send, X, Wand2, Check, Loader2 } from 'lucide-react';
 import MarkdownWithCharts from '@/components/MarkdownWithCharts';
 
-import type { DeckSection, SectionKind } from '@/lib/presentationsApi';
+import type { DeckSection } from '@/lib/presentationsApi';
+import type { DeckProposal } from '@/app/contexts/DeckChatContext';
 
-interface Proposal {
-  section_id?: string;
-  kind: SectionKind;
-  title?: string;
-  body?: string;
-  headers?: string[];
-  rows?: string[][];
-  caption?: string;
-  tsx?: string;
-  data?: unknown;
-  rationale?: string;
-}
+type Proposal = DeckProposal;
 
 interface ChatTurn {
   role: 'user' | 'assistant';
@@ -189,11 +179,12 @@ export default function AskAIPanel({ presentationId, brandColor = '#385854', onA
 }
 
 function ProposalCard({ proposal, onAccept, brandColor }: { proposal: Proposal; onAccept: () => void; brandColor: string }) {
+  const { label, headline, body, meta } = describeProposal(proposal);
   return (
     <div className="border border-amber-300 bg-amber-50 rounded-lg p-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-          AI proposal — {proposal.kind} {proposal.section_id ? '(rewrite)' : '(new)'}
+          AI proposal — {label}
         </span>
         <button
           onClick={onAccept}
@@ -203,19 +194,99 @@ function ProposalCard({ proposal, onAccept, brandColor }: { proposal: Proposal; 
           <Check className="w-3 h-3" /> Apply
         </button>
       </div>
-      {proposal.title && <p className="text-xs font-medium text-gray-800">{proposal.title}</p>}
+      {headline && <p className="text-xs font-medium text-gray-800">{headline}</p>}
       {proposal.rationale && <p className="text-[11px] text-gray-600 italic mt-1">{proposal.rationale}</p>}
-      {proposal.kind === 'narrative' && proposal.body && (
-        <pre className="text-[11px] text-gray-700 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto">{proposal.body.slice(0, 600)}{proposal.body.length > 600 ? '…' : ''}</pre>
+      {body && (
+        <pre className={`text-[11px] text-gray-700 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto${body.kind === 'code' ? ' font-mono' : ''}`}>
+          {body.text.slice(0, 600)}{body.text.length > 600 ? '…' : ''}
+        </pre>
       )}
-      {proposal.kind === 'table' && proposal.headers && (
-        <div className="text-[11px] text-gray-700 mt-1">
-          {proposal.headers.length} cols × {(proposal.rows || []).length} rows
-        </div>
-      )}
-      {proposal.kind === 'react_component' && proposal.tsx && (
-        <pre className="text-[11px] text-gray-700 whitespace-pre-wrap mt-1 max-h-32 overflow-y-auto font-mono">{proposal.tsx.slice(0, 600)}{proposal.tsx.length > 600 ? '…' : ''}</pre>
-      )}
+      {meta && <div className="text-[11px] text-gray-700 mt-1">{meta}</div>}
     </div>
   );
+}
+
+/** Map a proposal to display fields: label (uppercase tag), headline (one-line title),
+ *  body (optional preview pre block), meta (optional row count etc).  Handles both
+ *  the new proposal_type-discriminated shapes and the legacy kind-based shape. */
+function describeProposal(p: Proposal): {
+  label: string;
+  headline?: string;
+  body?: { kind: 'prose' | 'code'; text: string };
+  meta?: string;
+} {
+  switch (p.proposal_type) {
+    case 'section_edit':
+      return {
+        label: 'edit section',
+        headline: p.section_id ? `Rewrite section ${p.section_id}` : 'Rewrite section',
+        body: p.new_markdown ? { kind: 'prose', text: p.new_markdown } : undefined,
+      };
+    case 'new_section':
+      return {
+        label: 'new section',
+        headline: p.heading,
+        body: p.markdown ? { kind: 'prose', text: p.markdown } : undefined,
+      };
+    case 'inline_chart':
+      return {
+        label: `inline ${p.chart_type || 'bar'} chart`,
+        headline: p.title || 'Chart',
+        meta: p.headers ? `${p.headers.length} cols × ${(p.rows || []).length} rows` : undefined,
+      };
+    case 'diagram':
+      return {
+        label: 'mermaid diagram',
+        headline: p.section_id ? `Add diagram to ${p.section_id}` : 'Add diagram',
+        body: p.source ? { kind: 'code', text: p.source } : undefined,
+      };
+    case 'react_component':
+      return {
+        label: p.section_id ? 'replace component' : 'new component',
+        headline: p.name || p.title,
+        body: p.tsx ? { kind: 'code', text: p.tsx } : undefined,
+      };
+    case 'section_data_edit':
+      return {
+        label: 'replace component data',
+        headline: p.section_id ? `Update data on ${p.section_id}` : 'Update data',
+        body: p.new_data
+          ? { kind: 'code', text: safeStringify(p.new_data) }
+          : undefined,
+      };
+    case 'section_data_patch':
+      return {
+        label: 'patch component data',
+        headline: p.section_id ? `Patch data on ${p.section_id}` : 'Patch data',
+        meta: summarizePatchOps(p),
+      };
+    default:
+      return {
+        label: `${p.kind || 'section'} ${p.section_id ? '(rewrite)' : '(new)'}`,
+        headline: p.title,
+        body: p.body ? { kind: 'prose', text: p.body }
+            : p.tsx ? { kind: 'code', text: p.tsx }
+            : undefined,
+        meta: p.kind === 'table' && p.headers
+          ? `${p.headers.length} cols × ${(p.rows || []).length} rows`
+          : undefined,
+      };
+  }
+}
+
+function safeStringify(v: unknown): string {
+  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+}
+
+function summarizePatchOps(p: Proposal): string {
+  const parts: string[] = [];
+  const ap = (p.array_patches || []).reduce((n, x) => n + (x.items?.length || 0), 0);
+  if (ap) parts.push(`${ap} row patch${ap === 1 ? '' : 'es'}`);
+  if (p.scalar_set && Object.keys(p.scalar_set).length) parts.push(`${Object.keys(p.scalar_set).length} field set`);
+  if (p.scalar_unset?.length) parts.push(`${p.scalar_unset.length} field unset`);
+  const apx = (p.appends || []).reduce((n, x) => n + (x.items?.length || 0), 0);
+  if (apx) parts.push(`${apx} append${apx === 1 ? '' : 's'}`);
+  const rmx = (p.removes || []).reduce((n, x) => n + (x.keys?.length || 0), 0);
+  if (rmx) parts.push(`${rmx} remove${rmx === 1 ? '' : 's'}`);
+  return parts.join(', ') || 'no-op';
 }

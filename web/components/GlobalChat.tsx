@@ -839,9 +839,13 @@ export default function GlobalChat() {
         </div>
       )}
 
-      {/* Chat column */}
+      {/* Chat column. `min-h-0` is critical on mobile: without it, a flex-col
+          child defaults to `min-height: auto` and refuses to shrink below its
+          intrinsic content size, so a long message list pushes the input off
+          screen and the messages area never gets a bounded height to scroll
+          inside. Same goes for `min-w-0` on the desktop horizontal layout. */}
       <div
-        className="flex flex-col border-r border-gray-200 bg-gray-50 min-w-0 flex-1"
+        className={`flex flex-col bg-gray-50 min-w-0 min-h-0 flex-1 ${isMobile ? "" : "border-r border-gray-200"}`}
         style={isMobile ? undefined : { width: `${chatWidthPx}px`, minWidth: `${chatWidthPx}px` }}
       >
         {/* Header */}
@@ -927,8 +931,11 @@ export default function GlobalChat() {
           </div>
         </div>
 
-        {/* Controls bar — Deep / Report toggles + scope filters (matches bank-processor) */}
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
+        {/* Controls bar — Deep / Report toggles + scope filters (matches bank-processor).
+            flex-wrap so on a narrow phone width an active scope chip (e.g.
+            "School (HHRSD) only") wraps onto a second row instead of pushing
+            the doc-scope button off-screen. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
           <label
             className={`flex items-center gap-1.5 cursor-pointer ${deepThinking ? "font-semibold" : "text-gray-500"}`}
             style={deepThinking ? { color: brandColor } : undefined}
@@ -962,8 +969,8 @@ export default function GlobalChat() {
               <FunnelIcon className="w-3 h-3" />
               {chatScope.type === "all" ? "Scope" : chatScope.label}
             </button>
-            {showScopePicker && (
-              <div className="absolute right-0 bottom-full mb-1 w-60 bg-white border border-gray-200 rounded shadow-lg z-20 py-1 max-h-72 overflow-y-auto">
+            {showScopePicker && !isMobile && (
+              <div className="absolute right-0 top-full mt-1 w-60 bg-white border border-gray-200 rounded shadow-lg z-20 py-1 max-h-72 overflow-y-auto">
                 {SCOPE_PRESETS.map(s => {
                   const active = s.type === chatScope.type && s.id === chatScope.id;
                   return (
@@ -1179,6 +1186,48 @@ export default function GlobalChat() {
         </div>
       )}
     </div>
+
+    {/* Mobile-only scope picker bottom sheet. On a phone the inline dropdown
+        would either open upward into the header or off the edge of the
+        viewport, so we promote it to a sheet matching the kebab menu. */}
+    {isMobile && showScopePicker && (
+      <div
+        className="fixed inset-0 z-[55] bg-black/40"
+        onClick={() => setShowScopePicker(false)}
+      >
+        <div
+          className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl max-h-[70vh] overflow-y-auto"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.5rem)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 rounded-full bg-gray-300" />
+          </div>
+          <div className="px-3 pb-2">
+            <div className="px-2 pb-2 text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Scope this chat</div>
+            {SCOPE_PRESETS.map(s => {
+              const active = s.type === chatScope.type && s.id === chatScope.id;
+              return (
+                <button
+                  key={`${s.type}:${s.id || ""}`}
+                  onClick={() => { setChatScope(s); setShowScopePicker(false); }}
+                  className={`flex items-center gap-3 w-full px-3 py-3 text-left rounded-lg hover:bg-gray-50 ${
+                    active ? "bg-emerald-50" : ""
+                  }`}
+                >
+                  <FunnelIcon className="w-5 h-5 text-gray-500" />
+                  <span className={`text-sm ${active ? "font-semibold" : "text-gray-800"}`}
+                    style={active ? { color: brandColor } : undefined}>
+                    {s.label}
+                  </span>
+                  {active && <CheckIcon className="w-4 h-4 ml-auto" style={{ color: brandColor }} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Mobile-only kebab menu sheet. Renders as a bottom sheet over the chat. */}
     {isMobile && mobileMenuOpen && (

@@ -1,3 +1,22 @@
-
-Parameter validation failed:
-Invalid length for parameter CommandId, value: 0, valid min length: 36
+{
+    "CommandId": "63a6c353-8de8-49d9-97d5-9590648646b9",
+    "InstanceId": "i-06424a799368c7d6d",
+    "Comment": "",
+    "DocumentName": "AWS-RunShellScript",
+    "DocumentVersion": "$DEFAULT",
+    "PluginName": "aws:runShellScript",
+    "ResponseCode": 0,
+    "ExecutionStartDateTime": "2026-05-05T20:17:09.716Z",
+    "ExecutionElapsedTime": "PT3.076S",
+    "ExecutionEndDateTime": "2026-05-05T20:17:12.716Z",
+    "Status": "Success",
+    "StatusDetails": "Success",
+    "StandardOutputContent": "Re-reconciling 157 statements...\n\nDone: 0 changed, 157 unchanged.\n",
+    "StandardOutputUrl": "",
+    "StandardErrorContent": "",
+    "StandardErrorUrl": "",
+    "CloudWatchOutputConfig": {
+        "CloudWatchLogGroupName": "",
+        "CloudWatchOutputEnabled": false
+    }
+}

@@ -170,10 +170,22 @@ async def run_scraper(
 
             try:
                 crawler = CrawlerClass()
+                # Live progress: each crawler calls this after every page so the
+                # UI's documents_found ticks up during the crawl instead of jumping
+                # at the end. Closure captures site_stats for the current site.
+                _site_stats = site_stats
+                def _on_page_docs(n: int, _s=_site_stats):
+                    _scraper_status["documents_found"] += n
+                    _s["documents_found"] += n
+                crawler.progress_callback = _on_page_docs
                 docs = crawler.find_documents()
-                _scraper_status["documents_found"] += len(docs)
-                site_stats["documents_found"] = len(docs)
-                logger.info(f"  Found {len(docs)} documents on {site_name}")
+                # Reconcile against deduped final count (live ticks counted raw).
+                final_n = len(docs)
+                delta = final_n - site_stats["documents_found"]
+                if delta:
+                    _scraper_status["documents_found"] += delta
+                    site_stats["documents_found"] = final_n
+                logger.info(f"  Found {final_n} documents on {site_name}")
 
                 # Surface connect-level failures (e.g. host firewalled our IP) to the UI.
                 basic = getattr(crawler, "basic", None)

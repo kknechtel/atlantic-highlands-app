@@ -75,6 +75,7 @@ class AHNJCrawler:
         # Two-level deep crawl from each seed: many AH archive trees nest
         # /Archive/<Year>/<Month-Day>/<file>.pdf, so depth=1 misses most PDFs.
         max_pages = 250
+        cb = getattr(self, "progress_callback", None)
 
         def _crawl(url: str, depth: int):
             if url in visited or len(visited) >= max_pages:
@@ -87,6 +88,8 @@ class AHNJCrawler:
             if docs:
                 all_docs.extend(docs)
                 logger.info(f"  Found {len(docs)} documents on {url}")
+                if cb:
+                    cb(len(docs))
             if depth <= 0:
                 return
             subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
@@ -542,6 +545,7 @@ class TriDistrictCrawler:
         all_docs = []
         scraper = self._get_scraper()
         visited = set()
+        cb = getattr(self, "progress_callback", None)
 
         # Seed with: main domain root + explicit pages_to_crawl + school_sites + school_pages
         # The explicit pages_to_crawl entries (BOE 25-26, 24-25, archive, budget, etc.) are
@@ -581,6 +585,8 @@ class TriDistrictCrawler:
                 all_docs.extend(docs)
                 if docs:
                     logger.info(f"  Found {len(docs)} documents on {url}")
+                    if cb:
+                        cb(len(docs))
 
                 subpages = self.basic.find_subpage_links(soup, url, same_domain=False)
                 for subpage in subpages:

@@ -12,7 +12,7 @@ chose Gemini over Textract after a head-to-head: Gemini returned 70-95% more
 chars per doc and produced proper markdown tables (Textract loses table
 structure). Cost is ~$0.01/doc.
 
-Stores extracted text in documents.extracted_text and updates search_vector for FTS.
+Stores extracted text in documents.extracted_text and updates fts_vector for FTS.
 """
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -112,9 +112,12 @@ for i, doc in enumerate(docs):
             doc.status = "processed"
             total_chars += len(markdown)
 
-            # Update search vector
+            # Update FTS vector. Column is fts_vector per migration in
+            # database.py — older copies of this script referenced a stale
+            # name (search_vector) that aborted the transaction and rolled
+            # back the entire batch.
             db.execute(sql_text(
-                "UPDATE documents SET search_vector = to_tsvector('english', coalesce(:text, '')) WHERE id = :id"
+                "UPDATE documents SET fts_vector = to_tsvector('english', coalesce(:text, '')) WHERE id = :id"
             ), {"text": markdown[:100000], "id": str(doc.id)})
 
             processed += 1

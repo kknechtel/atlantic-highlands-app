@@ -116,7 +116,7 @@ def search_documents(
     q_literal = _re.sub(r'["\-+]', '', query).strip()
     sql = """
         SELECT id, filename, doc_type, category, fiscal_year, department, status,
-               ts_rank(search_vector, websearch_to_tsquery('english', :query)) AS fts_score,
+               ts_rank(fts_vector, websearch_to_tsquery('english', :query)) AS fts_score,
                (CASE WHEN length(:q_literal) > 0
                        AND lower(coalesce(extracted_text,'') || ' ' || coalesce(filename,''))
                            LIKE lower('%' || :q_literal || '%')
@@ -139,7 +139,7 @@ def search_documents(
                     ELSE NULL
                END AS literal_window
         FROM documents
-        WHERE search_vector @@ websearch_to_tsquery('english', :query)
+        WHERE fts_vector @@ websearch_to_tsquery('english', :query)
           AND lower(filename) NOT LIKE '%.xlsx'
           AND lower(filename) NOT LIKE '%.xls'
           AND lower(filename) NOT LIKE '%.csv'

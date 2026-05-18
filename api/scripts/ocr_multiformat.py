@@ -12,7 +12,7 @@ Handles file types that ocr_all.py (pymupdf-based) can't:
 
 Skips .mp4 and other non-text formats.
 
-Stores extracted text in documents.extracted_text and updates search_vector.
+Stores extracted text in documents.extracted_text and updates fts_vector.
 """
 import io
 import logging
@@ -282,7 +282,7 @@ def main():
                 doc.status = "processed"
                 total_chars += len(text)
                 db.execute(sql_text(
-                    "UPDATE documents SET search_vector = to_tsvector('english', coalesce(:text, '')) "
+                    "UPDATE documents SET fts_vector = to_tsvector('english', coalesce(:text, '')) "
                     "WHERE id = :id"
                 ), {"text": text[:100000], "id": str(doc.id)})
                 processed += 1

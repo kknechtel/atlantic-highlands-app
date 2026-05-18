@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Batch extract financial data from all audit/budget/FS documents."""
+"""Batch extract financial data from all audit/budget/FS documents.
+
+For NJ school district ACFRs (AHSD/0130, HHRS/2120, HSD/2160), prefer
+scripts/extract_school_acfrs.py — this generic script handles the town
+case and any single-entity school case, but its entity_name inference is
+weaker and its priority dedup is less surgical.
+"""
 import os, sys, json, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -54,7 +60,12 @@ prio = {"audit": 0, "financial_statement": 1, "budget": 2}
 for d in docs:
     fy = (d.fiscal_year or "")[:4]
     if not fy or not fy.isdigit(): continue
-    key = (d.category, fy)
+    # Include entity_name in the dedup key so multiple entities sharing
+    # (category, fy) — e.g. AHSD + HHRS + HSD all tagged category='school'
+    # for the same fiscal year — each get their own row instead of
+    # collapsing to one.
+    entity_key = (d.metadata_ or {}).get("entity_name")
+    key = (d.category, entity_key, fy)
     if key not in best or prio.get(d.doc_type, 9) < prio.get(best[key].doc_type, 9):
         best[key] = d
 
@@ -64,7 +75,10 @@ print(f"Extracting {len(unique)} documents...")
 count = 0
 for doc in unique:
     fy = (doc.fiscal_year or "")[:4]
-    entity = "Borough of Atlantic Highlands" if doc.category == "town" else "Atlantic Highlands School District"
+    entity = (doc.metadata_ or {}).get("entity_name") or (
+        "Borough of Atlantic Highlands" if doc.category == "town"
+        else "Atlantic Highlands School District"
+    )
     print(f"\n{doc.category} FY{fy}: {doc.filename[:55]} [{doc.doc_type}]")
 
     try:
@@ -89,8 +103,11 @@ for doc in unique:
         bs = result.get("balance_sheet", {})
         debt = result.get("debt", {})
 
+        # Key by document_id so each source doc gets its own FinancialStatement
+        # row. Filtering by (entity_type, fy) used to collapse multiple entities
+        # in the same (category, fy) — see the dedup-key comment above.
         existing = db.query(FinancialStatement).filter(
-            FinancialStatement.entity_type == doc.category, FinancialStatement.fiscal_year == fy
+            FinancialStatement.document_id == doc.id
         ).first()
         if existing:
             stmt = existing

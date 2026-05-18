@@ -286,9 +286,16 @@ async def run_scraper(
                         )
                         raw_filename = url_to_filename(doc_info["url"])
 
-                        # Skip if already in DB (check both names)
-                        if (descriptive_name.lower() in existing_filenames
-                                or raw_filename.lower() in existing_filenames):
+                        # Skip if already in DB. We always check the descriptive
+                        # name (path-aware). The raw_filename fallback is only
+                        # consulted when the descriptive name has no path
+                        # context — otherwise generic basenames (e.g. "0130.pdf"
+                        # for every NJ DOE ACFR year/district) cause false-
+                        # positive skips after the first upload.
+                        skip = descriptive_name.lower() in existing_filenames
+                        if not skip and descriptive_name == raw_filename:
+                            skip = raw_filename.lower() in existing_filenames
+                        if skip:
                             _scraper_status["documents_skipped"] += 1
                             site_stats["documents_skipped"] += 1
                             continue
@@ -349,7 +356,12 @@ async def run_scraper(
                         db.add(doc_record)
                         db.commit()  # per-doc commit so partial work survives a worker restart
                         existing_filenames.add(descriptive_name.lower())
-                        existing_filenames.add(raw_filename.lower())
+                        # Only register the raw_filename as a dedup key when it
+                        # is also the descriptive name (no path context). For
+                        # path-aware names, raw_filename is often generic and
+                        # would collide with unrelated files.
+                        if descriptive_name == raw_filename:
+                            existing_filenames.add(raw_filename.lower())
                         existing_keys.add(s3_key)
                         _scraper_status["documents_uploaded"] += 1
                         site_stats["documents_uploaded"] += 1

@@ -67,9 +67,13 @@ def url_to_descriptive_name(url: str, source_page: str = "", title: str = "") ->
     # Clean up filename
     clean_name = filename.replace("%20", " ").replace("_", " ").replace("+", " ").strip()
 
-    # If we have path context, prefix it
+    # If we have path context, prefix it. Use the LAST 3 segments (closest to
+    # the file) so the discriminating bits — year folders, district codes,
+    # archive subtree leaves — survive. Using the first 3 segments collapsed
+    # NJ Education ACFR years (.../acfr/search/18/0130.pdf → .../search/24/...)
+    # and AHNJ Planning Board year subfolders into identical names.
     if path_parts:
-        prefix = " - ".join(path_parts[:3])  # max 3 levels
+        prefix = " - ".join(path_parts[-3:])
         result = f"{prefix} - {clean_name}{ext}"
     else:
         result = f"{clean_name}{ext}"

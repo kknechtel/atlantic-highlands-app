@@ -3,7 +3,8 @@ Parcels — Atlantic Highlands property records sourced from NJ MOD-IV.
 
 NJ MOD-IV is the statewide property tax administration data system. Every
 parcel has a Block, Lot, and (optionally) Qualifier; the (county-muni-block-lot-qual)
-tuple is unique. Atlantic Highlands borough is muni code 1303 in Monmouth County (13).
+tuple is unique. Atlantic Highlands borough is muni code 1305 in Monmouth County
+(NJGIN uses MUN_NAME='ATLANTIC HIGHLANDS BORO' as the primary identifier).
 
 Data source: NJ DOT/NJGIN publishes a "Parcels and MOD-IV Composite of NJ"
 feature service (ArcGIS Online id 533599bbfbaa4748bf39faf1375a8a9c) plus
@@ -36,7 +37,7 @@ class Parcel(Base):
 
     # Identity
     county_code = Column(String, nullable=False)   # "13" = Monmouth
-    muni_code = Column(String, nullable=False)     # "1303" = Atlantic Highlands borough
+    muni_code = Column(String, nullable=False)     # "1305" = Atlantic Highlands borough
     block = Column(String, nullable=False)
     lot = Column(String, nullable=False)
     qualifier = Column(String, nullable=False, default="")  # "" or "C0001" etc.

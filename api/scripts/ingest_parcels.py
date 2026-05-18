@@ -64,11 +64,12 @@ FIELD_ALIASES = {
     "lot_size_acres":    ["CALC_ACRE", "ACREAGE"],
     "year_built":        ["YR_CONSTR", "YEAR_BUILT"],
     "living_sqft":       ["BLDG_AREA", "LIVING_AREA"],
-    "last_sale_date":    ["LST_DEED_D", "LAST_SALE_DATE", "SALE_DATE"],
+    "last_sale_date":    ["DEED_DATE", "LST_DEED_D", "LAST_SALE_DATE", "SALE_DATE"],
     "last_sale_price":   ["SALE_PRICE", "LST_SLE_PR"],
-    "last_sale_book":    ["BOOK", "DEED_BOOK"],
-    "last_sale_page":    ["PAGE", "DEED_PAGE"],
+    "last_sale_book":    ["DEED_BOOK", "BOOK"],
+    "last_sale_page":    ["DEED_PAGE", "PAGE"],
     "last_sale_nu_code": ["NU_CODE", "NU"],
+    "building_class":    ["BLDG_CLASS"],
 }
 
 
@@ -102,7 +103,18 @@ def _to_float(v) -> Optional[float]:
 def _to_date(v) -> Optional[date]:
     if v in (None, ""):
         return None
-    # ArcGIS returns dates as ms-since-epoch
+    # NJGIN DEED_DATE is a 6-digit YYMMDD string (e.g. "150821" = 2015-08-21).
+    # Pivot at 30 — safe through 2029, after which the dataset will likely
+    # have moved to 4-digit years anyway.
+    s = str(v).strip()
+    if len(s) == 6 and s.isdigit():
+        yy, mm, dd = int(s[:2]), int(s[2:4]), int(s[4:6])
+        yyyy = 2000 + yy if yy < 30 else 1900 + yy
+        try:
+            return date(yyyy, mm, dd)
+        except ValueError:
+            return None
+    # Fallback: legacy ArcGIS ms-since-epoch (kept in case other layers use it)
     try:
         return datetime.utcfromtimestamp(int(v) / 1000).date()
     except (TypeError, ValueError, OSError):
@@ -181,6 +193,7 @@ def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
         lot_size_acres=_to_float(_pick(attrs, "lot_size_acres")),
         year_built=_to_int(_pick(attrs, "year_built")),
         living_sqft=_to_int(_pick(attrs, "living_sqft")),
+        building_class=_pick(attrs, "building_class"),
         last_sale_date=_to_date(_pick(attrs, "last_sale_date")),
         last_sale_price=_to_float(_pick(attrs, "last_sale_price")),
         last_sale_book=_pick(attrs, "last_sale_book"),

@@ -758,3 +758,66 @@ export async function getUsageRows(params: {
   const s = qs.toString();
   return request<UsageRow[]>(`/api/admin/usage${s ? `?${s}` : ""}`);
 }
+
+// ─── Parcels ──────────────────────────────────────────────────────────
+// NJ MOD-IV property records for Atlantic Highlands borough. The list
+// endpoint returns the trimmed ParcelListItem; getParcel(id) returns the
+// full ParcelDetail (assessment breakdown, owner mailing, sale history).
+
+export interface ParcelListItem {
+  id: string;
+  block: string;
+  lot: string;
+  qualifier: string;
+  property_location: string | null;
+  property_class: string | null;
+  owner_name: string | null;
+  total_assessment: number | null;
+  last_sale_price: number | null;
+  last_sale_date: string | null;
+}
+
+export interface ParcelDetail extends ParcelListItem {
+  pams_pin: string | null;
+  county_code: string;
+  muni_code: string;
+  zoning: string | null;
+  lot_size_acres: number | null;
+  year_built: number | null;
+  living_sqft: number | null;
+  owner_street: string | null;
+  owner_city_state_zip: string | null;
+  assessment_year: number | null;
+  land_value: number | null;
+  improvement_value: number | null;
+  exemption_value: number | null;
+  tax_amount: number | null;
+  last_sale_book: string | null;
+  last_sale_page: string | null;
+  last_sale_nu_code: string | null;
+  data_source: string | null;
+}
+
+export async function listParcels(params: {
+  q?: string;
+  block?: string;
+  property_class?: string;
+  min_assessment?: number;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<ParcelListItem[]> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+  }
+  const s = qs.toString();
+  return request<ParcelListItem[]>(`/api/parcels/${s ? `?${s}` : ""}`);
+}
+
+export async function countParcels(): Promise<{ count: number }> {
+  return request<{ count: number }>("/api/parcels/count");
+}
+
+export async function getParcel(id: string): Promise<ParcelDetail> {
+  return request<ParcelDetail>(`/api/parcels/${id}`);
+}

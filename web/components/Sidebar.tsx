@@ -10,7 +10,7 @@ import {
   CalendarDaysIcon,
   ChevronLeftIcon, ChevronRightIcon, UserIcon, BuildingStorefrontIcon,
   MusicalNoteIcon, ClipboardDocumentListIcon, PresentationChartLineIcon,
-  MicrophoneIcon,
+  MicrophoneIcon, HomeModernIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -29,6 +29,7 @@ const navItems = [
       { name: "School", href: "/financial-analysis?entity=school", icon: AcademicCapIcon },
     ],
   },
+  { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
   { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon },
   { name: "Meetings", href: "/meetings", icon: MicrophoneIcon },
   { name: "Local Business", href: "/local-business", icon: BuildingStorefrontIcon },

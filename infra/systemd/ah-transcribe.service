@@ -1,0 +1,36 @@
+[Unit]
+Description=Atlantic Highlands meeting-recording transcribe + summarize worker
+After=network-online.target ah-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/atlantic-highlands/api
+# Inherit ah-api's env (DATABASE_URL, AWS creds, ANTHROPIC_API_KEY, etc.).
+# AHNJ_PROXY_* not needed here — the worker reads files from S3, doesn't
+# scrape ahnj.com.
+EnvironmentFile=-/etc/atlantic-highlands.env
+# Pin Whisper to a writable cache dir under our app root rather than $HOME,
+# which is /root and may be ephemeral on snapshot rotation.
+Environment="HF_HOME=/opt/atlantic-highlands/.cache/huggingface"
+Environment="WHISPER_MODEL=base"
+
+ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.transcribe_pending
+
+# Cap wall-clock just past the script's internal budget (90 min) so we
+# never accumulate runaway jobs. systemd will SIGTERM then SIGKILL.
+TimeoutStartSec=6000
+
+# Be nice — transcription is CPU-bound and would otherwise starve ah-api
+# (which serves the UI). nice 10 + best-effort idle io class keeps the
+# user-facing API responsive.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Don't crash the timer if a tick errors. The script's own try/except
+# already moves docs into *_failed states for individual failures; we just
+# don't want systemd to give up scheduling future ticks.
+SuccessExitStatus=0 1
+StandardOutput=journal
+StandardError=journal

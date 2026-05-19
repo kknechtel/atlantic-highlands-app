@@ -137,9 +137,13 @@ def get_meeting(
     )
 
     if base.platform == "audio":
+        # Prefer the transcoded mp3 if the pipeline produced one — browsers
+        # can't play raw .wma. Fall back to the original key (works for .wav/
+        # .m4a sources, fails gracefully on .wma until transcode runs).
+        playback_key = meta.get("playback_s3_key") or doc.s3_key
         try:
             s3 = S3Service()
-            detail.audio_url = s3.get_presigned_url(doc.s3_key, expires_in=3600)
+            detail.audio_url = s3.get_presigned_url(playback_key, expires_in=3600)
         except Exception as e:
             logger.warning("Could not presign audio for %s: %s", meeting_id, e)
 
@@ -163,7 +167,8 @@ def transcribe_meeting(
     # Mark transcribing optimistically so the UI sees state change immediately.
     doc.status = "transcribing"
     db.commit()
-    background_tasks.add_task(_transcribe_in_background, meeting_id)
+    from services.meeting_pipeline import process_transcribe
+    background_tasks.add_task(process_transcribe, meeting_id)
     return {"status": "transcribing", "id": meeting_id}
 
 
@@ -182,97 +187,6 @@ def summarize_meeting_endpoint(
 
     doc.status = "summarizing"
     db.commit()
-    background_tasks.add_task(_summarize_in_background, meeting_id)
+    from services.meeting_pipeline import process_summarize
+    background_tasks.add_task(process_summarize, meeting_id)
     return {"status": "summarizing", "id": meeting_id}
-
-
-# ─── Background workers ─────────────────────────────────────────────
-
-def _transcribe_in_background(meeting_id: str) -> None:
-    """Pulled out so background_tasks can call it with a fresh DB session."""
-    from services.transcription_service import (
-        transcribe_audio_bytes, transcribe_youtube,
-    )
-    db = SessionLocal()
-    try:
-        doc = db.query(Document).filter(Document.id == meeting_id).first()
-        if not doc:
-            logger.warning("Transcribe target %s vanished", meeting_id)
-            return
-        meta = doc.metadata_ or {}
-        rec = meta.get("recording") or {}
-        platform = rec.get("platform") or "audio"
-
-        try:
-            if platform == "youtube":
-                yt_id = rec.get("youtube_id")
-                if not yt_id:
-                    raise RuntimeError("youtube_id missing from metadata")
-                result = transcribe_youtube(yt_id)
-            else:
-                s3 = S3Service()
-                audio_bytes = s3.download_file(doc.s3_key)
-                result = transcribe_audio_bytes(audio_bytes, filename_hint=doc.original_filename or doc.filename)
-        except Exception as e:
-            logger.exception("Transcription failed for %s: %s", meeting_id, e)
-            doc.status = "transcription_failed"
-            doc.metadata_ = {**(doc.metadata_ or {}), "transcription_error": str(e)[:500]}
-            db.commit()
-            return
-
-        doc.extracted_text = result.text
-        # SQLAlchemy doesn't auto-detect JSONB mutation; reassign so it persists.
-        new_meta = {**meta}
-        new_meta["transcript"] = result.to_dict()
-        new_meta.pop("transcription_error", None)
-        doc.metadata_ = new_meta
-        doc.status = "transcribed"
-        db.commit()
-        logger.info("Transcribed meeting %s (%d segments, engine=%s)",
-                    meeting_id, len(result.segments), result.engine)
-
-        # Hand off to existing chunk+embed pipeline so chat can search it.
-        try:
-            from services.ingestion import ingest_document
-            ingest_document(db, doc)
-        except Exception as e:
-            logger.warning("Post-transcribe ingest failed for %s: %s", meeting_id, e)
-    finally:
-        db.close()
-
-
-def _summarize_in_background(meeting_id: str) -> None:
-    from services.meeting_summary import summarize_meeting as run_summary
-    db = SessionLocal()
-    try:
-        doc = db.query(Document).filter(Document.id == meeting_id).first()
-        if not doc:
-            return
-        meta = doc.metadata_ or {}
-        rec = meta.get("recording") or {}
-        transcript = meta.get("transcript") or {}
-        segments = transcript.get("segments") or []
-
-        try:
-            summary = run_summary(
-                meeting_body=rec.get("meeting_body") or "Unknown body",
-                meeting_date=rec.get("meeting_date"),
-                segments=segments,
-                raw_text=doc.extracted_text,
-            )
-        except Exception as e:
-            logger.exception("Summarization failed for %s: %s", meeting_id, e)
-            doc.status = "summary_failed"
-            doc.metadata_ = {**meta, "summary_error": str(e)[:500]}
-            db.commit()
-            return
-
-        new_meta = {**meta}
-        new_meta["summary"] = summary
-        new_meta.pop("summary_error", None)
-        doc.metadata_ = new_meta
-        doc.status = "summarized"
-        db.commit()
-        logger.info("Summarized meeting %s", meeting_id)
-    finally:
-        db.close()

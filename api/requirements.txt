@@ -25,9 +25,11 @@ openai>=1.40.0  # Whisper API fallback for meeting-recording transcription
 
 # Meeting-recording transcription
 # faster-whisper bundles PyAV which decodes .wma/.wav/.m4a natively (no ffmpeg required for these).
-# YouTube transcripts come from auto-captions via youtube-transcript-api — no download needed.
+# YouTube transcripts: youtube-transcript-api is the fast path (captions); falls back
+# to yt-dlp audio download + faster-whisper when YouTube blocks the IP (e.g. on EC2).
 faster-whisper>=1.0.0
-youtube-transcript-api>=0.6.2
+youtube-transcript-api>=1.0.0
+yt-dlp>=2024.1.0
 
 # RAG
 numpy>=1.26.0

@@ -197,17 +197,12 @@ def transcribe_audio_bytes(audio_bytes: bytes, *, filename_hint: str = "audio") 
 
 # ─── YouTube captions ───────────────────────────────────────────────
 
-def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en-US")) -> TranscriptionResult:
-    """Pull auto- or manually-generated captions for a YouTube video.
+def _transcribe_youtube_captions(video_id: str, prefer_langs: tuple[str, ...]) -> TranscriptionResult:
+    """Fast path: pull existing captions via youtube-transcript-api.
 
-    Prefers manual transcripts over auto-generated when available (they're
-    cleaner for civic content with named speakers and motion language).
-
-    Uses youtube-transcript-api 1.x instance API. The 0.6.x static API
-    (`YouTubeTranscriptApi.list_transcripts`) was removed in v1.0; the new
-    flow is `YouTubeTranscriptApi().list(video_id)` returning an iterable
-    with `.find_manually_created_transcript`/`.find_generated_transcript`.
-    """
+    Returns instantly on success. Raises RuntimeError when YouTube blocks
+    the IP (datacenter/AWS), captions are disabled, or no language match —
+    caller is expected to fall through to yt-dlp + Whisper."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api._errors import (
@@ -233,9 +228,6 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
     except Exception as e:
         raise RuntimeError(f"YouTube transcript fetch failed for {video_id}: {e}")
 
-    # In 1.x, raw is a FetchedTranscript with .snippets; each snippet has
-    # .text/.start/.duration attributes (not dict keys). The library still
-    # accepts dict-style access on legacy versions, so we handle both.
     segs: list[TranscriptSegment] = []
     last_end = 0.0
     iterable = getattr(raw, "snippets", None) or raw
@@ -244,7 +236,7 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
             start = float(entry.start)
             dur = float(getattr(entry, "duration", 0.0))
             text = (entry.text or "").replace("\n", " ").strip()
-        else:  # dict (0.6.x fallback)
+        else:  # 0.6.x dict fallback
             start = float(entry.get("start", 0.0))
             dur = float(entry.get("duration", 0.0))
             text = (entry.get("text") or "").replace("\n", " ").strip()
@@ -258,4 +250,76 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
         engine=engine,
         language=getattr(transcript, "language_code", None) or "en",
         duration_seconds=last_end,
+    )
+
+
+def _download_youtube_audio(video_id: str) -> tuple[bytes, str]:
+    """Use yt-dlp to fetch the best audio-only stream as bytes.
+
+    Returns (audio_bytes, filename_hint). yt-dlp generally works from cloud
+    IPs where the captions API gets RequestBlocked, because it negotiates
+    via the player API instead of the transcript service. Uses a temp file
+    to stream the download, then reads it back — yt-dlp doesn't expose an
+    in-memory output buffer."""
+    try:
+        import yt_dlp
+    except ImportError as e:
+        raise RuntimeError(f"yt-dlp not installed: {e}")
+
+    with tempfile.TemporaryDirectory(prefix="ahmt_yt_") as td:
+        out_template = os.path.join(td, "audio.%(ext)s")
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": out_template,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            # Don't write metadata files; we just want the audio.
+            "writeinfojson": False,
+            "writethumbnail": False,
+        }
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except Exception as e:
+            raise RuntimeError(f"yt-dlp audio download failed for {video_id}: {e}")
+        # yt-dlp picks the extension based on the source stream.
+        for fname in os.listdir(td):
+            if fname.startswith("audio."):
+                path = os.path.join(td, fname)
+                with open(path, "rb") as fh:
+                    return fh.read(), fname
+        raise RuntimeError(f"yt-dlp produced no audio file for {video_id}")
+
+
+def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en-US")) -> TranscriptionResult:
+    """Get a transcript for a YouTube video.
+
+    Two paths:
+      1. captions API (fast, ~1s) — works from residential IPs
+      2. yt-dlp audio download + faster-whisper (~realtime) — works from
+         datacenter IPs where YouTube blocks the captions endpoint
+
+    Tries (1) first; falls back to (2) on any error so prod gets transcripts
+    even from the EC2 IP block and local dev stays fast.
+    """
+    try:
+        return _transcribe_youtube_captions(video_id, prefer_langs)
+    except RuntimeError as e:
+        logger.warning(
+            "YouTube captions API unavailable for %s (%s); falling back to yt-dlp + Whisper",
+            video_id, str(e)[:200],
+        )
+
+    audio_bytes, fname = _download_youtube_audio(video_id)
+    result = transcribe_audio_bytes(audio_bytes, filename_hint=fname)
+    # Tag the engine string so we can tell apart from town-audio transcriptions
+    # in stats/debugging.
+    return TranscriptionResult(
+        text=result.text,
+        segments=result.segments,
+        engine=f"yt-dlp+{result.engine}",
+        language=result.language,
+        duration_seconds=result.duration_seconds,
     )

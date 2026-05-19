@@ -67,11 +67,11 @@ def main() -> int:
         except Exception as e:
             logger.exception("Unhandled error transcoding %s: %s", mid, e)
 
-    # ── 2. Transcribe one. Prefer YouTube (fast captions) over audio.
+    # ── 2. Transcribe one. Audio first (always works from our S3), YouTube
+    # second (frequently blocked from EC2 IPs — see comment in
+    # services/transcription_service.py::transcribe_youtube).
     if _within_budget(started):
         candidates = pending_transcribe_ids()
-        # Sort: YouTube first, then audio. The DB query already orders by
-        # date desc, so within each group newest meetings transcribe first.
         from sqlalchemy import text as sql_text
         from database import SessionLocal
         if candidates:
@@ -89,11 +89,11 @@ def main() -> int:
             finally:
                 db.close()
 
-            target = (yt or audio)[0] if (yt or audio) else None
+            target = (audio or yt)[0] if (audio or yt) else None
             if target:
                 logger.info(
-                    "Transcribing 1 of %d pending (yt=%d, audio=%d): %s",
-                    len(candidates), len(yt), len(audio), target,
+                    "Transcribing 1 of %d pending (audio=%d, yt=%d): %s",
+                    len(candidates), len(audio), len(yt), target,
                 )
                 try:
                     outcome = process_transcribe(target)

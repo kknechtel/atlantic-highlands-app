@@ -201,7 +201,13 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
     """Pull auto- or manually-generated captions for a YouTube video.
 
     Prefers manual transcripts over auto-generated when available (they're
-    cleaner for civic content with named speakers and motion language)."""
+    cleaner for civic content with named speakers and motion language).
+
+    Uses youtube-transcript-api 1.x instance API. The 0.6.x static API
+    (`YouTubeTranscriptApi.list_transcripts`) was removed in v1.0; the new
+    flow is `YouTubeTranscriptApi().list(video_id)` returning an iterable
+    with `.find_manually_created_transcript`/`.find_generated_transcript`.
+    """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api._errors import (
@@ -210,8 +216,9 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
     except ImportError as e:
         raise RuntimeError(f"youtube-transcript-api not installed: {e}")
 
+    ytt = YouTubeTranscriptApi()
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = ytt.list(video_id)
         try:
             transcript = transcript_list.find_manually_created_transcript(list(prefer_langs))
             engine = "youtube-captions-manual"
@@ -226,13 +233,21 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
     except Exception as e:
         raise RuntimeError(f"YouTube transcript fetch failed for {video_id}: {e}")
 
+    # In 1.x, raw is a FetchedTranscript with .snippets; each snippet has
+    # .text/.start/.duration attributes (not dict keys). The library still
+    # accepts dict-style access on legacy versions, so we handle both.
     segs: list[TranscriptSegment] = []
     last_end = 0.0
-    for entry in raw:
-        # entry items are {text, start, duration}
-        start = float(entry.get("start", 0.0))
-        dur = float(entry.get("duration", 0.0))
-        text = (entry.get("text") or "").replace("\n", " ").strip()
+    iterable = getattr(raw, "snippets", None) or raw
+    for entry in iterable:
+        if hasattr(entry, "start"):
+            start = float(entry.start)
+            dur = float(getattr(entry, "duration", 0.0))
+            text = (entry.text or "").replace("\n", " ").strip()
+        else:  # dict (0.6.x fallback)
+            start = float(entry.get("start", 0.0))
+            dur = float(entry.get("duration", 0.0))
+            text = (entry.get("text") or "").replace("\n", " ").strip()
         if not text:
             continue
         segs.append(TranscriptSegment(start=start, end=start + dur, text=text))
@@ -241,6 +256,6 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
         text=" ".join(s.text for s in segs),
         segments=segs,
         engine=engine,
-        language=transcript.language_code or "en",
+        language=getattr(transcript, "language_code", None) or "en",
         duration_seconds=last_end,
     )

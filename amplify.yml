@@ -8,7 +8,11 @@ applications:
             - npm ci
         build:
           commands:
-            - echo "NEXT_PUBLIC_API_URL=http://35.173.239.249" > .env.local
+            # EC2 IP is ephemeral — rotates on stop/start. Once we get an
+            # Elastic IP allocated to the instance (the dev AWS account is
+            # currently at the EIP cap, so amplify.yml must be edited each
+            # time the instance restarts).
+            - echo "NEXT_PUBLIC_API_URL=http://107.20.14.246" > .env.local
             - npm run build
       artifacts:
         baseDirectory: .next

@@ -7,12 +7,14 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/opt/atlantic-highlands/api
 # Inherit ah-api's environment (DATABASE_URL, AWS creds, AHNJ_PROXY_*).
-# The override file is created via systemctl edit and lives at:
-#   /etc/systemd/system/ah-api.service.d/ahnj-proxy.conf
-# We can't EnvironmentFile= that one directly (it uses Environment= syntax,
-# not KEY=VALUE), so re-declare the proxy vars here. Other vars come from
-# /etc/environment, which both services already inherit.
-Environment="AHNJ_PROXY_URL=https://ahnj-proxy.kknechtel.workers.dev"
+# AHNJ_PROXY_SECRET in particular must be present or ahnj.com requests
+# return 403 from the Cloudflare Worker. Drop-in this service must have
+# the same proxy override that ah-api uses:
+#   sudo mkdir -p /etc/systemd/system/ah-scraper.service.d/
+#   sudo cp /etc/systemd/system/ah-api.service.d/ahnj-proxy.conf \
+#           /etc/systemd/system/ah-scraper.service.d/ahnj-proxy.conf
+#   sudo systemctl daemon-reload
+# The drop-in file is not in version control (it carries the secret).
 EnvironmentFile=-/etc/atlantic-highlands.env
 
 ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.scheduled_scrape

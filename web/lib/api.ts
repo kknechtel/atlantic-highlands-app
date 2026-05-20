@@ -483,17 +483,63 @@ export interface SearchResult {
   id: string; filename: string; doc_type: string | null; category: string | null;
   fiscal_year: string | null; department: string | null;
   status: string; score: number; snippet: string | null;
-  /** "phrase" = matched a quoted phrase, "fts" = ranked match, "filename" = ILIKE fallback. */
-  match_type: "phrase" | "fts" | "filename";
+  /** "phrase" = quoted, "hybrid" = semantic+keyword+rerank, "fts" = keyword-only,
+   *  "filename" = ILIKE fallback (no chunks ingested yet). */
+  match_type: "phrase" | "fts" | "hybrid" | "filename";
+  /** Up to 2 more snippets from other chunks in the same doc. */
+  additional_snippets?: string[] | null;
+  /** Page numbers (page_start from matched chunks) — for deep-linking. */
+  pages?: number[] | null;
+  /** Total chunks in this doc that matched — shown as an "N matches" badge. */
+  match_count?: number | null;
+}
+
+export interface ParsedFilters {
+  fiscal_year: string | null;
+  category: string | null;
+  doc_type: string | null;
+  min_amount: number | null;
+  max_amount: number | null;
+  /** Human-readable list of what was auto-extracted from the query
+   *  (e.g. ["FY 2024", "School", "audit"]) — shown as chips. */
+  hits: string[];
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  /** pg_trgm suggestion when the result set is sparse. */
+  did_you_mean: string | null;
+  /** Filters auto-extracted from the natural-language query. */
+  parsed_filters: ParsedFilters | null;
+  /** UUID for analytics — pass back to /api/search/click on result open. */
+  query_id: string | null;
+  latency_ms: number | null;
 }
 
 export async function searchDocuments(
   query: string,
-  params?: { project_id?: string; category?: string; doc_type?: string; fiscal_year?: string; department?: string },
-): Promise<SearchResult[]> {
-  return request<SearchResult[]>("/api/search/", {
+  params?: {
+    project_id?: string; category?: string; doc_type?: string;
+    fiscal_year?: string; department?: string; document_id?: string;
+    limit?: number;
+  },
+): Promise<SearchResponse> {
+  return request<SearchResponse>("/api/search/", {
     method: "POST", body: JSON.stringify({ query, ...params }),
   });
+}
+
+/** Tell the backend which result the user opened — relevance signal for the
+ *  analytics log. Fire-and-forget; errors are swallowed. */
+export async function recordSearchClick(query_id: string, document_id: string): Promise<void> {
+  try {
+    await request<{ ok: boolean }>("/api/search/click", {
+      method: "POST",
+      body: JSON.stringify({ query_id, document_id }),
+    });
+  } catch {
+    // Click tracking is best-effort — never block the user
+  }
 }
 
 export interface SearchFacets {
@@ -773,17 +819,30 @@ export interface ParcelListItem {
   property_class: string | null;
   owner_name: string | null;
   total_assessment: number | null;
+  tax_amount: number | null;
+  lot_size_acres: number | null;
+  year_built: number | null;
   last_sale_price: number | null;
   last_sale_date: string | null;
 }
+
+export type ParcelSortColumn =
+  | "block_lot"
+  | "property_location"
+  | "property_class"
+  | "owner_name"
+  | "total_assessment"
+  | "tax_amount"
+  | "lot_size_acres"
+  | "year_built"
+  | "last_sale_price"
+  | "last_sale_date";
 
 export interface ParcelDetail extends ParcelListItem {
   pams_pin: string | null;
   county_code: string;
   muni_code: string;
   zoning: string | null;
-  lot_size_acres: number | null;
-  year_built: number | null;
   living_sqft: number | null;
   owner_street: string | null;
   owner_city_state_zip: string | null;
@@ -791,7 +850,6 @@ export interface ParcelDetail extends ParcelListItem {
   land_value: number | null;
   improvement_value: number | null;
   exemption_value: number | null;
-  tax_amount: number | null;
   last_sale_book: string | null;
   last_sale_page: string | null;
   last_sale_nu_code: string | null;
@@ -803,6 +861,8 @@ export async function listParcels(params: {
   block?: string;
   property_class?: string;
   min_assessment?: number;
+  sort_by?: ParcelSortColumn;
+  sort_dir?: "asc" | "desc";
   limit?: number;
   offset?: number;
 } = {}): Promise<ParcelListItem[]> {

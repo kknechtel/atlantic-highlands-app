@@ -226,9 +226,10 @@ export default function GlobalChat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: docResults } = useQuery({
+  const { data: docResultsResponse } = useQuery({
     queryKey: ["chat-doc-search", docSearch], queryFn: () => searchDocuments(docSearch), enabled: docSearch.length > 1,
   });
+  const docResults = docResultsResponse?.results;
   const { data: sessions } = useQuery({
     queryKey: ["chat-sessions"], queryFn: getChatSessions, enabled: showHistory,
   });
@@ -294,7 +295,7 @@ export default function GlobalChat() {
   const handleViewDoc = async (docId: string, filename: string) => {
     try {
       if (!docId && filename) {
-        const r = await searchDocuments(filename);
+        const r = (await searchDocuments(filename)).results;
         const exact = r.find((d) => d.filename === filename);
         const startsWith = r.find((d) => d.filename.toLowerCase().startsWith(filename.toLowerCase()));
         const contains = r.find((d) => d.filename.toLowerCase().includes(filename.toLowerCase()));

@@ -94,7 +94,7 @@ export default function CitationPreview({ mode = 'auth', publicSlug }: Props = {
                     // Auth mode: resolve filename → docId → signed URL.
                     // searchDocuments returns ordered matches; pick the best
                     // one (exact filename, then startsWith, then contains).
-                    const r = await searchDocuments(detail.filename);
+                    const r = (await searchDocuments(detail.filename)).results;
                     const exact = r.find(d => d.filename === detail.filename);
                     const starts = r.find(d => d.filename.toLowerCase().startsWith(detail.filename.toLowerCase()));
                     const contains = r.find(d => d.filename.toLowerCase().includes(detail.filename.toLowerCase()));

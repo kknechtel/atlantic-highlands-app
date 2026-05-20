@@ -10,6 +10,7 @@ import {
   getDocumentViewUrl,
   searchDocuments,
   getSearchFacets,
+  recordSearchClick,
   type Document,
 } from "@/lib/api";
 import dynamic from "next/dynamic";
@@ -99,7 +100,7 @@ export default function DocumentLibraryPage() {
     queryFn: () => getSearchFacets(),
   });
 
-  const { data: searchResults } = useQuery({
+  const { data: searchResponse } = useQuery({
     queryKey: ["search", search, categoryFilter, docTypeFilter],
     queryFn: () =>
       searchDocuments(search, {
@@ -108,6 +109,7 @@ export default function DocumentLibraryPage() {
       }),
     enabled: search.length > 1,
   });
+  const searchResults = searchResponse?.results;
 
   const createProjectMutation = useMutation({
     mutationFn: () => createProject(newProjectName, undefined, newProjectType || undefined),
@@ -130,6 +132,11 @@ export default function DocumentLibraryPage() {
   const handleSelectDoc = async (doc: Document) => {
     setSelectedDoc(doc);
     setViewerUrl(null);
+    // Fire-and-forget: tell the backend the user clicked this result.
+    // Used for relevance analytics — see search_query_log.
+    if (searchResponse?.query_id && search.length > 1) {
+      recordSearchClick(searchResponse.query_id, doc.id);
+    }
     // Fetch full doc (includes notes/AI summary which are stripped from list)
     try {
       const full = await getDocument(doc.id);
@@ -145,10 +152,12 @@ export default function DocumentLibraryPage() {
     }
   };
 
-  // Build a snippet lookup keyed by document id so DocRow can render context
-  const snippetById = useMemo(() => {
-    const map = new Map<string, { snippet: string | null; match_type: SearchResult["match_type"] }>();
-    (searchResults || []).forEach((r) => map.set(r.id, { snippet: r.snippet, match_type: r.match_type }));
+  // Result lookup keyed by document id — carries snippet, match_type,
+  // additional snippets, page numbers, and chunk-match count so DocRow can
+  // render rich match context.
+  const searchById = useMemo(() => {
+    const map = new Map<string, SearchResult>();
+    (searchResults || []).forEach((r) => map.set(r.id, r));
     return map;
   }, [searchResults]);
 
@@ -384,13 +393,46 @@ export default function DocumentLibraryPage() {
         {/* Document hierarchy */}
         <div className="flex-1 overflow-y-auto">
           {isSearching ? (
-            // Flat list for search results — show snippets so the user sees context
-            displayDocs.map((doc) => (
-              <DocRow key={doc.id} doc={doc} isSelected={selectedDoc?.id === doc.id}
-                onClick={() => handleSelectDoc(doc)} docTypeColor={docTypeColor}
-                snippet={snippetById.get(doc.id)?.snippet}
-                matchType={snippetById.get(doc.id)?.match_type} />
-            ))
+            <>
+              {/* Did-you-mean banner — only when result count is sparse */}
+              {searchResponse?.did_you_mean && (
+                <button
+                  onClick={() => setSearch(searchResponse.did_you_mean!)}
+                  className="w-full text-left px-4 py-2 bg-amber-50 border-b border-amber-200 hover:bg-amber-100 transition-colors"
+                >
+                  <span className="text-xs text-amber-900">
+                    Did you mean{" "}
+                    <span className="font-semibold underline">{searchResponse.did_you_mean}</span>?
+                  </span>
+                </button>
+              )}
+              {/* Auto-extracted filter chips — shows what the parser pulled
+                  out of the natural-language query (e.g. "FY 2024", "School",
+                  "audit"). Separate from manual dropdown chips above. */}
+              {searchResponse?.parsed_filters && searchResponse.parsed_filters.hits.length > 0 && (
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">From your query:</span>
+                  {searchResponse.parsed_filters.hits.map((hit, i) => (
+                    <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white border border-gray-200 text-gray-700">
+                      {hit}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Flat list with snippets so the user sees match context */}
+              {displayDocs.map((doc) => {
+                const hit = searchById.get(doc.id);
+                return (
+                  <DocRow key={doc.id} doc={doc} isSelected={selectedDoc?.id === doc.id}
+                    onClick={() => handleSelectDoc(doc)} docTypeColor={docTypeColor}
+                    snippet={hit?.snippet}
+                    matchType={hit?.match_type}
+                    additionalSnippets={hit?.additional_snippets || undefined}
+                    pages={hit?.pages || undefined}
+                    matchCount={hit?.match_count || undefined} />
+                );
+              })}
+            </>
           ) : (
             // Hierarchical view
             Array.from(hierarchy.entries()).map(([entityKey, entityNode]) => {
@@ -605,25 +647,40 @@ export default function DocumentLibraryPage() {
   );
 }
 
-function DocRow({ doc, isSelected, onClick, docTypeColor, indent, snippet, matchType }: {
+function renderMarked(snippet: string, key: string | number) {
+  // Backend returns snippets with <<MARK>>...<</MARK>> so we can apply our own
+  // styling without trusting raw HTML from the DB. Replace with safe spans.
+  const parts = snippet.split(/(<<MARK>>|<<\/MARK>>)/);
+  let inMark = false;
+  return (
+    <span key={key}>
+      {parts.map((p, i) => {
+        if (p === "<<MARK>>") { inMark = true; return null; }
+        if (p === "<</MARK>>") { inMark = false; return null; }
+        if (inMark) return <mark key={i} className="bg-amber-200 text-amber-900 px-0.5 rounded">{p}</mark>;
+        return <span key={i}>{p}</span>;
+      })}
+    </span>
+  );
+}
+
+function DocRow({
+  doc, isSelected, onClick, docTypeColor, indent,
+  snippet, matchType, additionalSnippets, pages, matchCount,
+}: {
   doc: Document; isSelected: boolean; onClick: () => void;
   docTypeColor: (t: string | null) => string; indent?: boolean;
   snippet?: string | null;
-  matchType?: "phrase" | "fts" | "filename";
+  matchType?: "phrase" | "fts" | "hybrid" | "filename";
+  additionalSnippets?: string[];
+  pages?: number[];
+  matchCount?: number;
 }) {
-  // Backend returns snippets with <<MARK>>...<</MARK>> so we can apply our own
-  // styling without trusting raw HTML from the DB. Replace with safe spans.
-  const renderedSnippet = useMemo(() => {
-    if (!snippet) return null;
-    const parts = snippet.split(/(<<MARK>>|<<\/MARK>>)/);
-    let inMark = false;
-    return parts.map((p, i) => {
-      if (p === "<<MARK>>") { inMark = true; return null; }
-      if (p === "<</MARK>>") { inMark = false; return null; }
-      if (inMark) return <mark key={i} className="bg-amber-200 text-amber-900 px-0.5 rounded">{p}</mark>;
-      return <span key={i}>{p}</span>;
-    });
-  }, [snippet]);
+  const renderedSnippet = useMemo(() => (snippet ? renderMarked(snippet, "p") : null), [snippet]);
+  const renderedAdditional = useMemo(
+    () => (additionalSnippets || []).slice(0, 2).map((s, i) => renderMarked(s, i)),
+    [additionalSnippets],
+  );
 
   return (
     <button onClick={onClick}
@@ -639,8 +696,16 @@ function DocRow({ doc, isSelected, onClick, docTypeColor, indent, snippet, match
             {matchType === "phrase" && (
               <span className="text-[9px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1 rounded">phrase</span>
             )}
+            {matchType === "hybrid" && (
+              <span className="text-[9px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1 rounded" title="Semantic + keyword + rerank">hybrid</span>
+            )}
             {matchType === "filename" && (
               <span className="text-[9px] uppercase tracking-wide bg-gray-100 text-gray-500 px-1 rounded">name</span>
+            )}
+            {matchCount && matchCount > 1 && (
+              <span className="text-[9px] uppercase tracking-wide bg-blue-50 text-blue-700 px-1 rounded">
+                {matchCount} matches
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -648,9 +713,23 @@ function DocRow({ doc, isSelected, onClick, docTypeColor, indent, snippet, match
               <span className="text-[10px] text-gray-400">FY {displayFiscalYear(doc.fiscal_year)}</span>
             )}
             {doc.department && <span className="text-[10px] text-gray-400">{doc.department}</span>}
+            {pages && pages.length > 0 && (
+              <span className="text-[10px] text-gray-400">
+                p. {pages.slice(0, 3).join(", ")}{pages.length > 3 ? "…" : ""}
+              </span>
+            )}
           </div>
           {renderedSnippet && (
             <p className="text-[11px] text-gray-600 mt-1 leading-snug line-clamp-2">{renderedSnippet}</p>
+          )}
+          {renderedAdditional.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {renderedAdditional.map((node, i) => (
+                <p key={i} className="text-[11px] text-gray-500 leading-snug line-clamp-1 pl-2 border-l border-gray-200">
+                  {node}
+                </p>
+              ))}
+            </div>
           )}
         </div>
         <ChevronRightIcon className="w-3 h-3 text-gray-300 flex-shrink-0 mt-1.5" />

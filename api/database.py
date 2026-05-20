@@ -172,6 +172,10 @@ def _migrate():
     """
     new_columns = [
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Parcel polygons (GeoJSON in JSONB) for the /parcels/map view.
+        # Populated by scripts.fetch_parcel_geometry.
+        ("parcels", "geometry", "JSONB"),
+        ("parcels", "centroid", "JSONB"),
         # Financial statement upgrades (Phase 1)
         ("financial_statements", "extraction_pass", "INTEGER DEFAULT 0"),
         ("financial_statements", "reconcile_status", "VARCHAR DEFAULT 'not_attempted'"),
@@ -224,6 +228,13 @@ def _migrate():
         except Exception as e:
             logger.warning(f"pgvector extension not available — semantic search will fall back to keyword-only: {e}")
 
+        # 2b. pg_trgm powers the "did you mean" feature — similarity() against
+        # the filename corpus turns "highander" into a suggestion for "highlander".
+        try:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        except Exception as e:
+            logger.warning(f"pg_trgm extension not available — typo suggestions disabled: {e}")
+
         # 3. Add embedding + fts_vector columns + chunk-level pgvector cols
         rag_columns = [
             ("documents", "embedding", f"vector({EMBEDDING_DIM})"),
@@ -255,6 +266,9 @@ def _migrate():
             # IVFFLAT for vector cosine. Lists=100 is fine up to ~100K chunks; bump later.
             ("ix_documents_vec", "CREATE INDEX IF NOT EXISTS ix_documents_vec ON documents USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"),
             ("ix_chunks_vec", "CREATE INDEX IF NOT EXISTS ix_chunks_vec ON document_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"),
+            # Trigram index on filenames — powers "did you mean" via similarity().
+            # gin_trgm_ops keeps query latency sub-5ms on the ~3k-doc corpus.
+            ("ix_documents_filename_trgm", "CREATE INDEX IF NOT EXISTS ix_documents_filename_trgm ON documents USING gin (filename gin_trgm_ops)"),
         ]
         for name, sql in rag_indexes:
             try:
@@ -372,5 +386,52 @@ def _migrate():
                 conn.execute(text(sql))
             except Exception as e:
                 logger.warning(f"llm_usage index skipped: {e}")
+
+        # 8. Search analytics — one row per query. The zero-result rows are
+        # the highest-value: each is either a missing document or a vocab gap
+        # in the synonym dictionary. clicked_document_id is back-filled by
+        # POST /api/search/click when a user opens a result.
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS search_query_log (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    query TEXT NOT NULL,
+                    normalized_query TEXT,
+                    parsed_filters JSONB DEFAULT '{}'::jsonb,
+                    result_count INTEGER DEFAULT 0,
+                    clicked_document_id UUID,
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    latency_ms INTEGER,
+                    created_at TIMESTAMP DEFAULT now()
+                )
+            """))
+        except Exception as e:
+            logger.warning(f"search_query_log create with gen_random_uuid failed: {e}")
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS search_query_log (
+                        id UUID PRIMARY KEY,
+                        query TEXT NOT NULL,
+                        normalized_query TEXT,
+                        parsed_filters JSONB DEFAULT '{}'::jsonb,
+                        result_count INTEGER DEFAULT 0,
+                        clicked_document_id UUID,
+                        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                        latency_ms INTEGER,
+                        created_at TIMESTAMP DEFAULT now()
+                    )
+                """))
+            except Exception as e2:
+                logger.warning(f"search_query_log create failed: {e2}")
+
+        for sql in [
+            "CREATE INDEX IF NOT EXISTS ix_search_log_created ON search_query_log(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS ix_search_log_zero ON search_query_log(result_count) WHERE result_count = 0",
+            "CREATE INDEX IF NOT EXISTS ix_search_log_user ON search_query_log(user_id)",
+        ]:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"search_query_log index skipped: {e}")
 
         conn.commit()

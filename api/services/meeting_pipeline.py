@@ -34,6 +34,26 @@ _RECORDING_DOC_TYPES = (
 _DOC_TYPES_SQL = "(" + ",".join(f"'{t}'" for t in _RECORDING_DOC_TYPES) + ")"
 
 
+def _lock_meeting(db, meeting_id: str) -> None:
+    """Acquire a Postgres advisory transaction lock keyed by meeting_id.
+
+    Released automatically when the calling transaction commits or rolls
+    back. Two places mutate a recording's chunks/embedding/status:
+      1. routes/meetings.py BackgroundTasks (user clicks Transcribe in UI)
+      2. scripts/transcribe_pending.py worker tick (systemd timer)
+    Without this lock they can deadlock by taking documents + document_chunks
+    locks in inverse order. With it, whichever transaction gets to the lock
+    first runs to completion; the other waits.
+
+    Uses the two-arg form (int4, int4) — hashtext() returns int4, so we
+    pair it with 0 as a namespace partition rather than casting to bigint.
+    """
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:k), 0)"),
+        {"k": meeting_id},
+    )
+
+
 def process_playback_ready(meeting_id: str) -> str:
     """Transcode .wma/.wmv/etc. to .mp3 so browsers can play it.
 
@@ -51,6 +71,7 @@ def process_playback_ready(meeting_id: str) -> str:
 
     db = SessionLocal()
     try:
+        _lock_meeting(db, meeting_id)
         doc = db.query(Document).filter(Document.id == meeting_id).first()
         if not doc:
             return "missing"
@@ -109,6 +130,7 @@ def process_transcribe(meeting_id: str) -> str:
 
     db = SessionLocal()
     try:
+        _lock_meeting(db, meeting_id)
         doc = db.query(Document).filter(Document.id == meeting_id).first()
         if not doc:
             logger.warning("Transcribe target %s vanished", meeting_id)
@@ -172,6 +194,7 @@ def process_summarize(meeting_id: str) -> str:
 
     db = SessionLocal()
     try:
+        _lock_meeting(db, meeting_id)
         doc = db.query(Document).filter(Document.id == meeting_id).first()
         if not doc:
             return "missing"
@@ -270,16 +293,18 @@ def reingest_pending() -> int:
       3. (Implicit) Once a doc has timestamped extracted_text AND chunks,
          it's skipped on subsequent runs — idempotent.
 
-    Returns the number of documents re-ingested."""
-    from services.ingestion import ingest_document
-    from models.document_chunk import DocumentChunk
-    db = SessionLocal()
+    Returns the number of documents re-ingested.
+
+    Each doc is processed in its OWN session/transaction so the advisory
+    lock (per doc) doesn't bottleneck the whole batch and so a failure on
+    one row doesn't poison the others' transactions.
+    """
+    # Discovery is read-only — no lock needed.
+    discovery_db = SessionLocal()
     try:
-        # Pick recordings where either no chunks exist OR extracted_text
-        # predates the [HH:MM:SS] format (chunks are stale and need rebuild).
-        rows = db.execute(
+        rows = discovery_db.execute(
             text(
-                f"SELECT d.id, (COUNT(dc.id) > 0) AS has_chunks "
+                f"SELECT d.id "
                 f"FROM documents d "
                 f"LEFT JOIN document_chunks dc ON dc.document_id = d.id "
                 f"WHERE d.doc_type IN {_DOC_TYPES_SQL} "
@@ -291,46 +316,65 @@ def reingest_pending() -> int:
                 f"LIMIT 50"
             )
         ).fetchall()
-        if not rows:
-            return 0
-        logger.info("Re-ingesting %d recording(s) for chunks/timestamps", len(rows))
-        n = 0
-        for doc_id, had_chunks in rows:
-            doc_id = str(doc_id)
-            doc = db.query(Document).filter(Document.id == doc_id).first()
-            if not doc:
-                continue
-            # If we have segments in metadata, rebuild extracted_text from them
-            # so it carries [HH:MM:SS] markers (older rows had flat text).
-            meta = doc.metadata_ or {}
-            segments = (meta.get("transcript") or {}).get("segments") or []
-            if segments:
-                from services.transcription_service import (
-                    TranscriptSegment, _segments_to_timestamped_text,
-                )
-                seg_objs = [
-                    TranscriptSegment(
-                        start=float(s.get("start", 0)),
-                        end=float(s.get("end", 0)),
-                        text=s.get("text") or "",
-                    )
-                    for s in segments
-                ]
-                ts_text = _segments_to_timestamped_text(seg_objs)
-                if ts_text and ts_text != doc.extracted_text:
-                    doc.extracted_text = ts_text
-                    db.commit()
-            # Wipe stale chunks before re-ingest so old flat-text chunks don't
-            # linger alongside new timestamped ones. ingest_document is
-            # idempotent for new chunks but doesn't clean up old ones.
-            if had_chunks:
-                db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).delete()
-                db.commit()
-            try:
-                ingest_document(db, doc)
+    finally:
+        discovery_db.close()
+
+    if not rows:
+        return 0
+
+    logger.info("Re-ingesting %d recording(s) for chunks/timestamps", len(rows))
+    n = 0
+    for (doc_id,) in rows:
+        doc_id_str = str(doc_id)
+        try:
+            if _reingest_one(doc_id_str):
                 n += 1
-            except Exception as e:
-                logger.warning("Re-ingest failed for %s: %s", doc_id, e)
-        return n
+        except Exception as e:
+            logger.warning("Re-ingest failed for %s: %s", doc_id_str, e)
+    return n
+
+
+def _reingest_one(doc_id: str) -> bool:
+    """Do a full transcript rebuild for one meeting under an advisory lock.
+
+    Opens a fresh session so the lock scope is tight and failures don't
+    poison sibling docs in the batch."""
+    from services.ingestion import ingest_document
+    from models.document_chunk import DocumentChunk
+    from services.transcription_service import (
+        TranscriptSegment, _segments_to_timestamped_text,
+    )
+
+    db = SessionLocal()
+    try:
+        _lock_meeting(db, doc_id)
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+
+        # Rebuild extracted_text from stored segments so it carries
+        # [HH:MM:SS] markers (older rows had flat text).
+        meta = doc.metadata_ or {}
+        segments = (meta.get("transcript") or {}).get("segments") or []
+        if segments:
+            seg_objs = [
+                TranscriptSegment(
+                    start=float(s.get("start", 0)),
+                    end=float(s.get("end", 0)),
+                    text=s.get("text") or "",
+                )
+                for s in segments
+            ]
+            ts_text = _segments_to_timestamped_text(seg_objs)
+            if ts_text and ts_text != doc.extracted_text:
+                doc.extracted_text = ts_text
+
+        # Wipe stale chunks so re-ingest produces a clean set; ingest_document
+        # is idempotent for new chunks but doesn't clean up old ones.
+        db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).delete()
+        db.flush()
+        # ingest_document commits internally — that's our lock-release point.
+        ingest_document(db, doc)
+        return True
     finally:
         db.close()

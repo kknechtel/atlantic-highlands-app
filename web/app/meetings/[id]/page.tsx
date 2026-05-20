@@ -148,9 +148,32 @@ export default function MeetingDetailPage() {
   };
 
   if (authLoading || !user || !meeting) {
+    // If the fetch failed, show the error here — without this, an API
+    // failure leaves the page stuck on "Loading meeting…" forever because
+    // `meeting` never becomes truthy.
     return (
-      <div className="p-6 flex items-center gap-2 text-gray-500">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading meeting…
+      <div className="max-w-3xl mx-auto p-6 space-y-3">
+        <Link href="/meetings" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+          <ArrowLeft className="w-4 h-4" /> All meetings
+        </Link>
+        {error ? (
+          <div className="p-4 rounded bg-red-50 border border-red-200 text-red-800 text-sm">
+            <div className="flex items-center gap-2 font-medium mb-1">
+              <AlertCircle className="w-4 h-4" /> Couldn&apos;t load meeting
+            </div>
+            <div className="font-mono text-xs break-all">{error}</div>
+            <button
+              onClick={() => { setError(null); refresh(); }}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-white border border-red-300 text-red-700 text-xs hover:bg-red-50"
+            >
+              <RefreshCw className="w-3 h-3" /> Retry
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading meeting…
+          </div>
+        )}
       </div>
     );
   }

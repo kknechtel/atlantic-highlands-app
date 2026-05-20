@@ -48,7 +48,11 @@ def main() -> int:
         if args.limit:
             q = q.limit(args.limit)
 
-        total = q.count()
+        # Materialize all rows up front instead of yield_per. yield_per uses a
+        # server-side named cursor that gets invalidated by db.commit(), and
+        # we want to commit in batches. 3-5k docs fits comfortably in memory.
+        docs = q.all()
+        total = len(docs)
         log.info("Processing %d documents (only_missing=%s, overwrite_dept=%s)",
                  total, not args.all, args.overwrite_department)
 
@@ -58,7 +62,7 @@ def main() -> int:
         skipped = 0
         processed = 0
 
-        for doc in q.yield_per(200):
+        for doc in docs:
             result = title_extractor.derive(
                 filename=doc.filename,
                 extracted_text=doc.extracted_text,
@@ -80,7 +84,7 @@ def main() -> int:
                 doc.doc_date = result["doc_date"]
                 date_updated += 1
 
-            # Periodic commit so a crash partway through still saves progress
+            # Periodic commit so a partial run still saves progress.
             if processed % 500 == 0:
                 if args.dry_run:
                     db.rollback()

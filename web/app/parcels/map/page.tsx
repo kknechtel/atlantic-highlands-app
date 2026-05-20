@@ -126,7 +126,7 @@ export default function ParcelMapPage() {
       <div className="flex-1 relative">
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-gray-400">
-            Loading {data?.features.length ?? "1,942"} parcels…
+            Loading parcels…
           </div>
         ) : data ? (
           <ParcelMap features={data.features} bins={bins} colors={ASSESSMENT_COLORS} onSelect={setSelected} />

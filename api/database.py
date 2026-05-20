@@ -172,6 +172,12 @@ def _migrate():
     """
     new_columns = [
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Document titles — added 2026-05-19. Populated by
+        # services.title_extractor (also runnable as a one-shot via
+        # POST /api/documents/backfill-titles). The filename column is the
+        # canonical identifier; title is the display string.
+        ("documents", "title", "VARCHAR"),
+        ("documents", "doc_date", "VARCHAR"),
         # Parcel polygons (GeoJSON in JSONB) for the /parcels/map view.
         # Populated by scripts.fetch_parcel_geometry.
         ("parcels", "geometry", "JSONB"),

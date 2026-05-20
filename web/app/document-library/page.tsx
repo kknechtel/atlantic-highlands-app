@@ -69,6 +69,21 @@ function displayFiscalYear(raw: string | null | undefined): string | null {
   return null;
 }
 
+/**
+ * Format an ISO YYYY-MM-DD into a compact human-readable date like
+ * "Feb 4, 2026". Date construction uses noon UTC to avoid timezone
+ * rollover making the day shift on the user's locale.
+ */
+function formatDocDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const [_, y, mo, d] = m;
+  const dt = new Date(`${y}-${mo}-${d}T12:00:00Z`);
+  if (isNaN(dt.getTime())) return iso;
+  return dt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
 export default function DocumentLibraryPage() {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
@@ -692,7 +707,9 @@ function DocRow({
         <DocumentTextIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="text-sm text-gray-900 truncate flex-1">{doc.filename}</p>
+            <p className="text-sm text-gray-900 truncate flex-1 font-medium">
+              {doc.title || doc.filename}
+            </p>
             {matchType === "phrase" && (
               <span className="text-[9px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1 rounded">phrase</span>
             )}
@@ -708,8 +725,17 @@ function DocRow({
               </span>
             )}
           </div>
+          {/* Show filename as a small secondary line ONLY when we have a real
+              title (otherwise the title field above already shows the filename
+              and we'd be duplicating). */}
+          {doc.title && (
+            <p className="text-[10px] text-gray-400 truncate mt-0.5 font-mono">{doc.filename}</p>
+          )}
           <div className="flex items-center gap-1.5 mt-0.5">
-            {displayFiscalYear(doc.fiscal_year) && (
+            {doc.doc_date && (
+              <span className="text-[10px] text-gray-500 font-medium">{formatDocDate(doc.doc_date)}</span>
+            )}
+            {!doc.doc_date && displayFiscalYear(doc.fiscal_year) && (
               <span className="text-[10px] text-gray-400">FY {displayFiscalYear(doc.fiscal_year)}</span>
             )}
             {doc.department && <span className="text-[10px] text-gray-400">{doc.department}</span>}

@@ -45,6 +45,12 @@ class Document(Base):
     category = Column(String, nullable=True)  # "town", "school"
     department = Column(String, nullable=True)
     fiscal_year = Column(String, nullable=True)
+    # Human-readable title for the document (e.g. "Planning Board Meeting Minutes —
+    # February 4, 2026"). Derived by services.title_extractor from extracted_text +
+    # filename patterns + AI metadata. Filename stays as the canonical identifier
+    # (used for URLs, S3 keys, dedup) but title is what the UI shows users.
+    title = Column(String, nullable=True)
+    doc_date = Column(String, nullable=True)  # ISO YYYY-MM-DD when extractable
     status = Column(String, default="uploaded")  # uploaded, processing, processed, failed
     metadata_ = Column("metadata", JSONB, default={})
     notes = Column(Text, nullable=True)

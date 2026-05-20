@@ -51,6 +51,8 @@ router = APIRouter()
 class SearchResult(BaseModel):
     id: str
     filename: str
+    title: str | None = None
+    doc_date: str | None = None  # ISO YYYY-MM-DD when extractable
     doc_type: str | None
     category: str | None
     fiscal_year: str | None
@@ -83,6 +85,7 @@ class ParsedFilters(BaseModel):
     fiscal_year: str | None = None
     category: str | None = None
     doc_type: str | None = None
+    department: str | None = None
     min_amount: float | None = None
     max_amount: float | None = None
     hits: list[str] = []
@@ -161,7 +164,7 @@ def _resolve_filters(req: SearchRequest, parsed: query_parser.ParsedQuery) -> di
         "fiscal_year": req.fiscal_year or parsed.fiscal_year,
         "category": req.category or parsed.category,
         "doc_type": req.doc_type or parsed.doc_type,
-        "department": req.department,
+        "department": req.department or parsed.department,
         "project_id": req.project_id,
     }
 
@@ -305,24 +308,32 @@ def search_documents(
         except Exception as exc:
             logger.warning("rerank failed, keeping hybrid order: %s", exc)
 
-    # ── 5. Recency boost
-    for c in chunks:
-        c["score"] = float(c.get("score") or 0) + _recency_boost(
-            c.get("fiscal_year"), c.get("created_at")
-        )
-
-    # ── 6. Literal-match dedup (kills stemmer over-match like "highander")
+    # ── 5. Recency boost + title-match boost.
+    #
+    # Title boost is the bigger lever: a doc whose TITLE matches the user's
+    # query is almost certainly what they want, far more than a doc that
+    # just mentions the term in passing. +0.4 is roughly equivalent to
+    # going from cosine 0.5 → 0.9, enough to leap over body-only mentions.
     q_literal = _strip_operators(query)
+    for c in chunks:
+        base = float(c.get("score") or 0)
+        base += _recency_boost(c.get("fiscal_year"), c.get("created_at"))
+        title = (c.get("title") or "")
+        if q_literal and title and q_literal.lower() in title.lower():
+            base += 0.4
+        c["score"] = base
+    chunks.sort(key=lambda r: r["score"], reverse=True)
+
+    # ── 6. Literal-match dedup (kills stemmer over-match like "highander").
+    # Title matches count too — a doc with the literal in its title is a
+    # legitimate hit even if the body text doesn't carry the exact word.
     if q_literal and not has_quotes and chunks:
-        any_literal = any(
-            q_literal.lower() in (c.get("content") or "").lower()
-            for c in chunks
-        )
+        def _has_literal(c):
+            haystack = (c.get("content") or "") + " " + (c.get("title") or "")
+            return q_literal.lower() in haystack.lower()
+        any_literal = any(_has_literal(c) for c in chunks)
         if any_literal:
-            chunks = [
-                c for c in chunks
-                if q_literal.lower() in (c.get("content") or "").lower()
-            ]
+            chunks = [c for c in chunks if _has_literal(c)]
 
     # ── 7. Roll up chunks → documents
     by_doc: dict[str, dict] = {}
@@ -355,6 +366,8 @@ def search_documents(
         results.append(SearchResult(
             id=str(r["document_id"]),
             filename=r.get("filename") or "",
+            title=r.get("title"),
+            doc_date=r.get("doc_date"),
             doc_type=r.get("doc_type"),
             category=r.get("category"),
             fiscal_year=r.get("fiscal_year"),
@@ -402,7 +415,9 @@ def search_documents(
         docs = fallback_q.limit(req.limit).all()
         results = [
             SearchResult(
-                id=str(d.id), filename=d.filename, doc_type=d.doc_type,
+                id=str(d.id), filename=d.filename,
+                title=d.title, doc_date=d.doc_date,
+                doc_type=d.doc_type,
                 category=d.category, fiscal_year=d.fiscal_year, department=d.department,
                 status=d.status, score=1.0,
                 snippet=(d.notes[:200] if d.notes else None),
@@ -435,6 +450,7 @@ def search_documents(
             fiscal_year=parsed.fiscal_year,
             category=parsed.category,
             doc_type=parsed.doc_type,
+            department=parsed.department,
             min_amount=parsed.min_amount,
             max_amount=parsed.max_amount,
             hits=parsed.hits,

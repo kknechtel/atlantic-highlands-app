@@ -127,6 +127,29 @@ export interface Document {
   s3_key: string; file_size: number; content_type: string | null;
   doc_type: string | null; category: string | null; department: string | null;
   fiscal_year: string | null; status: string; notes: string | null; created_at: string;
+  /** Human-readable title (e.g. "Planning Board — Meeting Minutes February 4, 2026").
+   *  Populated by services.title_extractor; null on docs not yet backfilled. */
+  title?: string | null;
+  doc_date?: string | null;
+}
+
+/** Admin: trigger the title/department/date backfill across the corpus. */
+export async function backfillTitles(params?: {
+  limit?: number;
+  only_missing?: boolean;
+  overwrite_department?: boolean;
+}): Promise<{
+  titles_updated: number;
+  departments_updated: number;
+  doc_dates_updated: number;
+  skipped_no_signal: number;
+  examples: Array<{ id: string; filename: string; title: string | null; department: string | null; doc_date: string | null }>;
+}> {
+  const qs = new URLSearchParams();
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.only_missing !== undefined) qs.set("only_missing", String(params.only_missing));
+  if (params?.overwrite_department !== undefined) qs.set("overwrite_department", String(params.overwrite_department));
+  return request(`/api/documents/backfill-titles?${qs.toString()}`, { method: "POST" });
 }
 
 export async function getDocuments(params?: { project_id?: string; category?: string; doc_type?: string }): Promise<Document[]> {
@@ -480,7 +503,13 @@ export async function getProcessingStats(projectId?: string): Promise<Processing
 // ─── Search ───────────────────────────────────────────────────────────
 
 export interface SearchResult {
-  id: string; filename: string; doc_type: string | null; category: string | null;
+  id: string; filename: string;
+  /** Human-readable title (e.g. "Planning Board — Meeting Minutes February 4, 2026").
+   *  Populated by services.title_extractor; may be null on docs not yet backfilled. */
+  title?: string | null;
+  /** ISO YYYY-MM-DD when extractable from content or filename. */
+  doc_date?: string | null;
+  doc_type: string | null; category: string | null;
   fiscal_year: string | null; department: string | null;
   status: string; score: number; snippet: string | null;
   /** "phrase" = quoted, "hybrid" = semantic+keyword+rerank, "fts" = keyword-only,
@@ -498,6 +527,7 @@ export interface ParsedFilters {
   fiscal_year: string | null;
   category: string | null;
   doc_type: string | null;
+  department: string | null;
   min_amount: number | null;
   max_amount: number | null;
   /** Human-readable list of what was auto-extracted from the query

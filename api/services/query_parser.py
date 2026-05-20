@@ -66,6 +66,33 @@ _DOC_TYPE_PATTERNS = [
     (re.compile(r"\b(financial\s+statement|financial\s+statements|cafr|acfr)\b", re.IGNORECASE), "financial_statement"),
 ]
 
+# Department hints — fire when the user types a department by name or its
+# common acronym. The canonical name on the right matches `_DEPT_CANONICAL`
+# in routes/search.py + services/title_extractor.py so the filter actually
+# joins against the values written by the backfill. Longest patterns first
+# so "planning board" wins over "planning" alone (regex .search() picks
+# whichever matches first in the list).
+_DEPT_PATTERNS = [
+    (re.compile(r"\b(planning\s+board|planning)\b", re.IGNORECASE), "Planning Board"),
+    (re.compile(r"\b(zoning\s+board\s+of\s+adjustment|zoning\s+board|zba|zoning)\b", re.IGNORECASE), "Zoning Board"),
+    (re.compile(r"\b(board\s+of\s+education|school\s+board|boe)\b", re.IGNORECASE), "Board of Education"),
+    (re.compile(r"\b(borough\s+council|town\s+council|mayor\s+and\s+council|mayor\s*&\s*council)\b", re.IGNORECASE), "Borough Council"),
+    (re.compile(r"\b(harbor\s+commission|harbor)\b", re.IGNORECASE), "Harbor Commission"),
+    (re.compile(r"\b(shade\s+tree\s+commission|shade\s+tree)\b", re.IGNORECASE), "Shade Tree Commission"),
+    (re.compile(r"\b(environmental\s+commission)\b", re.IGNORECASE), "Environmental Commission"),
+    (re.compile(r"\b(historic\s+preservation\s+commission|historic\s+preservation)\b", re.IGNORECASE), "Historic Preservation Commission"),
+    (re.compile(r"\b(public\s+works|dpw)\b", re.IGNORECASE), "Public Works"),
+    (re.compile(r"\b(police\s+department|police|ahpd)\b", re.IGNORECASE), "Police"),
+    (re.compile(r"\b(fire\s+department|fire\s+company|ahvfd|fire)\b", re.IGNORECASE), "Fire"),
+    (re.compile(r"\b(first\s+aid|ems|emergency\s+medical|ambulance)\b", re.IGNORECASE), "EMS"),
+    (re.compile(r"\b(municipal\s+court|court)\b", re.IGNORECASE), "Municipal Court"),
+    (re.compile(r"\b(tax\s+assessor|assessor)\b", re.IGNORECASE), "Tax Assessor"),
+    (re.compile(r"\b(tax\s+collector|collector)\b", re.IGNORECASE), "Tax Collector"),
+    (re.compile(r"\b(building\s+department|construction\s+office|code\s+enforcement)\b", re.IGNORECASE), "Building Department"),
+    (re.compile(r"\b(recreation\s+department|recreation)\b", re.IGNORECASE), "Recreation"),
+    (re.compile(r"\b(borough\s+clerk|municipal\s+clerk|clerk)\b", re.IGNORECASE), "Borough Clerk"),
+]
+
 
 @dataclass
 class ParsedQuery:
@@ -80,6 +107,7 @@ class ParsedQuery:
     fiscal_year: Optional[str] = None
     category: Optional[str] = None
     doc_type: Optional[str] = None
+    department: Optional[str] = None
     min_amount: Optional[float] = None
     max_amount: Optional[float] = None
     hits: list[str] = field(default_factory=list)
@@ -94,6 +122,8 @@ class ParsedQuery:
             out["category"] = self.category
         if self.doc_type:
             out["doc_type"] = self.doc_type
+        if self.department:
+            out["department"] = self.department
         if self.min_amount is not None:
             out["min_amount"] = self.min_amount
         if self.max_amount is not None:
@@ -212,6 +242,17 @@ def parse(query: str) -> ParsedQuery:
             hits.append(dt.replace("_", " "))
             break  # first match wins — these are mutually exclusive
 
+    # 5. Department hint. Longest-first ordering in _DEPT_PATTERNS already
+    # ensures "planning board" beats "planning". Don't strip the matched
+    # phrase from the residual — it's still useful as an FTS signal AND
+    # makes the snippet more readable.
+    department: Optional[str] = None
+    for pattern, dept in _DEPT_PATTERNS:
+        if pattern.search(residual):
+            department = dept
+            hits.append(dept)
+            break  # one dept per query — multi-dept queries are rare
+
     # Clean up the residual: collapse whitespace
     stripped = re.sub(r"\s+", " ", residual).strip()
     # If we stripped everything (e.g. user typed just "2024"), keep the
@@ -226,6 +267,7 @@ def parse(query: str) -> ParsedQuery:
         fiscal_year=fy,
         category=category,
         doc_type=doc_type,
+        department=department,
         min_amount=min_amt,
         max_amount=max_amt,
         hits=hits,

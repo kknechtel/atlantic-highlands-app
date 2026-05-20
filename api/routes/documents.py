@@ -32,6 +32,8 @@ class DocumentResponse(BaseModel):
     category: str | None
     department: str | None
     fiscal_year: str | None
+    title: str | None = None
+    doc_date: str | None = None
     status: str
     notes: str | None
     created_at: str
@@ -50,6 +52,8 @@ class DocumentListItem(BaseModel):
     category: str | None
     department: str | None
     fiscal_year: str | None
+    title: str | None = None
+    doc_date: str | None = None
     status: str
 
     class Config:
@@ -94,6 +98,8 @@ def list_documents(
             category=d.category,
             department=d.department,
             fiscal_year=d.fiscal_year,
+            title=d.title,
+            doc_date=d.doc_date,
             status=d.status,
         )
         for d in docs
@@ -254,6 +260,8 @@ def confirm_upload(
         category=doc.category,
         department=doc.department,
         fiscal_year=doc.fiscal_year,
+        title=doc.title,
+        doc_date=doc.doc_date,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -282,6 +290,8 @@ def get_document(
         category=doc.category,
         department=doc.department,
         fiscal_year=doc.fiscal_year,
+        title=doc.title,
+        doc_date=doc.doc_date,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -375,6 +385,8 @@ async def upload_document(
         category=doc.category,
         department=doc.department,
         fiscal_year=doc.fiscal_year,
+        title=doc.title,
+        doc_date=doc.doc_date,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -798,6 +810,8 @@ def update_document(
         category=doc.category,
         department=doc.department,
         fiscal_year=doc.fiscal_year,
+        title=doc.title,
+        doc_date=doc.doc_date,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -820,3 +834,81 @@ def delete_document(
     db.delete(doc)
     db.commit()
     return {"detail": "Document deleted"}
+
+
+@router.post("/backfill-titles")
+def backfill_titles(
+    limit: int = Query(0, ge=0, le=20000, description="0 = unlimited (all docs)"),
+    only_missing: bool = Query(True, description="If True, skip docs that already have a title"),
+    overwrite_department: bool = Query(False, description="If True, replace dept even when already set"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One-shot: derive title + department + doc_date for every document and
+    write the results back. Idempotent.
+
+    Uses services.title_extractor — combines AI metadata, OCR first-line
+    heuristic, and filename pattern parsing. Filename patterns like
+    "Departments - Planning Board - ... .pdf" carry the most signal so they
+    win for title/department; OCR content fills the gap for hash-named docs.
+
+    Skips docs whose `title` is already set when `only_missing=True`. Always
+    backfills missing departments. Set `overwrite_department=True` to let
+    the extractor relabel docs that already have a (possibly wrong) department.
+    """
+    from services import title_extractor
+
+    q = db.query(Document)
+    if only_missing:
+        q = q.filter(Document.title.is_(None))
+    if limit:
+        q = q.limit(limit)
+
+    updated = 0
+    dept_updated = 0
+    date_updated = 0
+    skipped = 0
+    examples: list[dict] = []
+
+    for doc in q.yield_per(200):
+        result = title_extractor.derive(
+            filename=doc.filename,
+            extracted_text=doc.extracted_text,
+            metadata=doc.metadata_,
+        )
+        if not result.get("title"):
+            skipped += 1
+            continue
+
+        changed = False
+        if doc.title != result["title"]:
+            doc.title = result["title"]
+            updated += 1
+            changed = True
+        if result.get("department") and (overwrite_department or not doc.department):
+            if doc.department != result["department"]:
+                doc.department = result["department"]
+                dept_updated += 1
+                changed = True
+        if result.get("doc_date") and not doc.doc_date:
+            doc.doc_date = result["doc_date"]
+            date_updated += 1
+            changed = True
+
+        if changed and len(examples) < 10:
+            examples.append({
+                "id": str(doc.id),
+                "filename": doc.filename[:80],
+                "title": doc.title[:120] if doc.title else None,
+                "department": doc.department,
+                "doc_date": doc.doc_date,
+            })
+
+    db.commit()
+    return {
+        "titles_updated": updated,
+        "departments_updated": dept_updated,
+        "doc_dates_updated": date_updated,
+        "skipped_no_signal": skipped,
+        "examples": examples,
+    }

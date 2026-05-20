@@ -257,3 +257,68 @@ def pending_summarize_ids() -> list[str]:
             "AND status NOT IN ('summary_failed','summarizing')"
         ),
     )
+
+
+def reingest_pending() -> int:
+    """Chunk + embed any recording that has extracted_text but no chunks.
+
+    Covers two cases:
+      1. Existing transcripts written before the timestamped-text rollout —
+         we update extracted_text from the stored segments and re-chunk.
+      2. Transcribe succeeded but the post-transcribe ingest call crashed
+         (e.g. embeddings API outage) — the row sat with text but no chunks.
+
+    Returns the number of documents re-ingested."""
+    from services.ingestion import ingest_document
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text(
+                f"SELECT d.id "
+                f"FROM documents d "
+                f"LEFT JOIN document_chunks dc ON dc.document_id = d.id "
+                f"WHERE d.doc_type IN {_DOC_TYPES_SQL} "
+                f"  AND d.extracted_text IS NOT NULL "
+                f"  AND length(d.extracted_text) > 100 "
+                f"  AND dc.id IS NULL "
+                f"GROUP BY d.id "
+                f"LIMIT 50"
+            )
+        ).fetchall()
+        ids = [str(r[0]) for r in rows]
+        if not ids:
+            return 0
+        logger.info("Re-ingesting %d recording(s) with text but no chunks", len(ids))
+        n = 0
+        for doc_id in ids:
+            doc = db.query(Document).filter(Document.id == doc_id).first()
+            if not doc:
+                continue
+            # If we have segments in metadata, rebuild extracted_text from them
+            # so it carries [HH:MM:SS] markers (older rows had flat text).
+            meta = doc.metadata_ or {}
+            segments = (meta.get("transcript") or {}).get("segments") or []
+            if segments:
+                from services.transcription_service import (
+                    TranscriptSegment, _segments_to_timestamped_text,
+                )
+                seg_objs = [
+                    TranscriptSegment(
+                        start=float(s.get("start", 0)),
+                        end=float(s.get("end", 0)),
+                        text=s.get("text") or "",
+                    )
+                    for s in segments
+                ]
+                ts_text = _segments_to_timestamped_text(seg_objs)
+                if ts_text and ts_text != doc.extracted_text:
+                    doc.extracted_text = ts_text
+                    db.commit()
+            try:
+                ingest_document(db, doc)
+                n += 1
+            except Exception as e:
+                logger.warning("Re-ingest failed for %s: %s", doc_id, e)
+        return n
+    finally:
+        db.close()

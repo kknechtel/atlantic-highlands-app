@@ -137,7 +137,7 @@ def _hybrid_chunk_search(
                c.page_start, c.page_end, c.score,
                d.filename, d.fiscal_year, d.category, d.doc_type,
                d.department, d.created_at, d.status,
-               d.title, d.doc_date
+               d.title, d.doc_date, d.notes
         FROM combined c
         JOIN documents d ON d.id = c.document_id
         ORDER BY c.score DESC
@@ -174,7 +174,7 @@ def _keyword_chunk_search(
                                                   plainto_tsquery('english', :query))) AS score,
                d.filename, d.fiscal_year, d.category, d.doc_type,
                d.department, d.created_at, d.status,
-               d.title, d.doc_date
+               d.title, d.doc_date, d.notes
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
         WHERE c.fts_vector @@ COALESCE({tsq_fn}('english', :query),

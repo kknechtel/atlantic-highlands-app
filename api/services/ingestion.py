@@ -33,14 +33,20 @@ def _refresh_doc_fts(db: Session, doc_id) -> None:
 
     ts_rank() honors these weights, so a title hit naturally beats a body
     mention without needing a separate score-blending pass.
+
+    Slashes / backslashes / pipes are normalized to spaces before
+    tokenizing — Postgres' English config treats them as part of a token
+    (it's tuned for URLs), so "Winnerling/Moody" would stay one compound
+    lexeme and never match a search for "winnerling" alone.
     """
-    db.execute(text("""
+    db.execute(text(r"""
         UPDATE documents
         SET fts_vector =
-            setweight(to_tsvector('english', coalesce(title, '')),    'A') ||
-            setweight(to_tsvector('english', coalesce(filename, '')), 'B') ||
-            setweight(to_tsvector('english', coalesce(notes, '')),    'C') ||
-            setweight(to_tsvector('english', coalesce(left(extracted_text, 50000), '')), 'D')
+            setweight(to_tsvector('english', regexp_replace(coalesce(title, ''),    '[/\\|]', ' ', 'g')), 'A') ||
+            setweight(to_tsvector('english', regexp_replace(coalesce(filename, ''), '[/\\|]', ' ', 'g')), 'B') ||
+            setweight(to_tsvector('english', regexp_replace(coalesce(notes, ''),    '[/\\|]', ' ', 'g')), 'C') ||
+            setweight(to_tsvector('english', regexp_replace(coalesce(left(extracted_text, 50000), ''),
+                                                            '[/\\|]', ' ', 'g')), 'D')
         WHERE id = CAST(:id AS uuid)
     """), {"id": str(doc_id)})
 
@@ -48,9 +54,11 @@ def _refresh_doc_fts(db: Session, doc_id) -> None:
 def _refresh_chunk_fts(db: Session, chunk_ids: list) -> None:
     if not chunk_ids:
         return
-    db.execute(text("""
+    # Same slash normalization as the doc-level vector.
+    db.execute(text(r"""
         UPDATE document_chunks
-        SET fts_vector = to_tsvector('english', coalesce(content, ''))
+        SET fts_vector = to_tsvector('english',
+            regexp_replace(coalesce(content, ''), '[/\\|]', ' ', 'g'))
         WHERE id = ANY(CAST(:ids AS uuid[]))
     """), {"ids": [str(i) for i in chunk_ids]})
 

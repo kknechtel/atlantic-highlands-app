@@ -444,7 +444,8 @@ export default function DocumentLibraryPage() {
                     matchType={hit?.match_type}
                     additionalSnippets={hit?.additional_snippets || undefined}
                     pages={hit?.pages || undefined}
-                    matchCount={hit?.match_count || undefined} />
+                    matchCount={hit?.match_count || undefined}
+                    summary={hit?.summary || doc.notes} />
                 );
               })}
             </>
@@ -681,7 +682,7 @@ function renderMarked(snippet: string, key: string | number) {
 
 function DocRow({
   doc, isSelected, onClick, docTypeColor, indent,
-  snippet, matchType, additionalSnippets, pages, matchCount,
+  snippet, matchType, additionalSnippets, pages, matchCount, summary,
 }: {
   doc: Document; isSelected: boolean; onClick: () => void;
   docTypeColor: (t: string | null) => string; indent?: boolean;
@@ -690,6 +691,10 @@ function DocRow({
   additionalSnippets?: string[];
   pages?: number[];
   matchCount?: number;
+  /** AI-generated doc summary (notes). Rendered as italic gray context above
+   *  the highlighted matching-text snippet so users can tell what the doc IS,
+   *  separate from where the search hit it. */
+  summary?: string | null;
 }) {
   const renderedSnippet = useMemo(() => (snippet ? renderMarked(snippet, "p") : null), [snippet]);
   const renderedAdditional = useMemo(
@@ -745,13 +750,20 @@ function DocRow({
               </span>
             )}
           </div>
+          {/* AI summary — what the doc IS. Distinct from the match snippet below. */}
+          {summary && (
+            <p className="text-[11px] text-gray-500 mt-1 leading-snug line-clamp-2 italic">{summary}</p>
+          )}
+          {/* Matching text — where the search hit landed, with the term highlighted */}
           {renderedSnippet && (
-            <p className="text-[11px] text-gray-600 mt-1 leading-snug line-clamp-2">{renderedSnippet}</p>
+            <p className="text-[12px] text-gray-800 mt-1.5 leading-snug line-clamp-2 pl-2 border-l-2 border-amber-300 bg-amber-50/30 py-0.5 pr-1 rounded-sm">
+              {renderedSnippet}
+            </p>
           )}
           {renderedAdditional.length > 0 && (
-            <div className="mt-1 space-y-0.5">
+            <div className="mt-0.5 space-y-0.5">
               {renderedAdditional.map((node, i) => (
-                <p key={i} className="text-[11px] text-gray-500 leading-snug line-clamp-1 pl-2 border-l border-gray-200">
+                <p key={i} className="text-[11px] text-gray-600 leading-snug line-clamp-1 pl-2 border-l border-amber-200">
                   {node}
                 </p>
               ))}

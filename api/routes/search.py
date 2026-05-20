@@ -53,6 +53,10 @@ class SearchResult(BaseModel):
     filename: str
     title: str | None = None
     doc_date: str | None = None  # ISO YYYY-MM-DD when extractable
+    # AI-generated one-paragraph summary (lives in documents.notes). Shown
+    # below the title so users get a feel for the document at a glance,
+    # separate from the search-snippet which shows the matching excerpt.
+    summary: str | None = None
     doc_type: str | None
     category: str | None
     fiscal_year: str | None
@@ -363,11 +367,18 @@ def search_documents(
     for d in docs_sorted:
         r = d["row"]
         match_type = "phrase" if has_quotes else ("hybrid" if reranker.is_available() else "fts")
+        # Truncate the AI summary to a reasonable display length — the full
+        # notes field can be 1-2 paragraphs; the search row only needs the
+        # gist. Detail view (GET /documents/{id}) still returns the full text.
+        summary = r.get("notes")
+        if summary and len(summary) > 240:
+            summary = summary[:237].rstrip() + "…"
         results.append(SearchResult(
             id=str(r["document_id"]),
             filename=r.get("filename") or "",
             title=r.get("title"),
             doc_date=r.get("doc_date"),
+            summary=summary,
             doc_type=r.get("doc_type"),
             category=r.get("category"),
             fiscal_year=r.get("fiscal_year"),
@@ -417,6 +428,7 @@ def search_documents(
             SearchResult(
                 id=str(d.id), filename=d.filename,
                 title=d.title, doc_date=d.doc_date,
+                summary=(d.notes[:237].rstrip() + "…") if (d.notes and len(d.notes) > 240) else d.notes,
                 doc_type=d.doc_type,
                 category=d.category, fiscal_year=d.fiscal_year, department=d.department,
                 status=d.status, score=1.0,

@@ -509,6 +509,9 @@ export interface SearchResult {
   title?: string | null;
   /** ISO YYYY-MM-DD when extractable from content or filename. */
   doc_date?: string | null;
+  /** AI-generated one-paragraph summary (truncated to ~240 chars).
+   *  Distinct from `snippet` which highlights the matching text excerpt. */
+  summary?: string | null;
   doc_type: string | null; category: string | null;
   fiscal_year: string | null; department: string | null;
   status: string; score: number; snippet: string | null;

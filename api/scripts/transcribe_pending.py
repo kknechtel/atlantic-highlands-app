@@ -49,9 +49,20 @@ def main() -> int:
     from services.meeting_pipeline import (
         process_playback_ready, process_summarize, process_transcribe,
         pending_playback_ids, pending_summarize_ids, pending_transcribe_ids,
+        reingest_pending,
     )
 
     started = time.monotonic()
+
+    # ── 0. Re-ingest any recordings that have extracted_text but no chunks
+    # (transcript landed but vector pipeline crashed, or text predates the
+    # timestamped-text rollout). Fast — no transcription work, just embedding.
+    try:
+        n = reingest_pending()
+        if n:
+            logger.info("Re-ingested %d recording(s) into chunks + embeddings", n)
+    except Exception as e:
+        logger.exception("Re-ingest pass errored: %s", e)
 
     # ── 1. Transcode all pending playback. Fast — drain everything.
     playback_pending = pending_playback_ids()

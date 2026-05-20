@@ -61,6 +61,24 @@ class TranscriptionResult:
         }
 
 
+def _segments_to_timestamped_text(segments: list["TranscriptSegment"]) -> str:
+    """Render segments as `[HH:MM:SS] text\n` lines.
+
+    This is what we store in Document.extracted_text so the existing RAG
+    chunker preserves timestamps inside each chunk — Claude can then cite
+    a specific moment like "[01:23:45]" and the UI can deep-link to it.
+    """
+    out: list[str] = []
+    for s in segments:
+        if not s.text:
+            continue
+        secs = int(max(0.0, s.start))
+        h, rem = divmod(secs, 3600)
+        m, sec = divmod(rem, 60)
+        out.append(f"[{h:02d}:{m:02d}:{sec:02d}] {s.text}")
+    return "\n".join(out)
+
+
 # ─── faster-whisper (local) ─────────────────────────────────────────
 # Lazy singleton — loading the model is expensive (~200ms + first-run download).
 # Module-level so successive calls in one process reuse it.
@@ -115,7 +133,7 @@ def transcribe_local(audio_path: str) -> Optional[TranscriptionResult]:
                 text=text,
             ))
         return TranscriptionResult(
-            text=" ".join(s.text for s in segs),
+            text=_segments_to_timestamped_text(segs),
             segments=segs,
             engine=f"faster-whisper-{_WHISPER_MODEL_SIZE}",
             language=getattr(info, "language", "en") or "en",
@@ -242,7 +260,7 @@ def transcribe_local_chunked(audio_path: str, *, chunk_seconds: int = _CHUNK_SEC
         chunk_idx += 1
 
     return TranscriptionResult(
-        text=" ".join(s.text for s in all_segments),
+        text=_segments_to_timestamped_text(all_segments),
         segments=all_segments,
         engine=f"faster-whisper-{_WHISPER_MODEL_SIZE}-chunked",
         language=detected_lang or "en",
@@ -284,7 +302,9 @@ def transcribe_openai(audio_path: str) -> Optional[TranscriptionResult]:
                 text=text,
             ))
         return TranscriptionResult(
-            text=data.get("text") or " ".join(s.text for s in segs),
+            # Prefer our own timestamped rendering over OpenAI's flat `text`
+            # so chunks in extracted_text preserve [HH:MM:SS] markers.
+            text=_segments_to_timestamped_text(segs) or (data.get("text") or ""),
             segments=segs,
             engine="openai-whisper-1",
             language=data.get("language") or "en",
@@ -380,7 +400,7 @@ def _transcribe_youtube_captions(video_id: str, prefer_langs: tuple[str, ...]) -
         segs.append(TranscriptSegment(start=start, end=start + dur, text=text))
         last_end = max(last_end, start + dur)
     return TranscriptionResult(
-        text=" ".join(s.text for s in segs),
+        text=_segments_to_timestamped_text(segs),
         segments=segs,
         engine=engine,
         language=getattr(transcript, "language_code", None) or "en",

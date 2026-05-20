@@ -77,5 +77,10 @@ class Parcel(Base):
     # Provenance
     data_source = Column(String, nullable=True)   # "NJGIN MOD-IV 2024" etc.
     raw_attrs = Column(JSONB, default={})         # full feature attribute bag for any field we didn't parse out
+    # Parcel boundary geometry (GeoJSON Polygon in EPSG:4326). Populated by
+    # scripts.fetch_parcel_geometry — kept in JSONB rather than PostGIS so we
+    # don't carry a postgis dependency for what's effectively render-only data.
+    geometry = Column(JSONB, nullable=True)
+    centroid = Column(JSONB, nullable=True)       # {"type":"Point","coordinates":[lon,lat]}
     last_synced_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)

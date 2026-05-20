@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import {
   listParcels,
   countParcels,
   getParcel,
   type ParcelListItem,
+  type ParcelSortColumn,
 } from "@/lib/api";
 import {
   MagnifyingGlassIcon,
@@ -15,6 +18,11 @@ import {
   HomeIcon,
   BuildingOffice2Icon,
   Squares2X2Icon,
+  MapIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -60,13 +68,117 @@ function fmtDate(s: string | null | undefined): string {
   return s.slice(0, 10);
 }
 
+function fmtNum(n: number | null | undefined, digits = 2): string {
+  if (n == null) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: digits });
+}
+
+/**
+ * Deep-link an address into Zillow / Realtor / Google Maps. Both Zillow and
+ * Realtor block iframe embedding via X-Frame-Options, so these open in a new
+ * tab — there is no in-app preview without paying for an API like RentCast.
+ * Google Maps is the only one of the four that DOES allow iframe embedding,
+ * which is why the drawer also renders an inline map at the top.
+ */
+function zillowUrl(address: string | null) {
+  if (!address) return null;
+  const q = `${address}, Atlantic Highlands, NJ`.replace(/\s+/g, "-");
+  return `https://www.zillow.com/homes/${encodeURIComponent(q)}_rb/`;
+}
+function realtorUrl(address: string | null) {
+  if (!address) return null;
+  return `https://www.realtor.com/realestateandhomes-search/${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}`;
+}
+function googleMapsUrl(address: string | null) {
+  if (!address) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}`;
+}
+function googleStreetViewUrl(address: string | null) {
+  if (!address) return null;
+  return `https://www.google.com/maps?layer=c&q=${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}`;
+}
+/**
+ * Unkeyed Maps embed. `layer=c` overlays the Street View pegman so the user
+ * can drop into Street View inside the iframe without leaving the app —
+ * the closest we can get to "Zillow in-app" given that Zillow blocks iframes.
+ */
+function googleMapsEmbedUrl(address: string | null) {
+  if (!address) return null;
+  return `https://maps.google.com/maps?q=${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}&z=17&layer=c&output=embed`;
+}
+
+interface SortableHeaderProps {
+  label: string;
+  column: ParcelSortColumn;
+  sortBy: ParcelSortColumn;
+  sortDir: "asc" | "desc";
+  onSort: (column: ParcelSortColumn) => void;
+  align?: "left" | "right";
+}
+
+function SortableHeader({ label, column, sortBy, sortDir, onSort, align = "left" }: SortableHeaderProps) {
+  const active = sortBy === column;
+  return (
+    <th
+      onClick={() => onSort(column)}
+      className={`px-4 py-2.5 font-medium select-none cursor-pointer hover:text-gray-700 ${
+        align === "right" ? "text-right" : ""
+      } ${active ? "text-gray-900" : ""}`}
+    >
+      <span className={`inline-flex items-center gap-0.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        {label}
+        {active ? (
+          sortDir === "asc" ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />
+        ) : (
+          <span className="w-3 h-3" />
+        )}
+      </span>
+    </th>
+  );
+}
+
 export default function ParcelsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [propertyClass, setPropertyClass] = useState("");
   const [minAssessment, setMinAssessment] = useState<string>("");
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Deep-link support: ?id=<parcel-id> auto-opens the detail drawer. The
+  // /parcels/map "Full details" button links here with that param.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    searchParams.get("id"),
+  );
+
+  const [sortBy, setSortBy] = useState<ParcelSortColumn>("block_lot");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const closeDrawer = () => {
+    setSelectedId(null);
+    if (searchParams.get("id")) router.replace("/parcels");
+  };
+
+  const toggleSort = (col: ParcelSortColumn) => {
+    if (col === sortBy) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      // Numeric/date columns default to "biggest/newest first" on first click —
+      // matches the most common user intent ("show me the biggest assessments").
+      setSortDir(
+        col === "total_assessment" ||
+          col === "tax_amount" ||
+          col === "lot_size_acres" ||
+          col === "year_built" ||
+          col === "last_sale_price" ||
+          col === "last_sale_date"
+          ? "desc"
+          : "asc",
+      );
+    }
+    setPage(0);
+  };
 
   // Debounce the search box so typing doesn't fire a request per keystroke.
   useEffect(() => {
@@ -82,10 +194,12 @@ export default function ParcelsPage() {
       q: debouncedQ || undefined,
       property_class: propertyClass || undefined,
       min_assessment: minAssessment ? Number(minAssessment) : undefined,
+      sort_by: sortBy,
+      sort_dir: sortDir,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }),
-    [debouncedQ, propertyClass, minAssessment, page],
+    [debouncedQ, propertyClass, minAssessment, sortBy, sortDir, page],
   );
 
   const { data: rows, isLoading } = useQuery({
@@ -113,6 +227,13 @@ export default function ParcelsPage() {
             ) : null}
           </p>
         </div>
+        <Link
+          href="/parcels/map"
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
+        >
+          <MapIcon className="w-4 h-4" />
+          Map view
+        </Link>
       </div>
 
       {/* Filters */}
@@ -167,27 +288,31 @@ export default function ParcelsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-left text-xs uppercase tracking-wider text-gray-500">
-              <th className="px-4 py-2.5 font-medium">Block-Lot</th>
-              <th className="px-4 py-2.5 font-medium">Address</th>
-              <th className="px-4 py-2.5 font-medium">Class</th>
-              <th className="px-4 py-2.5 font-medium text-right">Assessment</th>
-              <th className="px-4 py-2.5 font-medium text-right">Last sale</th>
+              <SortableHeader label="Block-Lot" column="block_lot" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Address" column="property_location" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Class" column="property_class" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Acres" column="lot_size_acres" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right" />
+              <SortableHeader label="Built" column="year_built" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right" />
+              <SortableHeader label="Assessment" column="total_assessment" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right" />
+              <SortableHeader label="Tax" column="tax_amount" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right" />
+              <SortableHeader label="Last sale" column="last_sale_date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} align="right" />
+              <th className="w-8" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   Loading…
                 </td>
               </tr>
             ) : !rows || rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   No parcels match the current filters.
                 </td>
               </tr>
@@ -196,32 +321,46 @@ export default function ParcelsPage() {
                 <tr
                   key={p.id}
                   onClick={() => setSelectedId(p.id)}
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className="hover:bg-gray-50 cursor-pointer group"
+                  title="Click for details"
                 >
-                  <td className="px-4 py-2 font-mono text-xs text-gray-700">
+                  <td className="px-4 py-2 font-mono text-xs text-gray-700 whitespace-nowrap">
                     {p.block}-{p.lot}
-                    {p.qualifier ? ` (${p.qualifier})` : ""}
+                    {p.qualifier ? <span className="text-gray-400"> ({p.qualifier})</span> : null}
                   </td>
                   <td className="px-4 py-2 text-gray-900">{p.property_location || "—"}</td>
-                  <td className="px-4 py-2 text-gray-600">
+                  <td className="px-4 py-2 text-gray-600 whitespace-nowrap">
                     <span className="inline-flex items-center gap-1 text-xs">
                       <span className="font-mono">{p.property_class || "?"}</span>
                       <span className="text-gray-400">·</span>
                       <span>{classLabel(p.property_class)}</span>
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right font-medium text-gray-900">
+                  <td className="px-4 py-2 text-right text-gray-700 tabular-nums whitespace-nowrap">
+                    {p.lot_size_acres != null ? fmtNum(p.lot_size_acres) : "—"}
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-700 tabular-nums whitespace-nowrap">
+                    {p.year_built || "—"}
+                  </td>
+                  <td className="px-4 py-2 text-right font-medium text-gray-900 tabular-nums whitespace-nowrap">
                     {fmtUSD(p.total_assessment)}
                   </td>
-                  <td className="px-4 py-2 text-right text-gray-600">
-                    {p.last_sale_date ? (
+                  <td className="px-4 py-2 text-right text-gray-600 tabular-nums whitespace-nowrap">
+                    {fmtUSD(p.tax_amount)}
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-600 whitespace-nowrap">
+                    {p.last_sale_date || p.last_sale_price ? (
                       <span className="text-xs">
-                        {fmtDate(p.last_sale_date)}
-                        {p.last_sale_price ? ` · ${fmtUSD(p.last_sale_price)}` : ""}
+                        {p.last_sale_date ? fmtDate(p.last_sale_date) : ""}
+                        {p.last_sale_date && p.last_sale_price ? " · " : ""}
+                        {p.last_sale_price ? fmtUSD(p.last_sale_price) : ""}
                       </span>
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td className="px-2 py-2 text-gray-300 group-hover:text-gray-600">
+                    <ChevronRightIcon className="w-4 h-4" />
                   </td>
                 </tr>
               ))
@@ -256,7 +395,7 @@ export default function ParcelsPage() {
       </div>
 
       {selectedId && (
-        <ParcelDrawer id={selectedId} onClose={() => setSelectedId(null)} />
+        <ParcelDrawer id={selectedId} onClose={closeDrawer} />
       )}
     </div>
   );
@@ -299,6 +438,33 @@ function ParcelDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           <div className="p-6 text-center text-gray-400">Loading…</div>
         ) : (
           <div className="p-5 space-y-5">
+            {data.property_location && (
+              <>
+                <div className="rounded-md overflow-hidden border border-gray-200">
+                  <iframe
+                    src={googleMapsEmbedUrl(data.property_location)!}
+                    width="100%"
+                    height="220"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    title="Parcel location"
+                    className="block"
+                  />
+                </div>
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+                    External lookup
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <ExternalLinkButton href={zillowUrl(data.property_location)} label="Zillow" />
+                    <ExternalLinkButton href={realtorUrl(data.property_location)} label="Realtor.com" />
+                    <ExternalLinkButton href={googleStreetViewUrl(data.property_location)} label="Street View" />
+                    <ExternalLinkButton href={googleMapsUrl(data.property_location)} label="Google Maps" />
+                  </div>
+                </div>
+              </>
+            )}
+
             <Section icon={Squares2X2Icon} title="Identity">
               <Row label="PAMS PIN" value={data.pams_pin} mono />
               <Row label="County / Muni" value={`${data.county_code} / ${data.muni_code}`} />
@@ -393,5 +559,20 @@ function Row({
         {isEmpty ? "—" : value}
       </dd>
     </div>
+  );
+}
+
+function ExternalLinkButton({ href, label }: { href: string | null; label: string }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-between gap-2 px-3 py-2 text-sm border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 text-gray-700 transition-colors"
+    >
+      <span>{label}</span>
+      <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5 text-gray-400" />
+    </a>
   );
 }

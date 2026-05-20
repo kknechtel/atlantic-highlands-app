@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
   ArrowLeft, Loader2, Mic, Youtube, Play, FileText, Sparkles,
-  RefreshCw, AlertCircle, CheckCircle2, Clock,
+  RefreshCw, AlertCircle, CheckCircle2, Clock, ChevronDown, ChevronRight,
 } from "lucide-react";
 import {
   getMeeting, transcribeMeeting, summarizeMeeting,
@@ -305,24 +305,67 @@ export default function MeetingDetailPage() {
   );
 }
 
+function CollapsibleSection({
+  title, icon, count, defaultOpen = false, children,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  /** Shown in a small badge next to the title — usually the item count. */
+  count?: number;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition"
+      >
+        {open ? (
+          <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+        )}
+        {icon}
+        <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-700 flex-1">
+          {title}
+        </h2>
+        {typeof count === "number" && (
+          <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 font-mono">
+            {count}
+          </span>
+        )}
+      </button>
+      {open && <div className="px-4 pb-4 pt-1 border-t border-gray-100">{children}</div>}
+    </section>
+  );
+}
+
+
 function SummaryPanel({
   summary, onSeek,
 }: {
   summary: NonNullable<MeetingDetail["summary"]>;
   onSeek: (s: number) => void;
 }) {
+  // TL;DR stays open; everything else collapsed by default so the panel
+  // is glanceable on small screens. Counts in the headers show what's
+  // inside each section without expanding.
   return (
-    <div className="space-y-4">
-      <section className="bg-white border border-gray-200 rounded-lg p-4">
-        <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-1">TL;DR</h2>
+    <div className="space-y-2">
+      <CollapsibleSection title="TL;DR" defaultOpen>
         <p className="text-sm text-gray-800 leading-relaxed">{summary.tldr}</p>
-      </section>
+      </CollapsibleSection>
 
       {summary.topics?.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-2 flex items-center gap-1">
-            <Clock className="w-3 h-3" /> Topics
-          </h2>
+        <CollapsibleSection
+          title="Topics"
+          icon={<Clock className="w-3.5 h-3.5 text-gray-400" />}
+          count={summary.topics.length}
+        >
           <ul className="space-y-2">
             {summary.topics.map((t, i) => (
               <li key={i}>
@@ -336,12 +379,11 @@ function SummaryPanel({
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       )}
 
       {summary.decisions?.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-2">Decisions</h2>
+        <CollapsibleSection title="Decisions" count={summary.decisions.length}>
           <ul className="space-y-1.5 text-sm">
             {summary.decisions.map((d, i) => (
               <li key={i} className="flex items-start gap-2">
@@ -358,12 +400,11 @@ function SummaryPanel({
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       )}
 
       {summary.action_items?.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-2">Action items</h2>
+        <CollapsibleSection title="Action items" count={summary.action_items.length}>
           <ul className="space-y-1.5 text-sm">
             {summary.action_items.map((a, i) => (
               <li key={i} className="text-gray-800">
@@ -373,12 +414,14 @@ function SummaryPanel({
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       )}
 
       {summary.ordinances_resolutions?.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-2">Ordinances / resolutions</h2>
+        <CollapsibleSection
+          title="Ordinances / resolutions"
+          count={summary.ordinances_resolutions.length}
+        >
           <ul className="space-y-1.5 text-sm">
             {summary.ordinances_resolutions.map((o, i) => (
               <li key={i} className="text-gray-800">
@@ -387,12 +430,11 @@ function SummaryPanel({
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       )}
 
       {summary.public_comments?.length > 0 && (
-        <section className="bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="text-xs uppercase tracking-wide font-semibold text-gray-500 mb-2">Public comments</h2>
+        <CollapsibleSection title="Public comments" count={summary.public_comments.length}>
           <ul className="space-y-1.5 text-sm">
             {summary.public_comments.map((c, i) => (
               <li key={i} className="flex items-start gap-2">
@@ -408,7 +450,7 @@ function SummaryPanel({
               </li>
             ))}
           </ul>
-        </section>
+        </CollapsibleSection>
       )}
     </div>
   );

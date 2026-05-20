@@ -262,35 +262,41 @@ def pending_summarize_ids() -> list[str]:
 def reingest_pending() -> int:
     """Chunk + embed any recording that has extracted_text but no chunks.
 
-    Covers two cases:
-      1. Existing transcripts written before the timestamped-text rollout —
-         we update extracted_text from the stored segments and re-chunk.
-      2. Transcribe succeeded but the post-transcribe ingest call crashed
+    Covers three cases:
+      1. Transcribe succeeded but the post-transcribe ingest call crashed
          (e.g. embeddings API outage) — the row sat with text but no chunks.
+      2. Existing transcripts written before the timestamped-text rollout
+         have flat extracted_text + stale chunks; rebuild both from segments.
+      3. (Implicit) Once a doc has timestamped extracted_text AND chunks,
+         it's skipped on subsequent runs — idempotent.
 
     Returns the number of documents re-ingested."""
     from services.ingestion import ingest_document
+    from models.document_chunk import DocumentChunk
     db = SessionLocal()
     try:
+        # Pick recordings where either no chunks exist OR extracted_text
+        # predates the [HH:MM:SS] format (chunks are stale and need rebuild).
         rows = db.execute(
             text(
-                f"SELECT d.id "
+                f"SELECT d.id, (COUNT(dc.id) > 0) AS has_chunks "
                 f"FROM documents d "
                 f"LEFT JOIN document_chunks dc ON dc.document_id = d.id "
                 f"WHERE d.doc_type IN {_DOC_TYPES_SQL} "
                 f"  AND d.extracted_text IS NOT NULL "
                 f"  AND length(d.extracted_text) > 100 "
-                f"  AND dc.id IS NULL "
                 f"GROUP BY d.id "
+                f"HAVING COUNT(dc.id) = 0 "
+                f"   OR d.extracted_text NOT LIKE '[%:%:%]%' "
                 f"LIMIT 50"
             )
         ).fetchall()
-        ids = [str(r[0]) for r in rows]
-        if not ids:
+        if not rows:
             return 0
-        logger.info("Re-ingesting %d recording(s) with text but no chunks", len(ids))
+        logger.info("Re-ingesting %d recording(s) for chunks/timestamps", len(rows))
         n = 0
-        for doc_id in ids:
+        for doc_id, had_chunks in rows:
+            doc_id = str(doc_id)
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if not doc:
                 continue
@@ -314,6 +320,12 @@ def reingest_pending() -> int:
                 if ts_text and ts_text != doc.extracted_text:
                     doc.extracted_text = ts_text
                     db.commit()
+            # Wipe stale chunks before re-ingest so old flat-text chunks don't
+            # linger alongside new timestamped ones. ingest_document is
+            # idempotent for new chunks but doesn't clean up old ones.
+            if had_chunks:
+                db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).delete()
+                db.commit()
             try:
                 ingest_document(db, doc)
                 n += 1

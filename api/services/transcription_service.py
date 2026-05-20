@@ -16,11 +16,20 @@ from __future__ import annotations
 import io
 import logging
 import os
+import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Audio longer than this gets sliced into chunks (in seconds). Keeps peak
+# memory bounded — a 94-min .wma decoded to 16k mono PCM is ~180MB, which
+# combined with the Whisper model and ctranslate2 internals pushed our
+# t3.medium past its 4GB cap. 20-min chunks cap that at ~40MB per chunk.
+_CHUNK_THRESHOLD_SECONDS = int(os.getenv("WHISPER_CHUNK_THRESHOLD", "1500"))  # 25 min
+_CHUNK_SECONDS = int(os.getenv("WHISPER_CHUNK_SECONDS", "1200"))  # 20 min
 
 
 @dataclass
@@ -117,6 +126,130 @@ def transcribe_local(audio_path: str) -> Optional[TranscriptionResult]:
         return None
 
 
+# ─── Chunked transcription (for long meetings) ─────────────────────
+
+def _probe_duration_seconds(audio_path: str) -> Optional[float]:
+    """Return audio duration in seconds via ffprobe, or None on failure.
+
+    Used by transcribe_local_chunked() to decide whether to chunk at all
+    and how many slices to take."""
+    if not shutil.which("ffprobe"):
+        return None
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        return float(out.stdout.strip()) if out.returncode == 0 else None
+    except (ValueError, subprocess.SubprocessError):
+        return None
+
+
+def _extract_chunk(src_path: str, *, start: float, duration: float, out_path: str) -> bool:
+    """Slice [start, start+duration) out of src into a 16kHz mono WAV.
+
+    16k mono is faster-whisper's native input — no resampling cost inside
+    Whisper. WAV at that rate is ~32 KB/s, so a 20-min chunk is ~38 MB."""
+    if not shutil.which("ffmpeg"):
+        return False
+    try:
+        # -ss before -i = fast seek (decoding skips). -ar/-ac/-c:a converts
+        # to the format faster-whisper wants natively.
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error",
+             "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+             "-i", src_path, "-vn",
+             "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+             out_path],
+            capture_output=True, text=True, timeout=600,
+        )
+        return proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
+    except subprocess.SubprocessError:
+        return False
+
+
+def transcribe_local_chunked(audio_path: str, *, chunk_seconds: int = _CHUNK_SECONDS) -> Optional[TranscriptionResult]:
+    """Stream-process a long audio file in N-second chunks.
+
+    Extracts one chunk to disk, transcribes, deletes, repeats. Memory
+    stays bounded regardless of total audio length. Each chunk's segments
+    are stitched into a single timeline by adding the chunk's start offset.
+
+    Returns None on early failure (e.g., ffprobe couldn't read duration).
+    """
+    duration = _probe_duration_seconds(audio_path)
+    if duration is None:
+        # Can't probe — fall back to one-shot transcribe (may OOM on long
+        # files, but at least we try).
+        return transcribe_local(audio_path)
+
+    if duration <= _CHUNK_THRESHOLD_SECONDS:
+        # Short enough to do in one pass — chunking adds overhead with no benefit.
+        return transcribe_local(audio_path)
+
+    model = _get_whisper()
+    if model is None:
+        return None
+
+    logger.info(
+        "Transcribing %s in chunks (duration=%.1fs, chunk=%ds → %d chunks)",
+        audio_path, duration, chunk_seconds,
+        int(duration // chunk_seconds) + (1 if duration % chunk_seconds else 0),
+    )
+
+    all_segments: list[TranscriptSegment] = []
+    detected_lang: Optional[str] = None
+    offset = 0.0
+    chunk_idx = 0
+    while offset < duration:
+        chunk_path = audio_path + f".chunk{chunk_idx:03d}.wav"
+        ok = _extract_chunk(
+            audio_path, start=offset,
+            duration=min(chunk_seconds, duration - offset),
+            out_path=chunk_path,
+        )
+        if not ok:
+            logger.error("Failed to extract chunk %d of %s at %.1fs", chunk_idx, audio_path, offset)
+            return None
+        try:
+            # vad_filter + beam_size=1 = fastest settings. Each chunk gets its
+            # own .transcribe() call; the model object is reused so weights
+            # stay loaded.
+            segments_iter, info = model.transcribe(
+                chunk_path,
+                vad_filter=True,
+                beam_size=1,
+                language=detected_lang,  # lock language after first chunk
+            )
+            for seg in segments_iter:
+                text = (seg.text or "").strip()
+                if not text:
+                    continue
+                all_segments.append(TranscriptSegment(
+                    start=float(seg.start) + offset,
+                    end=float(seg.end) + offset,
+                    text=text,
+                ))
+            if detected_lang is None:
+                detected_lang = getattr(info, "language", None)
+        finally:
+            try:
+                os.unlink(chunk_path)
+            except OSError:
+                pass
+        offset += chunk_seconds
+        chunk_idx += 1
+
+    return TranscriptionResult(
+        text=" ".join(s.text for s in all_segments),
+        segments=all_segments,
+        engine=f"faster-whisper-{_WHISPER_MODEL_SIZE}-chunked",
+        language=detected_lang or "en",
+        duration_seconds=duration,
+    )
+
+
 # ─── OpenAI Whisper API (fallback) ──────────────────────────────────
 
 def transcribe_openai(audio_path: str) -> Optional[TranscriptionResult]:
@@ -177,7 +310,9 @@ def transcribe_audio_bytes(audio_bytes: bytes, *, filename_hint: str = "audio") 
         tmp.write(audio_bytes)
         tmp_path = tmp.name
     try:
-        result = transcribe_local(tmp_path)
+        # Use chunked path: auto-detects duration and chunks when needed.
+        # For short audio it just calls transcribe_local() directly.
+        result = transcribe_local_chunked(tmp_path)
         if result and result.text.strip():
             return result
         logger.warning("Local Whisper produced empty/failed result for %s — trying OpenAI", filename_hint)

@@ -10,6 +10,7 @@ that return 202 + the new status. The UI polls /api/meetings/{id} for updates.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -57,6 +58,21 @@ _RECORDING_DOC_TYPES = (
     "recording_harbor",
     "recording_school_board",
 )
+
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _validate_uuid(meeting_id: str) -> None:
+    """404 for anything that isn't a syntactically valid UUID.
+
+    Without this, a truncated URL like `/meetings/74f7fcc8-…` (literal
+    Unicode ellipsis from copy-pasted truncation) hits the DB with
+    `'74f7fcc8-…'::UUID`, which Postgres rejects as InvalidTextRepresentation
+    and bubbles as a 500 instead of a clear 404.
+    """
+    if not meeting_id or not _UUID_RE.match(meeting_id):
+        raise HTTPException(404, "Meeting not found")
 
 
 def _is_recording(doc: Document) -> bool:
@@ -122,6 +138,7 @@ def get_meeting(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _validate_uuid(meeting_id)
     doc = db.query(Document).filter(Document.id == meeting_id).first()
     if not doc or not _is_recording(doc):
         raise HTTPException(404, "Meeting not found")
@@ -158,6 +175,7 @@ def transcribe_meeting(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _validate_uuid(meeting_id)
     doc = db.query(Document).filter(Document.id == meeting_id).first()
     if not doc or not _is_recording(doc):
         raise HTTPException(404, "Meeting not found")
@@ -179,6 +197,7 @@ def summarize_meeting_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _validate_uuid(meeting_id)
     doc = db.query(Document).filter(Document.id == meeting_id).first()
     if not doc or not _is_recording(doc):
         raise HTTPException(404, "Meeting not found")

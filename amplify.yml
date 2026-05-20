@@ -20,5 +20,9 @@ applications:
           - '**/*'
       cache:
         paths:
+          # NOTE: .next/cache deliberately NOT cached. Next.js's incremental
+          # build cache keeps compiled route handlers across builds even when
+          # NEXT_PUBLIC_* env vars change in .env.local, which left a stale IP
+          # baked into app/api/[...path]/route.js and broke /api/* with 502.
+          # Caching node_modules alone still saves ~80% of build time.
           - node_modules/**/*
-          - .next/cache/**/*

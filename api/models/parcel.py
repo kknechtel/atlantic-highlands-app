@@ -49,7 +49,17 @@ class Parcel(Base):
     property_class_desc = Column(String, nullable=True)
     zoning = Column(String, nullable=True)
     lot_size_acres = Column(Float, nullable=True)
+    zip5 = Column(String, nullable=True)               # situs ZIP — 07716 or 07738 for AH
+    # Building characteristics — most are sourced from the NJGIN composite's
+    # MOD-IV fields. Many parcels (single-family) only have building_class;
+    # multi-family/condos additionally carry a parsed building_description
+    # like "2NDFLR-3/1/1" (floor, BR/BA/garage). Living sqft is NOT in
+    # MOD-IV — it lives in each assessor's CAMA sidecar, unavailable here.
     building_class = Column(String, nullable=True)
+    building_description = Column(String, nullable=True)
+    dwelling_units = Column(Integer, nullable=True)
+    land_description = Column(String, nullable=True)   # "50X130" dimensions or "C.E.=.90098%" condo equity
+    property_use = Column(String, nullable=True)
     year_built = Column(Integer, nullable=True)
     living_sqft = Column(Integer, nullable=True)
 

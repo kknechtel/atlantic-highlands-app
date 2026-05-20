@@ -70,6 +70,11 @@ FIELD_ALIASES = {
     "last_sale_page":    ["DEED_PAGE", "PAGE"],
     "last_sale_nu_code": ["NU_CODE", "NU"],
     "building_class":    ["BLDG_CLASS"],
+    "building_description": ["BLDG_DESC"],
+    "dwelling_units":    ["DWELL"],
+    "land_description":  ["LAND_DESC"],
+    "property_use":      ["PROP_USE"],
+    "zip5":              ["ZIP5"],
 }
 
 
@@ -194,6 +199,11 @@ def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
         year_built=_to_int(_pick(attrs, "year_built")),
         living_sqft=_to_int(_pick(attrs, "living_sqft")),
         building_class=_pick(attrs, "building_class"),
+        building_description=_pick(attrs, "building_description"),
+        dwelling_units=_to_int(_pick(attrs, "dwelling_units")),
+        land_description=_pick(attrs, "land_description"),
+        property_use=_pick(attrs, "property_use"),
+        zip5=_pick(attrs, "zip5"),
         last_sale_date=_to_date(_pick(attrs, "last_sale_date")),
         last_sale_price=_to_float(_pick(attrs, "last_sale_price")),
         last_sale_book=_pick(attrs, "last_sale_book"),

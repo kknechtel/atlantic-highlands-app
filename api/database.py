@@ -172,6 +172,14 @@ def _migrate():
     """
     new_columns = [
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Parcel building characteristics — surfaced from raw_attrs (NJGIN
+        # composite). Added 2026-05-19 so existing parcels backfill via
+        # scripts.backfill_parcel_building_fields.
+        ("parcels", "building_description", "VARCHAR"),
+        ("parcels", "dwelling_units", "INTEGER"),
+        ("parcels", "land_description", "VARCHAR"),
+        ("parcels", "property_use", "VARCHAR"),
+        ("parcels", "zip5", "VARCHAR"),
         # Financial statement upgrades (Phase 1)
         ("financial_statements", "extraction_pass", "INTEGER DEFAULT 0"),
         ("financial_statements", "reconcile_status", "VARCHAR DEFAULT 'not_attempted'"),
@@ -224,6 +232,14 @@ def _migrate():
         except Exception as e:
             logger.warning(f"pgvector extension not available — semantic search will fall back to keyword-only: {e}")
 
+        # 2b. pg_trgm for "did you mean" — similarity() against filenames so a
+        # typo like "highander" suggests "highlander". Cheap, ships with stock
+        # Postgres, no external service required.
+        try:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        except Exception as e:
+            logger.warning(f"pg_trgm extension not available — typo suggestions disabled: {e}")
+
         # 3. Add embedding + fts_vector columns + chunk-level pgvector cols
         rag_columns = [
             ("documents", "embedding", f"vector({EMBEDDING_DIM})"),
@@ -255,6 +271,9 @@ def _migrate():
             # IVFFLAT for vector cosine. Lists=100 is fine up to ~100K chunks; bump later.
             ("ix_documents_vec", "CREATE INDEX IF NOT EXISTS ix_documents_vec ON documents USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"),
             ("ix_chunks_vec", "CREATE INDEX IF NOT EXISTS ix_chunks_vec ON document_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"),
+            # Trigram index on filenames — powers "did you mean" via similarity().
+            # gin_trgm_ops is fast enough for ~100K filenames; query latency is <5ms.
+            ("ix_documents_filename_trgm", "CREATE INDEX IF NOT EXISTS ix_documents_filename_trgm ON documents USING gin (filename gin_trgm_ops)"),
         ]
         for name, sql in rag_indexes:
             try:
@@ -372,5 +391,53 @@ def _migrate():
                 conn.execute(text(sql))
             except Exception as e:
                 logger.warning(f"llm_usage index skipped: {e}")
+
+        # 8. Search analytics — one row per query. Tracks what users look for,
+        # whether they found anything (result_count), and which doc they clicked.
+        # Zero-result rows are the gold here: they show vocabulary gaps and
+        # missing-ingestion issues. clicked_document_id starts NULL; the
+        # frontend backfills it via POST /api/search/click.
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS search_query_log (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    query TEXT NOT NULL,
+                    normalized_query TEXT,
+                    parsed_filters JSONB DEFAULT '{}'::jsonb,
+                    result_count INTEGER DEFAULT 0,
+                    clicked_document_id UUID,
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    latency_ms INTEGER,
+                    created_at TIMESTAMP DEFAULT now()
+                )
+            """))
+        except Exception as e:
+            logger.warning(f"search_query_log create with gen_random_uuid failed: {e}")
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS search_query_log (
+                        id UUID PRIMARY KEY,
+                        query TEXT NOT NULL,
+                        normalized_query TEXT,
+                        parsed_filters JSONB DEFAULT '{}'::jsonb,
+                        result_count INTEGER DEFAULT 0,
+                        clicked_document_id UUID,
+                        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                        latency_ms INTEGER,
+                        created_at TIMESTAMP DEFAULT now()
+                    )
+                """))
+            except Exception as e2:
+                logger.warning(f"search_query_log create failed: {e2}")
+
+        for sql in [
+            "CREATE INDEX IF NOT EXISTS ix_search_log_created ON search_query_log(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS ix_search_log_zero ON search_query_log(result_count) WHERE result_count = 0",
+            "CREATE INDEX IF NOT EXISTS ix_search_log_user ON search_query_log(user_id)",
+        ]:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"search_query_log index skipped: {e}")
 
         conn.commit()

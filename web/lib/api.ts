@@ -773,25 +773,43 @@ export interface ParcelListItem {
   property_class: string | null;
   owner_name: string | null;
   total_assessment: number | null;
+  tax_amount: number | null;
+  lot_size_acres: number | null;
+  year_built: number | null;
   last_sale_price: number | null;
   last_sale_date: string | null;
 }
+
+export type ParcelSortColumn =
+  | "block_lot"
+  | "property_location"
+  | "property_class"
+  | "owner_name"
+  | "total_assessment"
+  | "tax_amount"
+  | "lot_size_acres"
+  | "year_built"
+  | "last_sale_price"
+  | "last_sale_date";
 
 export interface ParcelDetail extends ParcelListItem {
   pams_pin: string | null;
   county_code: string;
   muni_code: string;
   zoning: string | null;
-  lot_size_acres: number | null;
-  year_built: number | null;
   living_sqft: number | null;
+  building_class: string | null;
+  building_description: string | null;
+  dwelling_units: number | null;
+  land_description: string | null;
+  property_use: string | null;
+  zip5: string | null;
   owner_street: string | null;
   owner_city_state_zip: string | null;
   assessment_year: number | null;
   land_value: number | null;
   improvement_value: number | null;
   exemption_value: number | null;
-  tax_amount: number | null;
   last_sale_book: string | null;
   last_sale_page: string | null;
   last_sale_nu_code: string | null;
@@ -803,6 +821,8 @@ export async function listParcels(params: {
   block?: string;
   property_class?: string;
   min_assessment?: number;
+  sort_by?: ParcelSortColumn;
+  sort_dir?: "asc" | "desc";
   limit?: number;
   offset?: number;
 } = {}): Promise<ParcelListItem[]> {

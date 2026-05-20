@@ -1,8 +1,16 @@
 """
 Scraper runner - orchestrates crawling, downloading, and uploading to S3.
 Creates Document records in the database for each file found.
+
+Sites are crawled in parallel — each gets its own DB session + downloader and
+runs in a worker thread, capped by SCRAPER_MAX_PARALLEL (default 4). Shared
+state (status dict, dedup sets, all_uploaded list) is protected by a single
+re-entrant lock. Per-doc commits remain so a kill mid-run loses no work.
 """
+import asyncio
 import logging
+import os
+import threading
 import uuid
 import mimetypes
 from datetime import datetime
@@ -27,6 +35,17 @@ from .scraper import BasicScraper
 from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, detect_doc_type_from_name, detect_fiscal_year
 
 logger = logging.getLogger("ah_scraper")
+
+# Re-entrant so a holder can call a helper that re-acquires it (e.g. logging
+# an error from inside a critical section that also needs the lock).
+_status_lock = threading.RLock()
+
+# Per-thread isolation is what makes the speedup safe. The cap exists because
+# the source sites are small municipal hosts — opening too many parallel
+# connections risks 429/connection-reset. 4 is a conservative default; bump
+# with SCRAPER_MAX_PARALLEL when you trust the upstreams. Setting it to 1
+# reproduces the original sequential behavior (useful for debugging races).
+MAX_PARALLEL_SITES = max(1, int(os.environ.get("SCRAPER_MAX_PARALLEL", "4")))
 
 # Global state for tracking scraper progress.
 # `per_site` is keyed by site_name and contains a sub-dict of the same metric set
@@ -60,9 +79,280 @@ def _empty_site_stats() -> dict:
 
 def get_scraper_status() -> dict:
     # Shallow copy + deep-copy per_site so callers can't mutate live state.
-    s = dict(_scraper_status)
-    s["per_site"] = {k: dict(v) for k, v in _scraper_status.get("per_site", {}).items()}
-    return s
+    with _status_lock:
+        s = dict(_scraper_status)
+        s["per_site"] = {k: dict(v) for k, v in _scraper_status.get("per_site", {}).items()}
+        s["errors"] = list(_scraper_status.get("errors", []))
+        s["sites_planned"] = list(_scraper_status.get("sites_planned", []))
+        s["sites_completed"] = list(_scraper_status.get("sites_completed", []))
+        return s
+
+
+def _process_site_blocking(
+    site_key: str,
+    site_name: str,
+    crawler_cls,
+    project_id: str,
+    fallback_user_id: str,
+    s3,
+    historical: bool,
+    dry_run: bool,
+    existing_keys: set,
+    existing_filenames: set,
+    all_uploaded: list,
+    site_stats: dict,
+) -> None:
+    """Discover + download + insert for one source site, end-to-end.
+
+    Runs in a worker thread (via asyncio.to_thread) with its own DB session
+    and BasicScraper instance so threads don't share mutable per-connection
+    state. Shared state (`_scraper_status`, `existing_*`, `all_uploaded`) is
+    guarded by `_status_lock`. Per-doc commits preserve survivability on kill.
+    """
+    from database import SessionLocal
+    from models.document import Document
+
+    db = SessionLocal()
+    downloader = BasicScraper()
+
+    with _status_lock:
+        site_stats["status"] = "running"
+        site_stats["started_at"] = datetime.utcnow().isoformat()
+        _scraper_status["current_site"] = site_name  # last starter wins; per_site is the source of truth during parallel runs
+
+    logger.info(f"\n--- Crawling: {site_name} ---")
+
+    try:
+        crawler = crawler_cls()
+        if hasattr(crawler, "historical"):
+            crawler.historical = historical
+
+        # Live progress: each crawler calls this after every page. We update
+        # the shared counter under the lock so concurrent crawlers don't race
+        # on the += operation.
+        def _on_page_docs(n: int):
+            with _status_lock:
+                _scraper_status["documents_found"] += n
+                site_stats["documents_found"] += n
+        crawler.progress_callback = _on_page_docs
+
+        docs = crawler.find_documents()
+
+        # Reconcile against deduped final count (live ticks counted raw).
+        with _status_lock:
+            final_n = len(docs)
+            delta = final_n - site_stats["documents_found"]
+            if delta:
+                _scraper_status["documents_found"] += delta
+                site_stats["documents_found"] = final_n
+        logger.info(f"  Found {final_n} documents on {site_name}")
+
+        # Surface connect-level failures (e.g. host firewalled our IP) to the UI.
+        basic = getattr(crawler, "basic", None)
+        if basic is not None and getattr(basic, "errors", None):
+            with _status_lock:
+                for msg in basic.errors:
+                    if msg not in _scraper_status["errors"]:
+                        _scraper_status["errors"].append(msg)
+                        site_stats["errors"] += 1
+                basic.errors.clear()
+
+        if dry_run:
+            logger.info(f"  [DRY RUN] Would download {len(docs)} files")
+            with _status_lock:
+                site_stats["status"] = "done"
+                site_stats["completed_at"] = datetime.utcnow().isoformat()
+                _scraper_status["sites_completed"].append(site_name)
+            return
+
+        # Download and upload each document
+        for doc_info in docs:
+            try:
+                recording = doc_info.get("recording")  # set by recording crawlers
+
+                # ── YouTube recordings: no download, metadata-only row ──
+                if recording and recording.get("platform") == "youtube":
+                    yt_id = recording.get("youtube_id")
+                    if not yt_id:
+                        continue
+                    mdate = recording.get("meeting_date") or "undated"
+                    descriptive_name = f"HHRSD BOE - {mdate} - {doc_info.get('title') or yt_id}.youtube"
+                    raw_filename = f"youtube_{yt_id}.json"
+                    s3_key = f"recordings/youtube/{yt_id}"
+                    # Test-and-claim atomically so two threads can't both pass
+                    # the dedup check for the same key and double-insert.
+                    with _status_lock:
+                        if (descriptive_name.lower() in existing_filenames
+                                or s3_key in existing_keys):
+                            _scraper_status["documents_skipped"] += 1
+                            site_stats["documents_skipped"] += 1
+                            continue
+                        existing_filenames.add(descriptive_name.lower())
+                        existing_keys.add(s3_key)
+
+                    doc_record = Document(
+                        project_id=project_id,
+                        filename=descriptive_name,
+                        original_filename=raw_filename,
+                        s3_key=s3_key,
+                        s3_bucket=s3.bucket,
+                        file_size=0,
+                        content_type="video/youtube",
+                        doc_type=doc_info.get("doc_type") or "recording_school_board",
+                        category=doc_info.get("category") or "school",
+                        fiscal_year=detect_fiscal_year(doc_info.get("title", "") + " " + mdate),
+                        uploaded_by=fallback_user_id,
+                        status="uploaded",
+                        metadata_={
+                            "source_url": doc_info["url"],
+                            "source_page": doc_info.get("source_page"),
+                            "source_site": crawler.source_name,
+                            "title": doc_info.get("title"),
+                            "scraped_at": datetime.utcnow().isoformat(),
+                            "recording": recording,
+                        },
+                    )
+                    db.add(doc_record)
+                    db.commit()  # per-doc commit so partial work survives a worker restart
+                    with _status_lock:
+                        _scraper_status["documents_uploaded"] += 1
+                        site_stats["documents_uploaded"] += 1
+                        all_uploaded.append({
+                            "filename": descriptive_name,
+                            "source": crawler.source_name,
+                            "category": doc_info.get("category") or "school",
+                            "doc_type": doc_record.doc_type,
+                            "url": doc_info["url"],
+                        })
+                    continue
+
+                # Use descriptive name from URL tree
+                descriptive_name = url_to_descriptive_name(
+                    doc_info["url"],
+                    source_page=doc_info.get("source_page", ""),
+                    title=doc_info.get("title", ""),
+                )
+                raw_filename = url_to_filename(doc_info["url"])
+
+                # Pre-download dedup check (we don't claim yet — the file
+                # might be a 404 or hit a download error, in which case we
+                # shouldn't permanently mark its name as taken). The final
+                # claim happens just before the DB insert below.
+                with _status_lock:
+                    skip = descriptive_name.lower() in existing_filenames
+                    if not skip and descriptive_name == raw_filename:
+                        skip = raw_filename.lower() in existing_filenames
+                    if skip:
+                        _scraper_status["documents_skipped"] += 1
+                        site_stats["documents_skipped"] += 1
+                        continue
+
+                # Download file content
+                content, fname = downloader.download_file_to_bytes(doc_info["url"])
+                if not content:
+                    continue
+
+                # Categorize from URL and descriptive name
+                category = categorize_url(doc_info["url"])
+                entity_type = source_to_entity_type(crawler.source_name)
+                # Recording crawlers pre-tag doc_type/category; honor that.
+                doc_type = doc_info.get("doc_type") or detect_doc_type_from_name(descriptive_name)
+                if doc_info.get("category"):
+                    entity_type = doc_info["category"]
+                fiscal_year = detect_fiscal_year(descriptive_name)
+                # Recordings live under a distinct prefix so the audio
+                # bucket stays browsable separately from documents.
+                prefix = "recordings" if recording else "scraped"
+                s3_key = f"{prefix}/{crawler.source_name}/{category}/{descriptive_name}"
+
+                # Atomic test-and-claim before S3 upload + DB insert. Another
+                # thread may have raced us between the pre-download check and
+                # here — bail without uploading.
+                with _status_lock:
+                    if s3_key in existing_keys or descriptive_name.lower() in existing_filenames:
+                        _scraper_status["documents_skipped"] += 1
+                        site_stats["documents_skipped"] += 1
+                        continue
+                    existing_filenames.add(descriptive_name.lower())
+                    if descriptive_name == raw_filename:
+                        existing_filenames.add(raw_filename.lower())
+                    existing_keys.add(s3_key)
+
+                # Upload to S3
+                content_type = mimetypes.guess_type(raw_filename)[0] or "application/octet-stream"
+                s3.upload_file(content, s3_key, content_type)
+
+                # Create database record with rich metadata
+                metadata = {
+                    "source_url": doc_info["url"],
+                    "source_page": doc_info.get("source_page"),
+                    "source_site": crawler.source_name,
+                    "title": doc_info.get("title"),
+                    "scraped_at": datetime.utcnow().isoformat(),
+                }
+                if recording:
+                    metadata["recording"] = recording
+
+                doc_record = Document(
+                    project_id=project_id,
+                    filename=descriptive_name,
+                    original_filename=raw_filename,
+                    s3_key=s3_key,
+                    s3_bucket=s3.bucket,
+                    file_size=len(content),
+                    content_type=content_type,
+                    doc_type=doc_type,
+                    category=entity_type,
+                    fiscal_year=fiscal_year,
+                    uploaded_by=fallback_user_id,
+                    status="uploaded",
+                    metadata_=metadata,
+                )
+                db.add(doc_record)
+                db.commit()  # per-doc commit so partial work survives a worker restart
+                with _status_lock:
+                    _scraper_status["documents_uploaded"] += 1
+                    site_stats["documents_uploaded"] += 1
+                    all_uploaded.append({
+                        "filename": descriptive_name,
+                        "source": crawler.source_name,
+                        "category": category,
+                        "doc_type": doc_type,
+                        "url": doc_info["url"],
+                    })
+
+            except Exception as e:
+                db.rollback()
+                err = f"Error processing {doc_info.get('url', '?')}: {e}"
+                logger.error(err)
+                with _status_lock:
+                    _scraper_status["errors"].append(err)
+                    site_stats["errors"] += 1
+
+        # Harvest any new connect-failure messages picked up by this site's downloader.
+        if getattr(downloader, "errors", None):
+            with _status_lock:
+                for msg in downloader.errors:
+                    if msg not in _scraper_status["errors"]:
+                        _scraper_status["errors"].append(msg)
+                        site_stats["errors"] += 1
+                downloader.errors.clear()
+
+        with _status_lock:
+            site_stats["status"] = "done"
+            site_stats["completed_at"] = datetime.utcnow().isoformat()
+            _scraper_status["sites_completed"].append(site_name)
+
+    except Exception as e:
+        err = f"Error crawling {site_name}: {e}"
+        logger.error(err, exc_info=True)
+        with _status_lock:
+            _scraper_status["errors"].append(err)
+            site_stats["status"] = "error"
+            site_stats["errors"] += 1
+            site_stats["completed_at"] = datetime.utcnow().isoformat()
+    finally:
+        db.close()
 
 
 async def run_scraper(
@@ -172,237 +462,35 @@ async def run_scraper(
             if sk in crawlers:
                 _scraper_status["per_site"][crawlers[sk][0]] = _empty_site_stats()
 
-        for site_key in all_sites:
+        # Run each site's full pipeline in a worker thread. Concurrency is
+        # capped by MAX_PARALLEL_SITES — small municipal hosts don't love
+        # being hit by 13 parallel crawlers, and we want to leave headroom
+        # for the API itself.
+        fallback_user_id = user_id or str(project.created_by)
+        sem = asyncio.Semaphore(MAX_PARALLEL_SITES)
+
+        async def _run_one(site_key: str) -> None:
             if site_key not in crawlers:
-                continue
-
+                return
             site_name, CrawlerClass = crawlers[site_key]
-            _scraper_status["current_site"] = site_name
             site_stats = _scraper_status["per_site"][site_name]
-            site_stats["status"] = "running"
-            site_stats["started_at"] = datetime.utcnow().isoformat()
-            logger.info(f"\n--- Crawling: {site_name} ---")
+            async with sem:
+                await asyncio.to_thread(
+                    _process_site_blocking,
+                    site_key, site_name, CrawlerClass,
+                    str(project.id), fallback_user_id, s3,
+                    historical, dry_run,
+                    existing_keys, existing_filenames, all_uploaded,
+                    site_stats,
+                )
 
-            try:
-                crawler = CrawlerClass()
-                # Crawlers that support recent-only mode read this flag.
-                # AHNJCrawler skips its historical_pages when False.
-                if hasattr(crawler, "historical"):
-                    crawler.historical = historical
-                # Live progress: each crawler calls this after every page so the
-                # UI's documents_found ticks up during the crawl instead of jumping
-                # at the end. Closure captures site_stats for the current site.
-                _site_stats = site_stats
-                def _on_page_docs(n: int, _s=_site_stats):
-                    _scraper_status["documents_found"] += n
-                    _s["documents_found"] += n
-                crawler.progress_callback = _on_page_docs
-                docs = crawler.find_documents()
-                # Reconcile against deduped final count (live ticks counted raw).
-                final_n = len(docs)
-                delta = final_n - site_stats["documents_found"]
-                if delta:
-                    _scraper_status["documents_found"] += delta
-                    site_stats["documents_found"] = final_n
-                logger.info(f"  Found {final_n} documents on {site_name}")
-
-                # Surface connect-level failures (e.g. host firewalled our IP) to the UI.
-                basic = getattr(crawler, "basic", None)
-                if basic is not None and getattr(basic, "errors", None):
-                    for msg in basic.errors:
-                        if msg not in _scraper_status["errors"]:
-                            _scraper_status["errors"].append(msg)
-                            site_stats["errors"] += 1
-                    basic.errors.clear()
-
-                if dry_run:
-                    logger.info(f"  [DRY RUN] Would download {len(docs)} files")
-                    site_stats["status"] = "done"
-                    site_stats["completed_at"] = datetime.utcnow().isoformat()
-                    _scraper_status["sites_completed"].append(site_name)
-                    continue
-
-                # Download and upload each document
-                for doc_info in docs:
-                    try:
-                        recording = doc_info.get("recording")  # set by recording crawlers
-
-                        # ── YouTube recordings: no download, metadata-only row ──
-                        if recording and recording.get("platform") == "youtube":
-                            yt_id = recording.get("youtube_id")
-                            if not yt_id:
-                                continue
-                            mdate = recording.get("meeting_date") or "undated"
-                            descriptive_name = f"HHRSD BOE - {mdate} - {doc_info.get('title') or yt_id}.youtube"
-                            raw_filename = f"youtube_{yt_id}.json"
-                            s3_key = f"recordings/youtube/{yt_id}"
-                            if (descriptive_name.lower() in existing_filenames
-                                    or s3_key in existing_keys):
-                                _scraper_status["documents_skipped"] += 1
-                                site_stats["documents_skipped"] += 1
-                                continue
-                            doc_record = Document(
-                                project_id=project.id,
-                                filename=descriptive_name,
-                                original_filename=raw_filename,
-                                s3_key=s3_key,
-                                s3_bucket=s3.bucket,
-                                file_size=0,
-                                content_type="video/youtube",
-                                doc_type=doc_info.get("doc_type") or "recording_school_board",
-                                category=doc_info.get("category") or "school",
-                                fiscal_year=detect_fiscal_year(doc_info.get("title", "") + " " + mdate),
-                                uploaded_by=user_id or project.created_by,
-                                status="uploaded",
-                                metadata_={
-                                    "source_url": doc_info["url"],
-                                    "source_page": doc_info.get("source_page"),
-                                    "source_site": crawler.source_name,
-                                    "title": doc_info.get("title"),
-                                    "scraped_at": datetime.utcnow().isoformat(),
-                                    "recording": recording,
-                                },
-                            )
-                            db.add(doc_record)
-                            db.commit()  # per-doc commit so partial work survives a worker restart
-                            existing_filenames.add(descriptive_name.lower())
-                            existing_keys.add(s3_key)
-                            _scraper_status["documents_uploaded"] += 1
-                            site_stats["documents_uploaded"] += 1
-                            all_uploaded.append({
-                                "filename": descriptive_name,
-                                "source": crawler.source_name,
-                                "category": doc_info.get("category") or "school",
-                                "doc_type": doc_record.doc_type,
-                                "url": doc_info["url"],
-                            })
-                            continue
-
-                        # Use descriptive name from URL tree
-                        descriptive_name = url_to_descriptive_name(
-                            doc_info["url"],
-                            source_page=doc_info.get("source_page", ""),
-                            title=doc_info.get("title", ""),
-                        )
-                        raw_filename = url_to_filename(doc_info["url"])
-
-                        # Skip if already in DB. We always check the descriptive
-                        # name (path-aware). The raw_filename fallback is only
-                        # consulted when the descriptive name has no path
-                        # context — otherwise generic basenames (e.g. "0130.pdf"
-                        # for every NJ DOE ACFR year/district) cause false-
-                        # positive skips after the first upload.
-                        skip = descriptive_name.lower() in existing_filenames
-                        if not skip and descriptive_name == raw_filename:
-                            skip = raw_filename.lower() in existing_filenames
-                        if skip:
-                            _scraper_status["documents_skipped"] += 1
-                            site_stats["documents_skipped"] += 1
-                            continue
-
-                        # Download file content
-                        content, fname = downloader.download_file_to_bytes(doc_info["url"])
-                        if not content:
-                            continue
-
-                        # Categorize from URL and descriptive name
-                        category = categorize_url(doc_info["url"])
-                        entity_type = source_to_entity_type(crawler.source_name)
-                        # Recording crawlers pre-tag doc_type/category; honor that.
-                        doc_type = doc_info.get("doc_type") or detect_doc_type_from_name(descriptive_name)
-                        if doc_info.get("category"):
-                            entity_type = doc_info["category"]
-                        fiscal_year = detect_fiscal_year(descriptive_name)
-                        # Recordings live under a distinct prefix so the audio
-                        # bucket stays browsable separately from documents.
-                        prefix = "recordings" if recording else "scraped"
-                        s3_key = f"{prefix}/{crawler.source_name}/{category}/{descriptive_name}"
-
-                        if s3_key in existing_keys:
-                            _scraper_status["documents_skipped"] += 1
-                            site_stats["documents_skipped"] += 1
-                            continue
-
-                        # Upload to S3
-                        content_type = mimetypes.guess_type(raw_filename)[0] or "application/octet-stream"
-                        s3.upload_file(content, s3_key, content_type)
-
-                        # Create database record with rich metadata
-                        metadata = {
-                            "source_url": doc_info["url"],
-                            "source_page": doc_info.get("source_page"),
-                            "source_site": crawler.source_name,
-                            "title": doc_info.get("title"),
-                            "scraped_at": datetime.utcnow().isoformat(),
-                        }
-                        if recording:
-                            metadata["recording"] = recording
-
-                        doc_record = Document(
-                            project_id=project.id,
-                            filename=descriptive_name,
-                            original_filename=raw_filename,
-                            s3_key=s3_key,
-                            s3_bucket=s3.bucket,
-                            file_size=len(content),
-                            content_type=content_type,
-                            doc_type=doc_type,
-                            category=entity_type,
-                            fiscal_year=fiscal_year,
-                            uploaded_by=user_id or project.created_by,
-                            status="uploaded",
-                            metadata_=metadata,
-                        )
-                        db.add(doc_record)
-                        db.commit()  # per-doc commit so partial work survives a worker restart
-                        existing_filenames.add(descriptive_name.lower())
-                        # Only register the raw_filename as a dedup key when it
-                        # is also the descriptive name (no path context). For
-                        # path-aware names, raw_filename is often generic and
-                        # would collide with unrelated files.
-                        if descriptive_name == raw_filename:
-                            existing_filenames.add(raw_filename.lower())
-                        existing_keys.add(s3_key)
-                        _scraper_status["documents_uploaded"] += 1
-                        site_stats["documents_uploaded"] += 1
-                        all_uploaded.append({
-                            "filename": descriptive_name,
-                            "source": crawler.source_name,
-                            "category": category,
-                            "doc_type": doc_type,
-                            "url": doc_info["url"],
-                        })
-
-                    except Exception as e:
-                        # Rollback any partial state from the failing add so the
-                        # session stays usable for the next doc in this loop.
-                        db.rollback()
-                        err = f"Error processing {doc_info.get('url', '?')}: {e}"
-                        logger.error(err)
-                        _scraper_status["errors"].append(err)
-                        site_stats["errors"] += 1
-
-                # Harvest any new connect-failure messages picked up by the shared downloader.
-                if getattr(downloader, "errors", None):
-                    for msg in downloader.errors:
-                        if msg not in _scraper_status["errors"]:
-                            _scraper_status["errors"].append(msg)
-                            site_stats["errors"] += 1
-                    downloader.errors.clear()
-
-                # Commit after each site
-                db.commit()
-                site_stats["status"] = "done"
-                site_stats["completed_at"] = datetime.utcnow().isoformat()
-                _scraper_status["sites_completed"].append(site_name)
-
-            except Exception as e:
-                err = f"Error crawling {site_name}: {e}"
-                logger.error(err, exc_info=True)
-                _scraper_status["errors"].append(err)
-                site_stats["status"] = "error"
-                site_stats["errors"] += 1
-                site_stats["completed_at"] = datetime.utcnow().isoformat()
+        logger.info(
+            f"Starting parallel crawl: {len(all_sites)} sites, cap={MAX_PARALLEL_SITES}"
+        )
+        # return_exceptions=False so any thread-level surprise propagates to
+        # the outer try/except and gets logged with a traceback. Per-site
+        # errors are already caught inside _process_site_blocking.
+        await asyncio.gather(*(_run_one(sk) for sk in all_sites), return_exceptions=False)
 
         _scraper_status["current_site"] = None
         _scraper_status["running"] = False

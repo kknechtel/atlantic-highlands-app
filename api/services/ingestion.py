@@ -25,13 +25,22 @@ log = logging.getLogger(__name__)
 
 
 def _refresh_doc_fts(db: Session, doc_id) -> None:
+    """Build the document-level fts_vector with positional weights:
+      A (highest) — title
+      B           — filename
+      C           — notes (AI summary)
+      D (lowest)  — first 50KB of extracted_text body
+
+    ts_rank() honors these weights, so a title hit naturally beats a body
+    mention without needing a separate score-blending pass.
+    """
     db.execute(text("""
         UPDATE documents
-        SET fts_vector = to_tsvector('english',
-            coalesce(filename, '') || ' ' ||
-            coalesce(notes, '') || ' ' ||
-            coalesce(left(extracted_text, 50000), '')
-        )
+        SET fts_vector =
+            setweight(to_tsvector('english', coalesce(title, '')),    'A') ||
+            setweight(to_tsvector('english', coalesce(filename, '')), 'B') ||
+            setweight(to_tsvector('english', coalesce(notes, '')),    'C') ||
+            setweight(to_tsvector('english', coalesce(left(extracted_text, 50000), '')), 'D')
         WHERE id = CAST(:id AS uuid)
     """), {"id": str(doc_id)})
 

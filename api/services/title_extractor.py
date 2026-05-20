@@ -96,6 +96,93 @@ _DEPARTMENTS_RE = re.compile(r"^Departments\s+-\s+", re.IGNORECASE)
 #   Minutes - Archives - 2013 - February 27, Regular Meeting Minutes.pdf
 _ARCHIVES_RE = re.compile(r"^(Agendas|Minutes)\s+-\s+Archives\s+-\s+(\d{4})\s+-\s+", re.IGNORECASE)
 
+# Body-specific filename prefixes (the AH scraper sometimes outputs files
+# like "PB_Meeting_Minutes_May_1__2025.pdf" or "February_6__2025_PB_Agenda.pdf").
+# The acronym can be at the start OR embedded between underscores anywhere
+# in the name, so we look for it as a free-standing token.
+#
+# Order matters: longer-prefix matches (AHBOE) win over shorter (BOE).
+_PREFIX_PATTERNS = [
+    (re.compile(r"(?:^|[_\s\-])ahboe(?=[_\s\-])", re.IGNORECASE), "Board of Education"),
+    (re.compile(r"(?:^|[_\s\-])zba(?=[_\s\-])", re.IGNORECASE),   "Zoning Board"),
+    (re.compile(r"(?:^|[_\s\-])boe(?=[_\s\-])", re.IGNORECASE),   "Board of Education"),
+    (re.compile(r"(?:^|[_\s\-])pb(?=[_\s\-])", re.IGNORECASE),    "Planning Board"),
+    (re.compile(r"(?:^|[_\s\-])zb(?=[_\s\-])", re.IGNORECASE),    "Zoning Board"),
+    (re.compile(r"(?:^|[_\s\-])bbc(?=[_\s\-])", re.IGNORECASE),   "Borough Council"),
+    (re.compile(r"(?:^|[_\s\-])stc(?=[_\s\-])", re.IGNORECASE),   "Shade Tree Commission"),
+    (re.compile(r"(?:^|[_\s\-])hpc(?=[_\s\-])", re.IGNORECASE),   "Historic Preservation Commission"),
+    (re.compile(r"(?:^|[_\s\-])ec(?=[_\s\-])", re.IGNORECASE),    "Environmental Commission"),
+]
+
+# Dates inside filenames. `\b` treats underscore as a word character so
+# `2024_03_06` has no real boundaries; use explicit non-letter/non-digit
+# anchors. Use `[^a-zA-Z]` (not `[^\w]`) so underscore counts as a separator.
+_FN_DATE_PATTERNS = [
+    # Month name DD YYYY
+    re.compile(r"(?:^|[^a-zA-Z])(january|february|march|april|may|june|july|august|september|october|november|december|"
+               r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[_\s]+(\d{1,2})[_,\s]+(\d{4})(?=[^\d]|$)", re.IGNORECASE),
+    # YYYY_MM_DD / YYYY-MM-DD
+    re.compile(r"(?:^|[^\d])(\d{4})[_\-](\d{1,2})[_\-](\d{1,2})(?=[^\d]|$)"),
+    # MM-DD-YYYY (e.g. 3-19-2019)
+    re.compile(r"(?:^|[^\d])(\d{1,2})[_\-](\d{1,2})[_\-](\d{4})(?=[^\d]|$)"),
+]
+
+_MONTH_TO_NUM = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
+    "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _extract_date_from_filename(filename: str) -> Optional[str]:
+    """Look for any of the common in-filename date encodings. Returns ISO."""
+    name = re.sub(r"\.(pdf|pptx?|docx?|xlsx?|xls)$", "", filename, flags=re.IGNORECASE)
+    # Month name pattern first (most unambiguous)
+    m = _FN_DATE_PATTERNS[0].search(name)
+    if m:
+        month = _MONTH_TO_NUM.get(m.group(1).lower())
+        if month:
+            try:
+                return f"{int(m.group(3)):04d}-{month:02d}-{int(m.group(2)):02d}"
+            except (ValueError, TypeError):
+                pass
+    # YYYY-MM-DD style
+    m = _FN_DATE_PATTERNS[1].search(name)
+    if m:
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1900 < y < 2100 and 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+        except (ValueError, TypeError):
+            pass
+    # MM-DD-YYYY style — only fire if YYYY-MM-DD didn't (to avoid mis-parsing
+    # the leading year of "2025_03_06" as a month).
+    m = _FN_DATE_PATTERNS[2].search(name)
+    if m:
+        try:
+            mo, d, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1900 < y < 2100 and 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _humanize_filename_stem(stem: str) -> str:
+    """Strip body acronyms (PB/ZB/etc.) and underscores from a filename stem.
+    'PB_Meeting_Minutes_May_1__2025'      → 'Meeting Minutes May 1 2025'
+    'February_6__2025_PB_Agenda'          → 'February 6 2025 Agenda'
+    """
+    s = stem
+    for pat, _ in _PREFIX_PATTERNS:
+        # Replace the acronym (including its leading separator) with a
+        # single underscore so the subsequent collapse leaves clean spaces.
+        s = pat.sub("_", s, count=1)
+    s = re.sub(r"[_]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
 
 # Canonical department names — same map as routes/search.py but defined here too
 # so the extractor doesn't depend on the route module. Keep in sync.
@@ -194,7 +281,47 @@ def derive_from_filename(filename: str) -> dict:
                 out["doc_date"] = iso
         return out
 
+    # 3. Body-acronym style: PB_Meeting_Minutes_May_1__2025.pdf,
+    #    February_6__2025_PB_Agenda.pdf, AHBOE_MINUTES_3-19-2019.pdf, etc.
+    # The acronym can be anywhere in the filename as long as it's a
+    # standalone token between separators.
+    for pat, dept in _PREFIX_PATTERNS:
+        if pat.search(filename):
+            stem = re.sub(r"\.(pdf|pptx?|docx?|xlsx?|xls)$", "", filename, flags=re.IGNORECASE)
+            body = _humanize_filename_stem(stem)
+            out["department"] = dept
+            out["title"] = f"{dept} — {body}" if body else dept
+            date_iso = _extract_date_from_filename(filename)
+            if date_iso:
+                out["doc_date"] = date_iso
+            return out
+
+    # 4. Fallback: try to extract just a date if there is one in the filename.
+    # Department/title fall through to other heuristics.
+    date_iso = _extract_date_from_filename(filename)
+    if date_iso:
+        out["doc_date"] = date_iso
+
     return out
+
+
+# Markdown header / page-number prefixes emitted by pymupdf4llm. The extractor
+# was treating "## Page 1 — PLANNING BOARD" as a title verbatim; strip the
+# leading garbage so we get the actual heading text.
+_MARKDOWN_HEADER_RE = re.compile(r"^\s*#{1,6}\s+", re.MULTILINE)
+_PAGE_PREFIX_RE = re.compile(r"^\s*Page\s+\d+\s*[-–—:.]?\s*", re.IGNORECASE)
+_LEADING_NOISE_RE = re.compile(r"^[\s\*\-#_=•·]+")
+
+
+def _clean_text_line(line: str) -> str:
+    """Strip markdown formatting, page-number prefixes, and leading noise.
+    Returns the bare heading text."""
+    s = _MARKDOWN_HEADER_RE.sub("", line)
+    s = _PAGE_PREFIX_RE.sub("", s)
+    s = _LEADING_NOISE_RE.sub("", s)
+    # Trim trailing punctuation/decoration
+    s = re.sub(r"[\*_=]+$", "", s).strip()
+    return s
 
 
 def derive_from_text(extracted_text: Optional[str]) -> dict:
@@ -203,7 +330,7 @@ def derive_from_text(extracted_text: Optional[str]) -> dict:
     if not extracted_text:
         return {}
     head = extracted_text[:2000]
-    lines = [l.strip() for l in head.splitlines()]
+    lines = [_clean_text_line(l) for l in head.splitlines()]
 
     out: dict = {}
 

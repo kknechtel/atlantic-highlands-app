@@ -46,3 +46,9 @@ tmp/
 web/screenshots/
 # Claude Code project config (personal)
 .claude/
+
+# YouTube auth cookies for yt-dlp — contains live session tokens, must
+# never be committed. Lives at /opt/atlantic-highlands/yt-cookies.txt on
+# prod; rotate every few weeks by re-exporting.
+yt-cookies.txt
+yt-cookies-*.txt

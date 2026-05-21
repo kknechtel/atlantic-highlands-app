@@ -6,59 +6,95 @@ import {
   ChartBarIcon,
   FolderIcon,
   CalendarDaysIcon,
-  PresentationChartLineIcon,
+  MicrophoneIcon,
   EllipsisHorizontalIcon,
+  PresentationChartLineIcon,
+  HomeModernIcon,
+  BuildingStorefrontIcon,
+  MusicalNoteIcon,
+  DocumentTextIcon,
+  ClipboardDocumentListIcon,
+  GlobeAltIcon,
+  Cog6ToothIcon,
+  ChatBubbleLeftRightIcon,
+  ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import {
   ChartBarIcon as ChartBarSolid,
   FolderIcon as FolderSolid,
   CalendarDaysIcon as CalendarSolid,
-  PresentationChartLineIcon as PresentationSolid,
+  MicrophoneIcon as MicrophoneSolid,
 } from "@heroicons/react/24/solid";
 import { useState } from "react";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 const brandColor = "#385854";
 
 const mainTabs = [
   { name: "Home", href: "/", icon: ChartBarIcon, activeIcon: ChartBarSolid },
   { name: "Docs", href: "/document-library", icon: FolderIcon, activeIcon: FolderSolid },
-  { name: "Decks", href: "/presentations", icon: PresentationChartLineIcon, activeIcon: PresentationSolid },
+  { name: "Meetings", href: "/meetings", icon: MicrophoneIcon, activeIcon: MicrophoneSolid },
   { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon, activeIcon: CalendarSolid },
   { name: "More", href: "#more", icon: EllipsisHorizontalIcon, activeIcon: EllipsisHorizontalIcon },
 ];
 
-const moreItems = [
-  { name: "Local Business", href: "/local-business" },
-  { name: "Events", href: "/events" },
-  { name: "Financials", href: "/financial-analysis" },
-  { name: "OPRA Requests", href: "/opra" },
-  { name: "Scraper", href: "/scraper" },
-  { name: "Admin", href: "/admin" },
+type MoreItem = { name: string; href: string; icon: typeof FolderIcon; adminOnly?: boolean };
+
+const moreItems: MoreItem[] = [
+  { name: "Financials", href: "/financial-analysis", icon: DocumentTextIcon },
+  { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
+  { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
+  { name: "Local Business", href: "/local-business", icon: BuildingStorefrontIcon },
+  { name: "Events", href: "/events", icon: MusicalNoteIcon },
+  { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
+  { name: "Scraper", href: "/scraper", icon: GlobeAltIcon, adminOnly: true },
+  { name: "Admin", href: "/admin", icon: Cog6ToothIcon, adminOnly: true },
 ];
 
 const DISMISSED_CHAT_KEY = "ah_chat_dismissed";
 
 export default function MobileNav() {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
   const [showMore, setShowMore] = useState(false);
+
+  const isAdmin = !!user?.is_admin;
+  const visibleMoreItems = moreItems.filter(i => !i.adminOnly || isAdmin);
 
   return (
     <>
       {/* More menu overlay */}
       {showMore && (
-        <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setShowMore(false)}>
-          <div className="absolute bottom-16 left-0 right-0 bg-white border-t border-gray-200 rounded-t-2xl shadow-xl p-4"
-            onClick={e => e.stopPropagation()}>
-            <div className="grid grid-cols-3 gap-3">
-              {moreItems.map(item => (
-                <Link key={item.href} href={item.href} onClick={() => setShowMore(false)}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-colors ${
-                    pathname === item.href || pathname.startsWith(item.href + "/")
-                      ? "bg-gray-100" : "hover:bg-gray-50"
-                  }`}>
-                  <span className="text-sm font-medium text-gray-700">{item.name}</span>
-                </Link>
-              ))}
+        <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setShowMore(false)}>
+          <div
+            className="absolute bottom-16 left-0 right-0 bg-white border-t border-gray-200 rounded-t-2xl shadow-xl safe-area-bottom"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-2 pb-1">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+
+            <div className="px-4 pt-2 pb-3 grid grid-cols-3 gap-2">
+              {visibleMoreItems.map(item => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setShowMore(false)}
+                    className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl transition-colors min-h-[72px] justify-center ${
+                      isActive ? "bg-gray-100" : "hover:bg-gray-50 active:bg-gray-100"
+                    }`}
+                    style={isActive ? { color: brandColor } : {}}
+                  >
+                    <Icon className="w-6 h-6" style={isActive ? { color: brandColor } : { color: "#4b5563" }} />
+                    <span className="text-[11px] font-medium text-center leading-tight text-gray-700">
+                      {item.name}
+                    </span>
+                  </Link>
+                );
+              })}
               <button
                 onClick={() => {
                   // Touch counterpart to Cmd/Ctrl+/ on desktop. The chat
@@ -67,11 +103,30 @@ export default function MobileNav() {
                   window.dispatchEvent(new Event("ah:show-chat"));
                   setShowMore(false);
                 }}
-                className="flex flex-col items-center gap-1 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors min-h-[72px] justify-center"
               >
-                <span className="text-sm font-medium text-gray-700">Show chat</span>
+                <ChatBubbleLeftRightIcon className="w-6 h-6 text-gray-600" />
+                <span className="text-[11px] font-medium text-center leading-tight text-gray-700">
+                  Show chat
+                </span>
               </button>
             </div>
+
+            {user && (
+              <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500 truncate flex-1 min-w-0">{user.email}</span>
+                <button
+                  onClick={() => {
+                    setShowMore(false);
+                    logout();
+                  }}
+                  className="ml-3 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100"
+                >
+                  <ArrowRightOnRectangleIcon className="w-4 h-4" />
+                  Log out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

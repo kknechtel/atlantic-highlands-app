@@ -140,7 +140,18 @@ def process_transcribe(meeting_id: str) -> str:
         platform = rec.get("platform") or "audio"
 
         try:
-            if platform == "youtube":
+            # If a sync script (scripts/sync_youtube_audio.py) has uploaded
+            # the YouTube audio to S3 from a residential IP, prefer that —
+            # YouTube blocks media downloads from EC2 even with cookies.
+            s3_override = rec.get("transcribe_from_s3_key")
+            if s3_override:
+                s3 = S3Service()
+                audio_bytes = s3.download_file(s3_override)
+                result = transcribe_audio_bytes(
+                    audio_bytes,
+                    filename_hint=s3_override,
+                )
+            elif platform == "youtube":
                 yt_id = rec.get("youtube_id")
                 if not yt_id:
                     raise RuntimeError("youtube_id missing from metadata")

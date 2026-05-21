@@ -411,41 +411,69 @@ def _transcribe_youtube_captions(video_id: str, prefer_langs: tuple[str, ...]) -
 def _download_youtube_audio(video_id: str) -> tuple[bytes, str]:
     """Use yt-dlp to fetch the best audio-only stream as bytes.
 
-    Returns (audio_bytes, filename_hint). yt-dlp generally works from cloud
-    IPs where the captions API gets RequestBlocked, because it negotiates
-    via the player API instead of the transcript service. Uses a temp file
-    to stream the download, then reads it back — yt-dlp doesn't expose an
-    in-memory output buffer."""
+    Returns (audio_bytes, filename_hint). YouTube's default web-client
+    player has been gating datacenter IPs behind a 'Sign in to confirm
+    you're not a bot' challenge — yt-dlp gets the cookie-less variant
+    rejected. The mobile/TV clients are still open in most cases, so we
+    try them in order: ios → tv_embedded → android → mweb → web. First
+    one that produces a stream wins. Each retry takes ~1s when refused
+    so total overhead is bounded.
+
+    Optional: if /opt/atlantic-highlands/yt-cookies.txt exists (Netscape-
+    format YouTube cookies exported from a logged-in browser), yt-dlp
+    uses it. That sidesteps the bot challenge entirely but rotates with
+    the user's YouTube session, so it's a fallback for cases where the
+    client trick stops working.
+    """
     try:
         import yt_dlp
     except ImportError as e:
         raise RuntimeError(f"yt-dlp not installed: {e}")
 
+    cookies_path = "/opt/atlantic-highlands/yt-cookies.txt"
+    has_cookies = os.path.exists(cookies_path)
+
+    # Order matters: ios + tv_embedded historically dodge the bot check.
+    # web is last (most likely to fail). If cookies are present we still
+    # try the cheap clients first; cookies-on-web is the last resort.
+    player_clients = ["ios", "tv_embedded", "android", "mweb", "web"]
+    last_err: Exception | None = None
     with tempfile.TemporaryDirectory(prefix="ahmt_yt_") as td:
-        out_template = os.path.join(td, "audio.%(ext)s")
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": out_template,
-            "quiet": True,
-            "no_warnings": True,
-            "noprogress": True,
-            # Don't write metadata files; we just want the audio.
-            "writeinfojson": False,
-            "writethumbnail": False,
-        }
-        url = f"https://www.youtube.com/watch?v={video_id}"
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-        except Exception as e:
-            raise RuntimeError(f"yt-dlp audio download failed for {video_id}: {e}")
-        # yt-dlp picks the extension based on the source stream.
-        for fname in os.listdir(td):
-            if fname.startswith("audio."):
-                path = os.path.join(td, fname)
-                with open(path, "rb") as fh:
-                    return fh.read(), fname
-        raise RuntimeError(f"yt-dlp produced no audio file for {video_id}")
+        for client in player_clients:
+            out_template = os.path.join(td, f"audio_{client}.%(ext)s")
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "outtmpl": out_template,
+                "quiet": True,
+                "no_warnings": True,
+                "noprogress": True,
+                "writeinfojson": False,
+                "writethumbnail": False,
+                "extractor_args": {"youtube": {"player_client": [client]}},
+            }
+            if has_cookies:
+                ydl_opts["cookiefile"] = cookies_path
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.extract_info(url, download=True)
+            except Exception as e:
+                last_err = e
+                logger.debug("yt-dlp %s client failed for %s: %s",
+                             client, video_id, str(e)[:200])
+                continue
+            for fname in os.listdir(td):
+                if fname.startswith(f"audio_{client}."):
+                    path = os.path.join(td, fname)
+                    logger.info("yt-dlp succeeded for %s via player_client=%s",
+                                video_id, client)
+                    with open(path, "rb") as fh:
+                        return fh.read(), fname
+
+    raise RuntimeError(
+        f"yt-dlp audio download failed for {video_id} across all player_clients "
+        f"({', '.join(player_clients)}). Last error: {last_err}"
+    )
 
 
 def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en-US")) -> TranscriptionResult:

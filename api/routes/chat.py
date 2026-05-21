@@ -1030,10 +1030,15 @@ async def _stream_claude(
     max_continuations = 3
 
     # Deep thinking pumps the budget/model up; cheap mode keeps sonnet-4-6 fast.
+    # Opus 4.7 removed the old {type: "enabled", budget_tokens: N} shape — the
+    # model decides depth on its own under adaptive, and effort/intelligence
+    # is steered via output_config.effort (low/medium/high/xhigh/max).
+    output_config_cfg: Optional[dict] = None
     if req.deep_thinking:
         model = "claude-opus-4-7"
         max_tokens = 32000
-        thinking_cfg: Optional[dict] = {"type": "enabled", "budget_tokens": 16000}
+        thinking_cfg: Optional[dict] = {"type": "adaptive"}
+        output_config_cfg = {"effort": "high"}
     else:
         model = "claude-sonnet-4-6"
         max_tokens = 16000
@@ -1066,6 +1071,8 @@ async def _stream_claude(
             }
             if thinking_cfg:
                 api_kwargs["thinking"] = thinking_cfg
+            if output_config_cfg:
+                api_kwargs["output_config"] = output_config_cfg
 
             iter_text = ""
             thinking_active = False

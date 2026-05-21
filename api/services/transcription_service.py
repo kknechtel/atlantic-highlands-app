@@ -442,7 +442,12 @@ def _download_youtube_audio(video_id: str) -> tuple[bytes, str]:
         for client in player_clients:
             out_template = os.path.join(td, f"audio_{client}.%(ext)s")
             ydl_opts = {
-                "format": "bestaudio/best",
+                # bestaudio sometimes returns "format not available" for the
+                # ios/tv_embedded clients (they advertise HLS / non-default
+                # audio codecs). Fall through to plain "best" (the full
+                # video+audio stream) which always exists — we feed the
+                # bytes to PyAV/Whisper which extracts audio regardless.
+                "format": "bestaudio[acodec!=none]/bestaudio/best",
                 "outtmpl": out_template,
                 "quiet": True,
                 "no_warnings": True,

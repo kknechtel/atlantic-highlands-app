@@ -122,6 +122,9 @@ def main() -> int:
             # of trying YouTube. Also reset status so it re-enters the
             # transcribe queue. Use playback_s3_key for streaming AND a
             # new `transcribe_from_s3_key` for transcription.
+            # SQLAlchemy mis-parses `:name::text` (interprets `::` weirdly).
+            # Use CAST(:name AS text) and a distinct bind name for the JSON
+            # value to keep both substitutions clean.
             db.execute(text("""
                 UPDATE documents
                 SET status = 'uploaded',
@@ -130,13 +133,13 @@ def main() -> int:
                         jsonb_set(
                             metadata - 'transcription_error',
                             '{recording,transcribe_from_s3_key}',
-                            to_jsonb(:s3_key::text)
+                            to_jsonb(CAST(:s3_key_a AS text))
                         ),
                         '{recording,playback_s3_key}',
-                        to_jsonb(:s3_key::text)
+                        to_jsonb(CAST(:s3_key_b AS text))
                     )
                 WHERE id = CAST(:doc_id AS uuid)
-            """), {"doc_id": doc_id, "s3_key": s3_key})
+            """), {"doc_id": doc_id, "s3_key": s3_key, "s3_key_a": s3_key, "s3_key_b": s3_key})
             db.commit()
             synced += 1
             log.info("  ✓ %s ready for prod transcription", yt_id)

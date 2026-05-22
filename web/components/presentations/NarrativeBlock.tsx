@@ -43,13 +43,13 @@ export default function NarrativeBlock({
 }: Props) {
   const body = section.body || '';
 
-  // Read-only render — no editor instance, no toolbar.
+  // Read-only render — no editor instance, no toolbar. Title is owned by
+  // the wrapping PresentationViewer (which renders an outer <h2> for every
+  // section kind); rendering it here too caused a duplicate header in the
+  // public/viewer mode, mirroring the duplicate the editor had.
   if (!editable) {
     return (
       <div className="space-y-2">
-        {section.title && (
-          <h2 className="text-xl font-semibold text-gray-900">{section.title}</h2>
-        )}
         {body ? (
           <MarkdownWithCharts
             content={body}

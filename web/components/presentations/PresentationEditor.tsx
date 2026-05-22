@@ -13,6 +13,7 @@ import {
   type Presentation, type DeckSection, type DeckAttachment, type SectionKind,
   getPresentation, updatePresentation, addAttachment, removeAttachment,
   publishPresentation, unpublishPresentation, setPublicPassword,
+  changesSincePublish,
 } from '@/lib/presentationsApi';
 import { uploadDocument } from '@/lib/api';
 import { useDeckChat, type DeckProposal } from '@/app/contexts/DeckChatContext';
@@ -135,6 +136,10 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
   const [showAudit, setShowAudit] = useState(false);
   const [showAttachments, setShowAttachments] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  // Total structural changes between the draft and the currently-public
+  // version. >0 → button switches from "Published" to "Republish (N)".
+  // Null means "not yet checked" (button falls back to a neutral label).
+  const [pendingChanges, setPendingChanges] = useState<number | null>(null);
   const [collapsedSet, setCollapsedSet] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
@@ -267,6 +272,24 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
     const t = setTimeout(() => { saveNow(); }, 1500);
     return () => clearTimeout(t);
   }, [dirty, saving, saveNow]);
+
+  // Recompute "unpublished changes" badge whenever the draft is freshly
+  // saved or the publish state flips. Skipped if never published — the
+  // button just reads "Publish" until a v1 exists.
+  useEffect(() => {
+    if (!deck?.id) return;
+    if (!deck.public_slug) { setPendingChanges(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await changesSincePublish(deck.id);
+        if (!cancelled) setPendingChanges(r.ever_published ? r.total_changes : null);
+      } catch {
+        if (!cancelled) setPendingChanges(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deck?.id, deck?.public_slug, lastSavedAt]);
 
   // Save on unmount / page hide so a fast Cmd-W doesn't lose work.
   useEffect(() => {
@@ -424,7 +447,17 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
     if (dirty) await saveNow();
     const updated = deck.public_slug ? await unpublishPresentation(deck.id) : await publishPresentation(deck.id);
     setDeck(updated);
+    // A fresh publish/republish zeros the diff; an unpublish clears it.
+    setPendingChanges(updated.public_slug ? 0 : null);
   };
+
+  /** Drives the publish button label + style. Three states:
+   *  - "Publish"           → never published, neutral brand color
+   *  - "Republish (N)"     → published but draft has diverged, amber
+   *  - "Published"         → published and draft matches, emerald */
+  const publishState: 'unpublished' | 'republish' | 'published' = !deck?.public_slug
+    ? 'unpublished'
+    : (pendingChanges && pendingChanges > 0 ? 'republish' : 'published');
 
   const handleSetPassword = async (pw: string) => {
     if (!deck) return null;
@@ -814,10 +847,28 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
             />
             <button
               onClick={togglePublish}
-              className={`px-2.5 py-1.5 rounded text-xs flex items-center gap-1 flex-shrink-0 ${deck.public_slug ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'text-white'}`}
-              style={!deck.public_slug ? { backgroundColor: brandColor } : undefined}
+              className={`px-2.5 py-1.5 rounded text-xs flex items-center gap-1 flex-shrink-0 ${
+                publishState === 'published'
+                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                  : publishState === 'republish'
+                  ? 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                  : 'text-white'
+              }`}
+              style={publishState === 'unpublished' ? { backgroundColor: brandColor } : undefined}
+              title={
+                publishState === 'republish'
+                  ? `Draft has ${pendingChanges} unpublished change${pendingChanges === 1 ? '' : 's'} — click to republish`
+                  : publishState === 'published'
+                  ? 'Draft matches the live published version'
+                  : 'Publish to create v1 and a shareable URL'
+              }
             >
-              <Globe className="w-3.5 h-3.5" /> {deck.public_slug ? 'Published' : 'Publish'}
+              <Globe className="w-3.5 h-3.5" />
+              {publishState === 'published'
+                ? 'Published'
+                : publishState === 'republish'
+                ? `Republish (${pendingChanges})`
+                : 'Publish'}
             </button>
           </div>
         </div>

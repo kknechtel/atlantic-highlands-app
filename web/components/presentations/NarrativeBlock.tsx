@@ -107,7 +107,9 @@ function EditorWrapper({
   onSave: (patch: Partial<DeckSection>) => void;
   brandColor: string;
 }) {
-  const [title, setTitle] = React.useState(section.title || '');
+  // Title is owned by the outer PresentationEditor's AutoGrowTextarea.
+  // Rendering a second title input here was duplicating the header on
+  // every narrative section; we only manage the body.
   const [dirty, setDirty] = React.useState(false);
   // Holds the original ```chart fences for the body currently loaded into
   // the editor. Updated whenever section.body changes externally.
@@ -161,14 +163,12 @@ function EditorWrapper({
     setDirty(false);
   }, [editor, section.id, section.body]);
 
-  useEffect(() => { setTitle(section.title || ''); }, [section.id, section.title]);
-
   const handleSave = () => {
     if (!editor) return;
     const md = (editor.storage.markdown.getMarkdown?.() ?? '') as string;
     // Splice the original chart fences back before persisting.
     const restored = restoreCharts(md, chartsRef.current);
-    onSave({ title, body: restored });
+    onSave({ body: restored });
     setDirty(false);
   };
 
@@ -176,13 +176,6 @@ function EditorWrapper({
 
   return (
     <div className="space-y-2">
-      <input
-        value={title}
-        onChange={(e) => { setTitle(e.target.value); setDirty(true); }}
-        placeholder="Section title"
-        className="w-full text-xl font-semibold border-b border-transparent hover:border-gray-200 focus:border-gray-400 focus:outline-none pb-1 transition-colors"
-      />
-
       <Toolbar editor={editor} brandColor={brandColor} />
 
       <div className="border border-gray-200 rounded-md focus-within:border-gray-400 transition-colors">
@@ -204,7 +197,6 @@ function EditorWrapper({
               const next = stashCharts(section.body || '');
               chartsRef.current = next.charts;
               editor.commands.setContent(next.stripped, false);
-              setTitle(section.title || '');
               setDirty(false);
             }}
             className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50 text-gray-700"

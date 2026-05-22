@@ -28,6 +28,7 @@ import CitationPreview from './CitationPreview';
 import WebReferencePreview from './WebReferencePreview';
 import VersionsPanel from './VersionsPanel';
 import CitationAuditPanel from './CitationAuditPanel';
+import AskAIPanel from './AskAIPanel';
 
 interface Props {
   presentationId: string;
@@ -140,6 +141,11 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
   // version. >0 → button switches from "Published" to "Republish (N)".
   // Null means "not yet checked" (button falls back to a neutral label).
   const [pendingChanges, setPendingChanges] = useState<number | null>(null);
+  // AskAIPanel: in-editor focused chat. Opens via the toolbar Ask AI button
+  // or a per-section sparkle. When opened from a section, askAITargetSectionId
+  // pre-fills the scope dropdown so proposals target that section.
+  const [askAIOpen, setAskAIOpen] = useState(false);
+  const [askAITargetSectionId, setAskAITargetSectionId] = useState<string | null>(null);
   const [collapsedSet, setCollapsedSet] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
@@ -834,6 +840,15 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
               <History className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Versions</span>
             </button>
             <button
+              onClick={() => { setAskAITargetSectionId(null); setAskAIOpen(v => !v); }}
+              className={`px-2.5 py-1.5 rounded text-xs flex items-center gap-1 flex-shrink-0 ${
+                askAIOpen ? 'bg-violet-50 text-violet-700 border border-violet-300' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+              title="Ask AI — focused in-editor chat with section scope + attachments"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Ask AI</span>
+            </button>
+            <button
               onClick={() => setPreviewing(true)}
               className="px-2.5 py-1.5 rounded text-xs flex items-center gap-1 border border-gray-300 text-gray-700 hover:bg-gray-50 flex-shrink-0"
               title="Full-screen preview (exactly how this publishes)"
@@ -1015,6 +1030,13 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
                           {section.kind === 'narrative' && (
                             <SectionAIMenu sectionId={section.id} onEdit={handleAIEdit} brandColor={brandColor} />
                           )}
+                          <button
+                            onClick={() => { setAskAITargetSectionId(section.id); setAskAIOpen(true); }}
+                            className="p-1 hover:bg-violet-100 text-violet-600 rounded"
+                            title="Ask AI about this section (opens chat scoped to this section)"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
                           <div className="flex-1" />
                           <span className="text-[10px] uppercase tracking-wide text-gray-400">
                             {section.kind}{section.is_cover ? ' · cover' : ''}
@@ -1131,6 +1153,20 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
             presentationId={presentationId}
             initial={deck.last_fact_check}
             onClose={() => setShowFactCheck(false)}
+          />
+        </div>
+      )}
+
+      {/* Right rail — Ask AI focused chat */}
+      {askAIOpen && (
+        <div className="flex-shrink-0">
+          <AskAIPanel
+            presentationId={presentationId}
+            sections={deck.sections}
+            brandColor={brandColor}
+            onAcceptProposal={handleAcceptProposal}
+            onClose={() => setAskAIOpen(false)}
+            initialTargetSectionId={askAITargetSectionId}
           />
         </div>
       )}

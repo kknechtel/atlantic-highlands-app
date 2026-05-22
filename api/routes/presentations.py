@@ -105,9 +105,27 @@ class AttachmentBody(BaseModel):
     caption: Optional[str] = None
 
 
+class AIChatAttachment(BaseModel):
+    # "image" → image_block; "document" → PDF/document block. Anthropic
+    # requires the raw bytes already base64-encoded.
+    type: Literal["image", "document"]
+    media_type: str  # e.g. "image/png", "application/pdf"
+    data_base64: str
+    filename: Optional[str] = None
+
+
 class AIChatBody(BaseModel):
     message: str
     history: Optional[list[dict]] = None
+    # Scope the model to a specific section — adds a focus directive to the
+    # system prompt so proposals land on the right section.
+    target_section_id: Optional[str] = None
+    # When true, switch to Opus 4.7 + adaptive thinking + effort=high and
+    # stream `thinking` SSE events the client can render in a disclosure.
+    deep_thinking: bool = False
+    # Image / PDF attachments — sent as content blocks alongside the user
+    # message so Claude can see them directly (not just via search).
+    attachments: Optional[list[AIChatAttachment]] = None
 
 
 class PasswordBody(BaseModel):
@@ -396,6 +414,9 @@ async def ai_chat(presentation_id: str, body: AIChatBody, request: Request,
         stream_deck_chat(
             body.message, sections_summary, body.history,
             user_id=str(user.id), presentation_id=presentation_id,
+            target_section_id=body.target_section_id,
+            deep_thinking=body.deep_thinking,
+            attachments=[a.model_dump() for a in (body.attachments or [])],
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},

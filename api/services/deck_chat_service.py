@@ -514,6 +514,9 @@ async def stream_deck_chat(
     history: Optional[list[dict]] = None,
     user_id: Optional[str] = None,
     presentation_id: Optional[str] = None,
+    target_section_id: Optional[str] = None,
+    deep_thinking: bool = False,
+    attachments: Optional[list[dict]] = None,
 ) -> AsyncGenerator[str, None]:
     if not ANTHROPIC_API_KEY:
         yield _sse("error", {"content": "ANTHROPIC_API_KEY not configured"})
@@ -521,12 +524,59 @@ async def stream_deck_chat(
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     tools = _tool_defs()
-    model = "claude-sonnet-4-6"
+
+    # deep_thinking flips the model + adds adaptive thinking + effort=high.
+    # Adaptive thinking is the only supported on-mode on Opus 4.7; effort
+    # lives inside output_config, not at the top level.
+    if deep_thinking:
+        model = "claude-opus-4-7"
+        extra_kwargs: dict = {
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "output_config": {"effort": "high"},
+        }
+        max_tokens = 16000
+    else:
+        model = "claude-sonnet-4-6"
+        extra_kwargs = {}
+        max_tokens = 12000
 
     system = SYSTEM_PROMPT + "\n\n## CURRENT DECK\n\n" + sections_summary
+    if target_section_id:
+        system += (
+            f"\n\n## FOCUS\nThe operator is currently editing section "
+            f"`{target_section_id}`. When proposing edits, default to "
+            f"targeting THIS section unless the request is clearly about "
+            f"a different one. Prefer `propose_section_edit` over "
+            f"`propose_new_section` for edits to this section."
+        )
+
+    # Build the first user turn — if attachments came along, we send them
+    # as content blocks alongside the text, so Claude sees them directly.
+    if attachments:
+        first_user_content: list[dict] = []
+        for a in attachments:
+            atype = a.get("type")
+            mt = a.get("media_type") or ""
+            b64 = a.get("data_base64") or ""
+            if not b64:
+                continue
+            if atype == "image":
+                first_user_content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": mt, "data": b64},
+                })
+            elif atype == "document":
+                first_user_content.append({
+                    "type": "document",
+                    "source": {"type": "base64", "media_type": mt or "application/pdf", "data": b64},
+                })
+        first_user_content.append({"type": "text", "text": user_message})
+        first_user_turn: dict = {"role": "user", "content": first_user_content}
+    else:
+        first_user_turn = {"role": "user", "content": user_message}
 
     messages: list[dict] = list(history or [])[-20:]
-    messages.append({"role": "user", "content": user_message})
+    messages.append(first_user_turn)
 
     total_in = 0
     total_out = 0
@@ -611,14 +661,19 @@ async def stream_deck_chat(
 
         return ([], {"error": f"unknown_tool:{name}"})
 
+    # Note: the Anthropic SDK retries 5xx errors twice by default (with
+    # exponential backoff) before raising. We don't add another retry tier
+    # because streaming-context retries would risk duplicating already-
+    # yielded events — if the SDK retries surface here, surface the error.
     try:
         for _ in range(6):
             async with client.messages.stream(
                 model=model,
-                max_tokens=12000,
+                max_tokens=max_tokens,
                 system=system,
                 tools=tools,
                 messages=messages,
+                **extra_kwargs,
             ) as stream:
                 async for event in stream:
                     et = getattr(event, "type", None)
@@ -628,8 +683,16 @@ async def stream_deck_chat(
                             yield _sse("tool_use", {"name": block.name})
                     elif et == "content_block_delta":
                         delta = event.delta
-                        if getattr(delta, "type", None) == "text_delta":
+                        dt = getattr(delta, "type", None)
+                        if dt == "text_delta":
                             yield _sse("delta", {"content": delta.text})
+                        elif dt == "thinking_delta":
+                            # Adaptive thinking with display="summarized" emits
+                            # human-readable progress here; pipe to the panel so
+                            # it can render a disclosure.
+                            txt = getattr(delta, "thinking", "") or ""
+                            if txt:
+                                yield _sse("thinking", {"content": txt})
 
                 final = await stream.get_final_message()
                 total_in += getattr(final.usage, "input_tokens", 0) or 0

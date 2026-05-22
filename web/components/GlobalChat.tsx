@@ -214,6 +214,16 @@ export default function GlobalChat() {
   // its search_chunks / search_documents tool calls.
   const [chatScope, setChatScope] = useState<ChatScope>({ type: "all", label: "All Atlantic Highlands" });
   const [showScopePicker, setShowScopePicker] = useState(false);
+  // Deck-mode slide picker — scoped to the active deck. Reset when the user
+  // navigates to a different deck so a stale id doesn't get sent. Stored as
+  // a section id or null (= "whole deck").
+  const [targetSectionId, setTargetSectionId] = useState<string | null>(null);
+  useEffect(() => {
+    // Reset slide focus whenever the bound deck changes (different presentation,
+    // or no deck at all). Sticky across re-renders within the same deck so the
+    // operator's pick survives sending a message.
+    setTargetSectionId(null);
+  }, [activeDeck?.id]);
   const [splitDoc, setSplitDoc] = useState<{ url: string; filename: string } | null>(null);
   const [showDocPicker, setShowDocPicker] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -612,6 +622,7 @@ export default function GlobalChat() {
       if (activeDeck) {
         body.presentation_id = activeDeck.id;
         body.presentation_summary = activeDeck.summary;
+        if (targetSectionId) body.target_section_id = targetSectionId;
       }
 
       const token = typeof window !== "undefined" ? localStorage.getItem("ah_token") : null;
@@ -882,15 +893,23 @@ export default function GlobalChat() {
         className={`flex flex-col bg-gray-50 min-w-0 min-h-0 flex-1 ${isMobile ? "" : "border-r border-gray-200"}`}
         style={isMobile ? undefined : { width: `${chatWidthPx}px`, minWidth: `${chatWidthPx}px` }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 text-white flex-shrink-0" style={{ backgroundColor: brandColor }}>
+        {/* Header — color shifts to violet when bound to a presentation so the
+            operator sees at a glance that the chat is in revise-the-deck mode. */}
+        <div
+          className="flex items-center justify-between px-4 py-3 text-white flex-shrink-0"
+          style={{ backgroundColor: activeDeck ? '#5b2f8a' : brandColor }}
+        >
           <div className="flex items-center gap-2.5 min-w-0">
-            <CpuChipIcon className="w-5 h-5 opacity-90 flex-shrink-0" />
+            {activeDeck
+              ? <DocumentChartBarIcon className="w-5 h-5 opacity-90 flex-shrink-0" />
+              : <CpuChipIcon className="w-5 h-5 opacity-90 flex-shrink-0" />}
             <div className="min-w-0">
-              <div className="font-bold text-sm leading-tight">AI Analyst</div>
+              <div className="font-bold text-sm leading-tight">
+                {activeDeck ? 'Presentation mode' : 'AI Analyst'}
+              </div>
               <div className="text-[10px] opacity-75 leading-tight truncate">
                 {activeDeck
-                  ? `Deck mode · ${activeDeck.title}`
+                  ? `Revising · ${activeDeck.title}`
                   : `Connected · Documents${webSearchEnabled ? " + Web" : ""}${deepThinking ? " + Deep" : ""}${reportMode ? " + Report" : ""}`}
               </div>
             </div>
@@ -964,6 +983,51 @@ export default function GlobalChat() {
             </button>
           </div>
         </div>
+
+        {/* Presentation-mode strip — only rendered when bound to a deck. Lets
+            the operator pick a target slide (so propose_section edits THAT
+            section) and fire one-tap revision shortcuts that pre-fill the
+            input. The chips fall back to "first section" when nothing is
+            picked, so "Rewrite for tone" still does something useful. */}
+        {activeDeck && (
+          <div className="px-3 md:px-4 py-2 border-b border-violet-200 bg-violet-50 flex flex-wrap items-center gap-2 text-[11px] flex-shrink-0">
+            <span className="font-semibold text-violet-800">Focus slide:</span>
+            <select
+              value={targetSectionId || ''}
+              onChange={(e) => setTargetSectionId(e.target.value || null)}
+              className="flex-1 min-w-[140px] max-w-[280px] border border-violet-300 rounded px-2 py-1 bg-white text-violet-900"
+              title="Scope the AI to a specific section — proposals will default to editing THIS section"
+            >
+              <option value="">Whole deck</option>
+              {activeDeck.sections.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.title?.slice(0, 50) || s.kind} {s.title && s.title.length > 50 ? '…' : ''}
+                </option>
+              ))}
+            </select>
+            {/* Quick-action chips — pre-fill the input so the user can hit Send.
+                When a slide is picked, they target it; otherwise they target the
+                first slide. */}
+            <div className="flex flex-wrap gap-1 w-full">
+              {[
+                { label: 'Rewrite for tone', tmpl: 'Rewrite this section in a tighter, more readable tone. Keep all citations.' },
+                { label: 'Add a chart', tmpl: 'Propose an inline_chart that summarizes the key numbers in this section.' },
+                { label: 'Tighten', tmpl: 'Cut this section to ~50% length while keeping every citation and key fact.' },
+                { label: 'Add citations', tmpl: 'Search the corpus and add [source: filename.pdf] citations for every unsourced claim in this section.' },
+                { label: 'New section', tmpl: 'Propose a new section that logically follows the current one. Use search_chunks to ground it.' },
+              ].map(chip => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => setInput(chip.tmpl)}
+                  className="px-2 py-0.5 rounded border border-violet-300 bg-white text-violet-700 hover:bg-violet-100"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Controls bar — Deep / Report toggles + scope filters (matches bank-processor).
             flex-wrap so on a narrow phone width an active scope chip (e.g.

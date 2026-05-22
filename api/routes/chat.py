@@ -69,6 +69,10 @@ class ChatRequest(BaseModel):
     # the frontend as a `proposal` SSE event for the user to accept/reject.
     presentation_id: Optional[str] = None
     presentation_summary: Optional[str] = None
+    # Slide scope — when the operator picks a specific section in the chat's
+    # section dropdown, this lands here and we focus the model on that section
+    # (so propose_section defaults to editing it, not appending a new one).
+    target_section_id: Optional[str] = None
 
 
 # ─── System prompts ──────────────────────────────────────────────────────────
@@ -871,6 +875,27 @@ def _build_system_prompt(req: ChatRequest, doc_context: str) -> str:
         parts.append(DEEP_THINKING_SUFFIX)
     if doc_context:
         parts.append(doc_context)
+    # Deck mode — when the chat is bound to a presentation, inline the deck
+    # summary so Claude knows section ids/titles/kinds and can call
+    # propose_section with the right section_id. When a slide is focused,
+    # add a hard focus directive so propose_section defaults to editing it.
+    if req.presentation_id and req.presentation_summary:
+        parts.append(
+            "## ACTIVE PRESENTATION (deck mode)\n\n"
+            f"{req.presentation_summary}\n\n"
+            "When proposing changes, use the `propose_section` tool. To "
+            "REPLACE an existing section, include its `section_id` from "
+            "the list above. To APPEND a new section, omit `section_id`."
+        )
+    if req.presentation_id and req.target_section_id:
+        parts.append(
+            "## FOCUSED SLIDE\n\n"
+            f"The operator is currently focused on section "
+            f"`{req.target_section_id}`. Default to editing THIS section "
+            f"(pass `section_id={req.target_section_id}` to propose_section) "
+            f"unless the request clearly asks to add a new section or edit a "
+            f"different one."
+        )
     return "\n\n".join(parts)
 
 

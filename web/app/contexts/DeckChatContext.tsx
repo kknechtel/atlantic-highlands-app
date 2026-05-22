@@ -106,6 +106,9 @@ export interface ActiveDeck {
   title: string;
   /** Compact textual summary the chat backend uses as system context. */
   summary: string;
+  /** Sections, in deck order — surface in the chat as a section picker so
+   *  the operator can scope a query/proposal to a specific section. */
+  sections: { id: string; title: string; kind: SectionKind }[];
   /** Editor-supplied callback to apply a proposal. Returns true if applied. */
   applyProposal: (p: DeckProposal) => Promise<boolean> | boolean;
 }

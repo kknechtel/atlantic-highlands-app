@@ -275,6 +275,14 @@ def _migrate():
             # Trigram index on filenames — powers "did you mean" via similarity().
             # gin_trgm_ops keeps query latency sub-5ms on the ~3k-doc corpus.
             ("ix_documents_filename_trgm", "CREATE INDEX IF NOT EXISTS ix_documents_filename_trgm ON documents USING gin (filename gin_trgm_ops)"),
+            # Composite filter index — hybrid search routinely filters by some
+            # combination of project_id / category / fiscal_year / doc_type
+            # AFTER the IVFFLAT step. Without this, every filtered hybrid
+            # query scans the full ANN top-k then post-filters in the join.
+            ("ix_documents_filter", "CREATE INDEX IF NOT EXISTS ix_documents_filter ON documents (project_id, category, fiscal_year, doc_type)"),
+            # FK index — chunk lookups by document_id are the hottest path
+            # in the hybrid-search CTE join.
+            ("ix_chunks_doc", "CREATE INDEX IF NOT EXISTS ix_chunks_doc ON document_chunks (document_id)"),
         ]
         for name, sql in rag_indexes:
             try:

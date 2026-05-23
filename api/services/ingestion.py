@@ -72,13 +72,26 @@ def _set_doc_embedding(db: Session, doc_id, vec: list[float]) -> None:
 
 
 def _set_chunk_embeddings(db: Session, pairs: list[tuple]) -> None:
-    """pairs: [(chunk_id, vec), ...]"""
-    for cid, vec in pairs:
-        db.execute(text("""
-            UPDATE document_chunks
-            SET embedding = CAST(:vec AS vector)
-            WHERE id = CAST(:id AS uuid)
-        """), {"id": str(cid), "vec": to_pgvector_literal(vec)})
+    """pairs: [(chunk_id, vec), ...]
+
+    Single UPDATE ... FROM (VALUES ...) rather than one round-trip per row
+    — a 100-chunk doc went from ~100 statements to 1.
+    """
+    if not pairs:
+        return
+    values_sql = ", ".join(
+        f"(CAST(:id{i} AS uuid), CAST(:vec{i} AS vector))" for i in range(len(pairs))
+    )
+    params: dict = {}
+    for i, (cid, vec) in enumerate(pairs):
+        params[f"id{i}"] = str(cid)
+        params[f"vec{i}"] = to_pgvector_literal(vec)
+    db.execute(text(f"""
+        UPDATE document_chunks AS c
+        SET embedding = v.vec
+        FROM (VALUES {values_sql}) AS v(id, vec)
+        WHERE c.id = v.id
+    """), params)
 
 
 def ingest_document(db: Session, doc: Document, force: bool = False) -> dict:

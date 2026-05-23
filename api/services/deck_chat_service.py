@@ -524,6 +524,9 @@ async def stream_deck_chat(
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     tools = _tool_defs()
+    # Cache the tool defs — identical across the 6-iteration agentic loop.
+    if tools:
+        tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
 
     # deep_thinking flips the model + adds adaptive thinking + effort=high.
     # Adaptive thinking is the only supported on-mode on Opus 4.7; effort
@@ -540,15 +543,21 @@ async def stream_deck_chat(
         extra_kwargs = {}
         max_tokens = 12000
 
-    system = SYSTEM_PROMPT + "\n\n## CURRENT DECK\n\n" + sections_summary
+    # Split into a stable block (cached every request) + a variable block
+    # (cached per-deck — hits cache on follow-up turns about the same deck).
+    deck_block = "## CURRENT DECK\n\n" + sections_summary
     if target_section_id:
-        system += (
+        deck_block += (
             f"\n\n## FOCUS\nThe operator is currently editing section "
             f"`{target_section_id}`. When proposing edits, default to "
             f"targeting THIS section unless the request is clearly about "
             f"a different one. Prefer `propose_section_edit` over "
             f"`propose_new_section` for edits to this section."
         )
+    system = [
+        {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": deck_block, "cache_control": {"type": "ephemeral"}},
+    ]
 
     # Build the first user turn — if attachments came along, we send them
     # as content blocks alongside the text, so Claude sees them directly.

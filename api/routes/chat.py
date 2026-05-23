@@ -867,20 +867,26 @@ def _save_message(db: Session, session_id: str, role: str, content: str,
 
 # ─── Streaming chat ─────────────────────────────────────────────────────────
 
-def _build_system_prompt(req: ChatRequest, doc_context: str) -> str:
-    parts = [BACKGROUND, WORKING_INSTRUCTIONS]
+def _split_system_parts(req: ChatRequest, doc_context: str) -> tuple[str, str]:
+    """Return (stable_text, variable_text).
+
+    `stable` is identical across iterations of an agentic loop and across
+    requests with the same mode flags — it caches well. `variable` carries
+    per-request context (attached doc, presentation summary, focused slide)
+    so it gets its own cache breakpoint that hits on follow-up turns about
+    the same target.
+    """
+    stable_parts = [BACKGROUND, WORKING_INSTRUCTIONS]
     if req.report_mode:
-        parts.append(REPORT_MODE_SUFFIX)
+        stable_parts.append(REPORT_MODE_SUFFIX)
     if req.deep_thinking:
-        parts.append(DEEP_THINKING_SUFFIX)
+        stable_parts.append(DEEP_THINKING_SUFFIX)
+
+    variable_parts: list[str] = []
     if doc_context:
-        parts.append(doc_context)
-    # Deck mode — when the chat is bound to a presentation, inline the deck
-    # summary so Claude knows section ids/titles/kinds and can call
-    # propose_section with the right section_id. When a slide is focused,
-    # add a hard focus directive so propose_section defaults to editing it.
+        variable_parts.append(doc_context)
     if req.presentation_id and req.presentation_summary:
-        parts.append(
+        variable_parts.append(
             "## ACTIVE PRESENTATION (deck mode)\n\n"
             f"{req.presentation_summary}\n\n"
             "When proposing changes, use the `propose_section` tool. To "
@@ -888,7 +894,7 @@ def _build_system_prompt(req: ChatRequest, doc_context: str) -> str:
             "the list above. To APPEND a new section, omit `section_id`."
         )
     if req.presentation_id and req.target_section_id:
-        parts.append(
+        variable_parts.append(
             "## FOCUSED SLIDE\n\n"
             f"The operator is currently focused on section "
             f"`{req.target_section_id}`. Default to editing THIS section "
@@ -896,7 +902,40 @@ def _build_system_prompt(req: ChatRequest, doc_context: str) -> str:
             f"unless the request clearly asks to add a new section or edit a "
             f"different one."
         )
-    return "\n\n".join(parts)
+
+    return "\n\n".join(stable_parts), "\n\n".join(variable_parts)
+
+
+def _build_system_prompt(req: ChatRequest, doc_context: str) -> str:
+    """String form — used by Gemini fallback (no caching API)."""
+    stable, variable = _split_system_parts(req, doc_context)
+    return stable + ("\n\n" + variable if variable else "")
+
+
+def _build_system_blocks(req: ChatRequest, doc_context: str) -> list[dict]:
+    """Anthropic system message as cacheable content blocks.
+
+    Block 1 (stable) gets cache_control so the long BACKGROUND +
+    WORKING_INSTRUCTIONS payload is reused across iterations of an agentic
+    loop — Anthropic's 5-min ephemeral cache means iterations 2-8 read the
+    cached prefix at ~10% of the standard input rate.
+
+    Block 2 (variable, if present) gets its own breakpoint so follow-up
+    turns about the same attached doc or presentation also hit cache.
+    """
+    stable, variable = _split_system_parts(req, doc_context)
+    blocks: list[dict] = [{
+        "type": "text",
+        "text": stable,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    if variable:
+        blocks.append({
+            "type": "text",
+            "text": variable,
+            "cache_control": {"type": "ephemeral"},
+        })
+    return blocks
 
 
 def _attached_doc_context(db: Session, document_id: Optional[str]) -> str:
@@ -1007,20 +1046,20 @@ async def chat_stream(
         setup_db.close()
 
     history = [{"role": r.role, "content": r.content} for r in history_rows]
-    system_prompt = _build_system_prompt(req, doc_context)
 
     # If only Gemini is configured, fall through to a simpler streamer (no tools).
     if not ANTHROPIC_API_KEY and GEMINI_API_KEY:
         return StreamingResponse(
-            _stream_gemini(system_prompt, req.query, history, session_id,
-                           req.scope_type, req.scope_id, user_id_str),
+            _stream_gemini(_build_system_prompt(req, doc_context), req.query, history,
+                           session_id, req.scope_type, req.scope_id, user_id_str),
             media_type="text/event-stream",
             headers={"X-Session-Id": session_id, "Cache-Control": "no-cache",
                      "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
 
+    system_blocks = _build_system_blocks(req, doc_context)
     return StreamingResponse(
-        _stream_claude(req, system_prompt, history, session_id, request, user_id_str),
+        _stream_claude(req, system_blocks, history, session_id, request, user_id_str),
         media_type="text/event-stream",
         headers={"X-Session-Id": session_id, "Cache-Control": "no-cache",
                  "Connection": "keep-alive", "X-Accel-Buffering": "no"},
@@ -1029,7 +1068,7 @@ async def chat_stream(
 
 async def _stream_claude(
     req: ChatRequest,
-    system_prompt: str,
+    system_blocks: list[dict],
     history: list[dict],
     session_id: str,
     request: Request,
@@ -1041,6 +1080,10 @@ async def _stream_claude(
     tools = _tool_defs()
     if req.web_search:
         tools.append(_web_search_tool())
+    # Cache the tool definitions block — they're identical across iterations
+    # of the agentic loop, so iterations 2-8 hit the prompt cache.
+    if tools:
+        tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
     if req.presentation_id:
         tools.append(_propose_section_tool())
 
@@ -1087,7 +1130,7 @@ async def _stream_claude(
             api_kwargs = {
                 "model": model,
                 "max_tokens": max_tokens,
-                "system": system_prompt,
+                "system": system_blocks,
                 "tools": tools,
                 "messages": messages,
                 # 1M-token context window beta. Tiered pricing — first 200K at

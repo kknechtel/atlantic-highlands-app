@@ -741,7 +741,7 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
           : 'Saved';
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
       {/* hidden file inputs for upload-from-disk */}
       <input
         ref={fileInputRef}
@@ -763,10 +763,10 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header bar — stacks vertically on mobile so the 8-button cluster
-            wraps below the title instead of overflowing horizontally. */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
-          <div className="flex items-center gap-2 min-w-0 md:flex-1">
+        {/* Header bar — title row always sits above the action cluster so the
+            ~10-button cluster never collides with the title/status pills. */}
+        <div className="flex flex-col gap-2 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
+          <div className="flex items-center gap-2 min-w-0 w-full">
             <button
               onClick={() => router.push('/presentations')}
               className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex-shrink-0"
@@ -779,7 +779,7 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
               value={deck.title}
               onChange={setTitle}
               placeholder="Untitled presentation"
-              className="text-base md:text-lg font-semibold text-gray-900 bg-transparent border-0 focus:outline-none focus:ring-0 resize-none flex-1 min-w-0"
+              className="text-base md:text-lg font-semibold text-gray-900 bg-transparent border-0 border-b border-transparent focus:border-emerald-400 focus:outline-none focus:ring-0 resize-none flex-1 min-w-0"
             />
             <SaveStatusPill
               label={saveStatusLabel}
@@ -788,14 +788,14 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
               error={!!saveError}
               onClick={dirty ? saveNow : undefined}
             />
-            <span className={`hidden sm:inline text-[10px] uppercase tracking-wide px-2 py-0.5 rounded ${
+            <span className={`hidden sm:inline whitespace-nowrap text-[10px] uppercase tracking-wide px-2 py-0.5 rounded flex-shrink-0 ${
               deck.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
             }`}>{deck.status}</span>
           </div>
 
-          {/* Action cluster: wraps on mobile, single-row on md+. Labels hide on
-              very small screens so the icons still fit. */}
-          <div className="flex flex-wrap items-center gap-1 -mx-1 px-1 overflow-x-auto md:overflow-visible">
+          {/* Action cluster: wraps to multiple rows when buttons don't fit.
+              Labels hide on small screens so icons still fit. */}
+          <div className="flex flex-wrap items-center gap-1 w-full">
             <button
               onClick={collapseAll}
               className="px-2 py-1.5 rounded text-xs flex items-center gap-1 border border-gray-300 text-gray-700 hover:bg-gray-50 flex-shrink-0"
@@ -1129,9 +1129,10 @@ export default function PresentationEditor({ presentationId, initialPreviewing =
         </div>
       </div>
 
-      {/* Right rail — fact-check panel */}
+      {/* Right rail — fact-check panel. On mobile renders full-width so the
+          340px desktop rail doesn't crush the editor body to ~35px. */}
       {showFactCheck && (
-        <div className="w-[340px] flex-shrink-0 border-l border-gray-200">
+        <div className="w-full md:w-[340px] flex-shrink-0 border-l border-gray-200 absolute inset-0 z-30 bg-white md:static md:z-auto">
           <FactCheckPanel
             presentationId={presentationId}
             initial={deck.last_fact_check}
@@ -1457,8 +1458,7 @@ function PasswordButton({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder={hasPassword ? 'New password' : 'Password'}
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none"
-            style={{ borderColor: undefined }}
+            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
             autoFocus
           />
           {error && <div className="text-xs text-red-700 mt-1">{error}</div>}

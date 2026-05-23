@@ -243,7 +243,7 @@ export default function ParcelsPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search address, owner, or block-lot…"
+            placeholder="Search address or block-lot…"
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
             style={{ outlineColor: brandColor }}
           />
@@ -287,8 +287,46 @@ export default function ParcelsPage() {
         )}
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
+      {/* Mobile card list — at <md the 9-column table is unreadable on a
+          phone. Cards keep block-lot + address + assessment visible and
+          push the rest into the side drawer on tap. */}
+      <div className="md:hidden bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
+        {isLoading ? (
+          <div className="px-4 py-8 text-center text-gray-400 text-sm">Loading…</div>
+        ) : !rows || rows.length === 0 ? (
+          <div className="px-4 py-8 text-center text-gray-400 text-sm">No parcels match the current filters.</div>
+        ) : (
+          rows.map((p: ParcelListItem) => (
+            <button
+              key={p.id}
+              onClick={() => setSelectedId(p.id)}
+              className="w-full text-left px-4 py-3 hover:bg-gray-50 active:bg-gray-100 flex items-start justify-between gap-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-xs text-gray-500">
+                  {p.block}-{p.lot}{p.qualifier ? <span className="text-gray-400"> ({p.qualifier})</span> : null}
+                  <span className="text-gray-300"> · </span>
+                  <span>{p.property_class || "?"}</span>
+                </div>
+                <div className="text-sm text-gray-900 truncate mt-0.5">{p.property_location || "—"}</div>
+                <div className="text-xs text-gray-500 mt-0.5 tabular-nums">
+                  {fmtUSD(p.total_assessment)}
+                  {p.tax_amount != null && (
+                    <>
+                      <span className="text-gray-300"> · tax </span>
+                      {fmtUSD(p.tax_amount)}
+                    </>
+                  )}
+                </div>
+              </div>
+              <ChevronRightIcon className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
+            </button>
+          ))
+        )}
+      </div>
+
+      {/* Desktop / tablet table */}
+      <div className="hidden md:block bg-white border border-gray-200 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-left text-xs uppercase tracking-wider text-gray-500">
@@ -476,12 +514,6 @@ function ParcelDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             <Section icon={HomeIcon} title="Building">
               <Row label="Year built" value={data.year_built} />
               <Row label="Living sqft" value={data.living_sqft?.toLocaleString()} />
-            </Section>
-
-            <Section icon={BuildingOffice2Icon} title="Owner (mailing address)">
-              <Row label="Name" value={data.owner_name || <em className="text-gray-400">not in NJGIN composite</em>} />
-              <Row label="Street" value={data.owner_street} />
-              <Row label="City / State / ZIP" value={data.owner_city_state_zip} />
             </Section>
 
             <Section title="Assessment">

@@ -14,13 +14,12 @@ export const metadata: Metadata = {
 };
 
 // Next 15: themeColor and viewport moved out of `metadata` into a
-// separate `viewport` export.
+// separate `viewport` export. Pinch-zoom is left enabled (WCAG 1.4.4):
+// users need to magnify dense tables and PDFs on small screens.
 export const viewport: Viewport = {
   themeColor: "#385854",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export default function RootLayout({

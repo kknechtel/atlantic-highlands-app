@@ -85,7 +85,7 @@ export default function PresentationViewer({
 
   return (
     <div className="ah-deck min-h-screen">
-      <main className="max-w-4xl mx-auto px-6 pt-6 pb-2">
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-2">
         {/* Cover banner — single instance at the top of the deck. */}
         <div className="ah-deck-cover">
           <div className="ah-cover-eyebrow flex items-center gap-1.5">
@@ -102,7 +102,7 @@ export default function PresentationViewer({
         </div>
 
         {/* Body — continuous flow inside one bordered container, no per-section cards. */}
-        <div className="bg-white border border-t-0 border-[#dadfdc] rounded-b-xl px-10 py-10 space-y-10">
+        <div className="bg-white border border-t-0 border-[#dadfdc] rounded-b-xl px-4 sm:px-6 md:px-10 py-6 md:py-10 space-y-8 md:space-y-10">
           {renderedSections.length === 0 && (
             <p className="text-sm text-gray-500 italic">This presentation has no sections.</p>
           )}

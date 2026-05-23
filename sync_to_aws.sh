@@ -1,15 +1,34 @@
 #!/bin/bash
 # Sync local Atlantic Highlands data to AWS
 # Run from: cd atlantic-highlands && bash sync_to_aws.sh
+#
+# Credentials are sourced from AWS Secrets Manager (bank-processor-api-secrets)
+# or, as a fallback, from the local environment. The previous version of this
+# script hardcoded the RDS password in git — that credential MUST be rotated.
 
 set -e
 
 RDS_HOST="atlantic-highlands-db.c4xoyiqaey7u.us-east-1.rds.amazonaws.com"
 RDS_USER="ahAdmin"
-RDS_PASS="AH-Docs-2026!"
 RDS_DB="atlantic_highlands"
 S3_BUCKET="atlantic-highlands-documents-738265942536"
 EC2_INSTANCE="i-06424a799368c7d6d"
+SECRET_ID="${AH_RDS_SECRET_ID:-bank-processor-api-secrets}"
+SECRET_KEY="${AH_RDS_SECRET_KEY:-AH_RDS_PASSWORD}"
+
+if [ -z "${RDS_PASS:-}" ]; then
+  RDS_PASS=$(aws secretsmanager get-secret-value \
+    --secret-id "${SECRET_ID}" \
+    --query 'SecretString' --output text 2>/dev/null \
+    | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('${SECRET_KEY}',''))" \
+    2>/dev/null || true)
+fi
+if [ -z "${RDS_PASS:-}" ]; then
+  echo "ERROR: RDS password not available." >&2
+  echo "  Set it as env (export RDS_PASS=...) or put it in AWS Secrets Manager" >&2
+  echo "  at secret ${SECRET_ID} under key ${SECRET_KEY}." >&2
+  exit 1
+fi
 
 echo "=== Atlantic Highlands AWS Sync ==="
 

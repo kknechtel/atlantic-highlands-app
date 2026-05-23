@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# Daniel's Law (NJ P.L. 2020 c.125) — bulk MOD-IV feeds dropped OWNER_NAME
+# 2023-01-01. We never return owner identity from bulk sources, and the search
+# query no longer filters on it. The column is retained on the model only so
+# OPRA/paid feeds can populate it through a separate, access-controlled route.
 class ParcelListItem(BaseModel):
     id: str
     block: str
@@ -22,7 +26,6 @@ class ParcelListItem(BaseModel):
     qualifier: str
     property_location: str | None
     property_class: str | None
-    owner_name: str | None
     total_assessment: float | None
     tax_amount: float | None
     lot_size_acres: float | None
@@ -39,10 +42,7 @@ class ParcelDetail(ParcelListItem):
     county_code: str
     muni_code: str
     zoning: str | None
-    # lot_size_acres, year_built, tax_amount are inherited from ParcelListItem
     living_sqft: int | None
-    owner_street: str | None
-    owner_city_state_zip: str | None
     assessment_year: int | None
     land_value: float | None
     improvement_value: float | None
@@ -57,7 +57,7 @@ def _to_list_item(p: Parcel) -> ParcelListItem:
     return ParcelListItem(
         id=str(p.id), block=p.block, lot=p.lot, qualifier=p.qualifier or "",
         property_location=p.property_location, property_class=p.property_class,
-        owner_name=p.owner_name, total_assessment=p.total_assessment,
+        total_assessment=p.total_assessment,
         tax_amount=p.tax_amount,
         lot_size_acres=p.lot_size_acres,
         year_built=p.year_built,
@@ -73,7 +73,6 @@ _SORT_COLUMNS = {
     "block_lot": (cast(Parcel.block, Float), cast(Parcel.lot, Float)),
     "property_location": (Parcel.property_location,),
     "property_class": (Parcel.property_class,),
-    "owner_name": (Parcel.owner_name,),
     "total_assessment": (Parcel.total_assessment,),
     "tax_amount": (Parcel.tax_amount,),
     "lot_size_acres": (Parcel.lot_size_acres,),
@@ -85,7 +84,7 @@ _SORT_COLUMNS = {
 
 @router.get("/", response_model=List[ParcelListItem])
 def list_parcels(
-    q: Optional[str] = Query(None, description="Search owner_name OR property_location OR block-lot"),
+    q: Optional[str] = Query(None, description="Search property_location OR block-lot"),
     block: Optional[str] = None,
     property_class: Optional[str] = None,
     min_assessment: Optional[float] = None,
@@ -100,7 +99,6 @@ def list_parcels(
     if q:
         like = f"%{q}%"
         qry = qry.filter(or_(
-            Parcel.owner_name.ilike(like),
             Parcel.property_location.ilike(like),
             (Parcel.block + "-" + Parcel.lot).ilike(like),
         ))
@@ -182,12 +180,9 @@ def get_parcel(
     if not p:
         raise HTTPException(status_code=404, detail="Parcel not found")
     return ParcelDetail(
-        # _to_list_item already covers lot_size_acres, year_built, tax_amount
-        # (they're on ParcelListItem); don't pass them again or kwargs collide.
         **_to_list_item(p).model_dump(),
         pams_pin=p.pams_pin, county_code=p.county_code, muni_code=p.muni_code,
         zoning=p.zoning, living_sqft=p.living_sqft,
-        owner_street=p.owner_street, owner_city_state_zip=p.owner_city_state_zip,
         assessment_year=p.assessment_year, land_value=p.land_value,
         improvement_value=p.improvement_value, exemption_value=p.exemption_value,
         last_sale_book=p.last_sale_book, last_sale_page=p.last_sale_page,

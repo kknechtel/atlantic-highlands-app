@@ -839,9 +839,10 @@ export async function getUsageRows(params: {
 }
 
 // ─── Parcels ──────────────────────────────────────────────────────────
-// NJ MOD-IV property records for Atlantic Highlands borough. The list
-// endpoint returns the trimmed ParcelListItem; getParcel(id) returns the
-// full ParcelDetail (assessment breakdown, owner mailing, sale history).
+// NJ MOD-IV property records for Atlantic Highlands borough. Owner identity
+// fields are omitted under NJ Daniel's Law (P.L. 2020 c.125) — all bulk
+// MOD-IV feeds dropped OWNER_NAME on 2023-01-01. The list endpoint returns
+// the trimmed ParcelListItem; getParcel(id) returns the full ParcelDetail.
 
 export interface ParcelListItem {
   id: string;
@@ -850,7 +851,6 @@ export interface ParcelListItem {
   qualifier: string;
   property_location: string | null;
   property_class: string | null;
-  owner_name: string | null;
   total_assessment: number | null;
   tax_amount: number | null;
   lot_size_acres: number | null;
@@ -863,7 +863,6 @@ export type ParcelSortColumn =
   | "block_lot"
   | "property_location"
   | "property_class"
-  | "owner_name"
   | "total_assessment"
   | "tax_amount"
   | "lot_size_acres"
@@ -877,8 +876,6 @@ export interface ParcelDetail extends ParcelListItem {
   muni_code: string;
   zoning: string | null;
   living_sqft: number | null;
-  owner_street: string | null;
-  owner_city_state_zip: string | null;
   assessment_year: number | null;
   land_value: number | null;
   improvement_value: number | null;

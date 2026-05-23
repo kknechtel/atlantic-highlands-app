@@ -45,6 +45,11 @@ NJ_PARCELS_FS = (
 # Field aliases mapped to NJGIN MOD-IV Composite Parcels feature service
 # (https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0).
 # Multiple aliases per logical field tolerate snapshot drift.
+# NJ Daniel's Law (P.L. 2020 c.125): bulk MOD-IV feeds dropped OWNER_NAME on
+# 2023-01-01. We intentionally do NOT alias owner_name / owner_street /
+# owner_city_state_zip here, so even if a stray snapshot still carries those
+# fields they never make it into our `parcels` row. The columns remain on the
+# model so a future, access-controlled OPRA/paid feed can populate them.
 FIELD_ALIASES = {
     "county_code":   ["COUNTY", "CO_CODE"],
     "muni_code":     ["PCL_MUN", "MUN", "MUN_CODE"],
@@ -54,9 +59,6 @@ FIELD_ALIASES = {
     "pams_pin":      ["PAMS_PIN", "PIN", "GIS_PIN"],
     "property_location": ["PROP_LOC", "PROPLOC", "PROPERTY_LOCATION"],
     "property_class":    ["PROP_CLASS", "PROPCLASS"],
-    "owner_name":        ["OWNER_NAME", "OWNERS_NAME"],
-    "owner_street":      ["ST_ADDRESS", "OWNERS_STREET", "OWN_STREET"],
-    "owner_city_state_zip": ["CITY_STATE", "OWNERS_CITY_STATE_ZIP", "OWN_CSZ"],
     "land_value":        ["LAND_VAL", "LANDVAL"],
     "improvement_value": ["IMPRVT_VAL", "IMPRVTVAL"],
     "total_assessment":  ["NET_VALUE", "TOT_ASSMNT"],
@@ -167,6 +169,20 @@ def fetch_features(county: str, muni_name: str, page_size: int = 2000) -> Iterat
         logger.info(f"  fetched {offset} so far...")
 
 
+# Owner-identifying keys redacted from raw_attrs before persisting (Daniel's Law).
+# The bulk feed should not be carrying these post-2023-01-01, but we strip
+# defensively in case a stale snapshot still includes them.
+_OWNER_REDACT_KEYS = {
+    "OWNER_NAME", "OWNERS_NAME", "OWNER", "OWN_NAME",
+    "ST_ADDRESS", "OWNERS_STREET", "OWN_STREET",
+    "CITY_STATE", "OWNERS_CITY_STATE_ZIP", "OWN_CSZ",
+}
+
+
+def _redact_owner(attrs: dict) -> dict:
+    return {k: v for k, v in attrs.items() if k.upper() not in _OWNER_REDACT_KEYS}
+
+
 def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
     """Upsert one parcel row. Returns True if inserted/updated, False if skipped."""
     block = _pick(attrs, "block")
@@ -183,9 +199,8 @@ def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
         pams_pin=_pick(attrs, "pams_pin"),
         property_location=_pick(attrs, "property_location"),
         property_class=_pick(attrs, "property_class"),
-        owner_name=_pick(attrs, "owner_name"),
-        owner_street=_pick(attrs, "owner_street"),
-        owner_city_state_zip=_pick(attrs, "owner_city_state_zip"),
+        # owner_name / owner_street / owner_city_state_zip intentionally omitted
+        # — see Daniel's Law note on FIELD_ALIASES.
         land_value=_to_float(_pick(attrs, "land_value")),
         improvement_value=_to_float(_pick(attrs, "improvement_value")),
         total_assessment=_to_float(_pick(attrs, "total_assessment")),
@@ -200,7 +215,7 @@ def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
         last_sale_page=_pick(attrs, "last_sale_page"),
         last_sale_nu_code=_pick(attrs, "last_sale_nu_code"),
         data_source=source_label,
-        raw_attrs=attrs,
+        raw_attrs=_redact_owner(attrs),
         last_synced_at=datetime.utcnow(),
     )
 

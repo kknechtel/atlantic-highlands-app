@@ -1,12 +1,15 @@
-"""Entrypoint for the systemd-timer-driven daily scrape.
+"""Entrypoint for the systemd-timer-driven nightly scrape.
 
-Invokes run_scraper() in recent-only mode (skips 2005-2013 AHNJ archives)
-and tags the row in scraper_runs with triggered_by="schedule" so the UI
-can distinguish auto runs from manual ones.
+Runs in three steps each tick:
+  1. Document scrape — `run_scraper(historical=True)` across all 13 crawlers.
+     Tags the scraper_runs row with triggered_by="schedule".
+  2. Event calendar scrape — `run_events_scrape()` against ahnj.com/Upcoming
+     Events for the rolling current-month + 12-month window. Failure here is
+     logged but does not fail the unit, so docs always get committed.
 
 Wire-up on EC2:
   /etc/systemd/system/ah-scraper.service   (oneshot)
-  /etc/systemd/system/ah-scraper.timer     (OnCalendar=Mon..Sun 11:00 UTC = 7am ET)
+  /etc/systemd/system/ah-scraper.timer     (OnCalendar=*-*-* 00:00:00 America/New_York)
 
 The unit files live in infra/systemd/ and are installed via SSM, not by
 the application code itself.
@@ -47,11 +50,21 @@ async def main() -> int:
     )
     final = get_scraper_status()
     logger.info(
-        "Scheduled scrape done: %s uploaded, %s skipped, %s errors.",
+        "Document scrape done: %s uploaded, %s skipped, %s errors.",
         final["documents_uploaded"],
         final["documents_skipped"],
         len(final["errors"]),
     )
+
+    # Step 2 — event calendar. Imported lazily so a bug here can't break
+    # the doc scrape's import-time path.
+    try:
+        from scripts.scrape_events import run_events_scrape
+        events_summary = run_events_scrape(months_ahead=12)
+        logger.info("Events scrape done: %s", events_summary)
+    except Exception as exc:
+        logger.exception("events scrape step failed: %s", exc)
+
     return 0
 
 

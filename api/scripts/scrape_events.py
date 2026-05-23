@@ -194,12 +194,28 @@ def save_to_json(events: list[dict], path: str = None):
     logger.info(f"Saved {len(events)} events to {path}")
 
 
-if __name__ == "__main__":
-    # Scrape 2026 calendar
-    events = scrape_all_months(2026, 1, 2026, 12)
-    print(f"\nTotal events found: {len(events)}")
-    for e in events[:20]:
-        print(f"  {e['date']} {(e.get('time') or ''):10s} {e['title']}")
+def run_events_scrape(months_ahead: int = 12) -> dict:
+    """Scrape a rolling window starting at the current month and going
+    `months_ahead` months forward, then persist to the calendar_events table.
 
-    save_to_json(events)
-    save_to_db(events)
+    Called by `scripts/scheduled_scrape.py` on the nightly tick. Returns a
+    counts dict for the caller to log; never raises so a scrape failure
+    can't cascade into the doc scrape it's chained off.
+    """
+    try:
+        now = datetime.utcnow()
+        # Inclusive end month (now.month → now.month + months_ahead).
+        total_end = now.month + months_ahead
+        end_year = now.year + (total_end - 1) // 12
+        end_month = ((total_end - 1) % 12) + 1
+        events = scrape_all_months(now.year, now.month, end_year, end_month)
+        save_to_db(events)
+        return {"scraped": len(events), "ok": True}
+    except Exception as exc:
+        logger.exception("events scrape failed: %s", exc)
+        return {"scraped": 0, "ok": False, "error": str(exc)}
+
+
+if __name__ == "__main__":
+    summary = run_events_scrape()
+    print(f"\nEvents scrape: {summary}")

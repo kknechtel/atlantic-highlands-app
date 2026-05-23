@@ -55,6 +55,7 @@ class DocumentListItem(BaseModel):
     title: str | None = None
     doc_date: str | None = None
     status: str
+    created_at: str
 
     class Config:
         from_attributes = True
@@ -101,6 +102,7 @@ def list_documents(
             title=d.title,
             doc_date=d.doc_date,
             status=d.status,
+            created_at=d.created_at.isoformat() if d.created_at else "",
         )
         for d in docs
     ]

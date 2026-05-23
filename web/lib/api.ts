@@ -152,6 +152,13 @@ export async function backfillTitles(params?: {
   return request(`/api/documents/backfill-titles?${qs.toString()}`, { method: "POST" });
 }
 
+/** Lightweight: fetches one page, ordered by created_at desc.
+ *  Use this for dashboard widgets that just need the latest N — getDocuments()
+ *  fans out one request per page and is overkill when you only want 5-10 rows. */
+export async function getRecentDocuments(limit = 10): Promise<Document[]> {
+  return request<Document[]>(`/api/documents/?limit=${limit}&offset=0`);
+}
+
 export async function getDocuments(params?: { project_id?: string; category?: string; doc_type?: string }): Promise<Document[]> {
   // Fetch all pages — paginated to fit Amplify Lambda response limits
   const PAGE_SIZE = 200;

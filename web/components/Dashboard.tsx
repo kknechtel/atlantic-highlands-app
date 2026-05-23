@@ -1,13 +1,48 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { getProjects, getStatements } from "@/lib/api";
-import { FolderIcon, DocumentTextIcon, ChartBarIcon } from "@heroicons/react/24/outline";
+import { getProjects, getStatements, getRecentDocuments, type Document } from "@/lib/api";
+import {
+  FolderIcon, DocumentTextIcon, ChartBarIcon,
+  BuildingOfficeIcon, AcademicCapIcon, MicrophoneIcon,
+} from "@heroicons/react/24/outline";
+
+function fmtAgo(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function DocIcon({ doc }: { doc: Document }) {
+  const t = doc.doc_type || "";
+  if (t.startsWith("recording_")) return <MicrophoneIcon className="w-4 h-4 text-violet-500" />;
+  if (doc.category === "school") return <AcademicCapIcon className="w-4 h-4 text-orange-500" />;
+  if (doc.category === "town") return <BuildingOfficeIcon className="w-4 h-4 text-blue-500" />;
+  return <DocumentTextIcon className="w-4 h-4 text-gray-400" />;
+}
 
 export default function Dashboard() {
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: getProjects });
   const { data: statements } = useQuery({ queryKey: ["statements"], queryFn: () => getStatements() });
+  const { data: recentDocs, isLoading: docsLoading } = useQuery({
+    queryKey: ["recent-documents", 10],
+    queryFn: () => getRecentDocuments(10),
+    // Scraper runs at midnight ET; refetch every 5 min while the dashboard
+    // is foregrounded so newly scraped docs surface without a hard reload.
+    refetchInterval: 5 * 60 * 1000,
+    refetchIntervalInBackground: false,
+  });
 
   const totalDocs = projects?.reduce((sum, p) => sum + p.document_count, 0) || 0;
   const townStatements = statements?.filter((s) => s.entity_type === "town") || [];
@@ -59,6 +94,60 @@ export default function Dashboard() {
           label="School Statements"
           value={schoolStatements.length}
         />
+      </div>
+
+      {/* Recently added documents — primary surface for the nightly scrape. */}
+      <div className="bg-white rounded-xl shadow p-4 md:p-6 mt-6 md:mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Recently Added Documents</h2>
+          <Link
+            href="/document-library"
+            className="text-xs text-gray-500 hover:text-gray-700"
+          >
+            View all →
+          </Link>
+        </div>
+        {docsLoading ? (
+          <p className="text-gray-400 text-sm">Loading…</p>
+        ) : !recentDocs || recentDocs.length === 0 ? (
+          <p className="text-gray-400 text-sm">
+            No documents yet. The nightly scrape runs at midnight ET.
+          </p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {recentDocs.map((d) => (
+              <li key={d.id}>
+                <Link
+                  href={`/document-library?doc=${encodeURIComponent(d.id)}`}
+                  className="flex items-start gap-3 py-2.5 hover:bg-gray-50 -mx-2 px-2 rounded transition-colors"
+                >
+                  <div className="mt-0.5 flex-shrink-0">
+                    <DocIcon doc={d} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-gray-900 truncate">
+                      {d.title || d.filename}
+                    </div>
+                    <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      {d.department && <span>{d.department}</span>}
+                      {d.department && d.doc_type && <span className="text-gray-300">·</span>}
+                      {d.doc_type && <span>{d.doc_type.replace(/_/g, " ")}</span>}
+                      {d.fiscal_year && (
+                        <>
+                          <span className="text-gray-300">·</span>
+                          <span>FY {d.fiscal_year}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-gray-400 flex-shrink-0 mt-1 whitespace-nowrap">
+                    {fmtAgo(d.created_at)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Recent activity */}

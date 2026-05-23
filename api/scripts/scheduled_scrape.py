@@ -35,10 +35,14 @@ async def main() -> int:
         logger.warning("Another scraper run is already active; skipping scheduled tick.")
         return 0
 
-    logger.info("Starting scheduled scrape (recent_only).")
+    logger.info("Starting scheduled scrape (historical=True, all sources).")
+    # historical=True crawls the 2005-2013 AHNJ archives too. Per-doc dedup
+    # in the runner means re-crawling those archives every night is wasted
+    # bandwidth, not duplicate data — but it's the simplest way to
+    # guarantee "everything available" is in the index.
     await run_scraper(
-        sites=None,  # default: all sites
-        historical=False,  # recent-only: skip 2005-2013 AHNJ archives
+        sites=None,           # default: all 13 crawlers
+        historical=True,      # full crawl, including 2005-2013 archives
         triggered_by="schedule",
     )
     final = get_scraper_status()

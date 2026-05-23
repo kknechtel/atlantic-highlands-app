@@ -1,0 +1,20 @@
+[Unit]
+Description=Atlantic Highlands daily alert digest
+After=network-online.target ah-api.service ah-scraper.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/atlantic-highlands/api
+# Inherit ah-api's env (DATABASE_URL, AWS creds, DIGEST_FROM_EMAIL,
+# DIGEST_REPLY_TO, PUBLIC_WEB_ORIGIN). DIGEST_FROM_EMAIL must be a verified
+# SES identity (domain or address) or sends are silently dropped.
+EnvironmentFile=-/etc/atlantic-highlands.env
+
+ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.run_digest
+
+# Don't crash the timer if a single user's digest errors; the worker
+# already isolates per-alert failures.
+SuccessExitStatus=0 1
+StandardOutput=journal
+StandardError=journal

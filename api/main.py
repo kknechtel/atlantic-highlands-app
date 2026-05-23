@@ -46,6 +46,7 @@ from routes.contracts import router as contracts_router
 from routes.extraction import router as extraction_router
 from routes.parcels import router as parcels_router
 from routes.meetings import router as meetings_router
+from routes.alerts import router as alerts_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -67,6 +68,7 @@ app.include_router(contracts_router, prefix="/api/contracts", tags=["contracts"]
 app.include_router(extraction_router, prefix="/api/extraction", tags=["extraction"])
 app.include_router(parcels_router, prefix="/api/parcels", tags=["parcels"])
 app.include_router(meetings_router, prefix="/api/meetings", tags=["meetings"])
+app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
 
 
 @app.on_event("startup")

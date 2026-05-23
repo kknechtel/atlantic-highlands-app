@@ -10,7 +10,7 @@ import {
   CalendarDaysIcon,
   ChevronLeftIcon, ChevronRightIcon, UserIcon, BuildingStorefrontIcon,
   MusicalNoteIcon, ClipboardDocumentListIcon, PresentationChartLineIcon,
-  MicrophoneIcon, HomeModernIcon,
+  MicrophoneIcon, HomeModernIcon, BellIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -35,6 +35,7 @@ const navItems = [
   { name: "Local Business", href: "/local-business", icon: BuildingStorefrontIcon },
   { name: "Events", href: "/events", icon: MusicalNoteIcon },
   { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
+  { name: "Alerts", href: "/alerts", icon: BellIcon },
   { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
   { name: "Scraper", href: "/scraper", icon: GlobeAltIcon },
 ];

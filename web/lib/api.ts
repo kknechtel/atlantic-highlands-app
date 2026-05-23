@@ -911,3 +911,69 @@ export async function countParcels(): Promise<{ count: number }> {
 export async function getParcel(id: string): Promise<ParcelDetail> {
   return request<ParcelDetail>(`/api/parcels/${id}`);
 }
+
+// ─── Alerts ──────────────────────────────────────────────────────────
+// Saved-keyword / new-meeting / new-document subscriptions. The daily
+// digest worker (api/scripts/run_digest.py) emails matches via SES.
+
+export type AlertKind = "keyword" | "new_meeting" | "new_document";
+export type DigestFrequency = "daily" | "weekly";
+
+export interface SavedAlert {
+  id: string;
+  kind: AlertKind;
+  name: string;
+  query: string | null;
+  filters: Record<string, string | undefined>;
+  frequency: DigestFrequency;
+  enabled: boolean;
+  last_run_at: string | null;
+  last_sent_at: string | null;
+  created_at: string;
+}
+
+export interface AlertCreate {
+  kind: AlertKind;
+  name: string;
+  query?: string;
+  filters?: Record<string, string | undefined>;
+  frequency?: DigestFrequency;
+  enabled?: boolean;
+}
+
+export interface AlertUpdate {
+  name?: string;
+  query?: string;
+  filters?: Record<string, string | undefined>;
+  frequency?: DigestFrequency;
+  enabled?: boolean;
+}
+
+export async function listAlerts(): Promise<SavedAlert[]> {
+  return request<SavedAlert[]>("/api/alerts/");
+}
+
+export async function createAlert(payload: AlertCreate): Promise<SavedAlert> {
+  return request<SavedAlert>("/api/alerts/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAlert(id: string, payload: AlertUpdate): Promise<SavedAlert> {
+  return request<SavedAlert>(`/api/alerts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteAlert(id: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/alerts/${id}`, { method: "DELETE", headers });
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Delete failed: ${res.status}`);
+  }
+}

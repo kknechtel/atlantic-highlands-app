@@ -66,3 +66,9 @@ VOYAGE_API_KEY = _get("VOYAGE_API_KEY")  # for semantic embeddings; falls back t
 JWT_SECRET = _get("JWT_SECRET", SECRET_KEY)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = int(_get("JWT_EXPIRATION_HOURS", "24"))
+
+# Email — digests, alerts. SES is the only sender; if FROM is blank, sends are
+# silently dropped (useful for local dev where no SES identity is verified).
+DIGEST_FROM_EMAIL = _get("DIGEST_FROM_EMAIL", "")
+DIGEST_REPLY_TO = _get("DIGEST_REPLY_TO", "")
+PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", "https://ahnj.info")

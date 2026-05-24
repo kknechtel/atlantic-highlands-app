@@ -233,6 +233,59 @@ def parse_chubby_pickle(json_body: str, year: int) -> list[dict]:
     return events
 
 
+def parse_drifthouse(html: str, year: int) -> list[dict]:
+    """Drifthouse by David Burke at https://drifthousenj.com/events/.
+
+    Event cards are .ebi-card__content with body text like:
+        "Thu, May 28 2026 | Rich and Chad"
+
+    One card per show. Date carries the year explicitly so no rollover
+    inference needed.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    for s in soup.find_all(["svg", "style", "script"]):
+        s.decompose()
+
+    events: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    # "Thu, May 28 2026" or "Thursday, May 28, 2026"
+    date_re = re.compile(
+        r"(?:(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+)?"
+        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+"
+        r"(\d{1,2})(?:st|nd|rd|th)?[,\s]+(\d{4})",
+        re.I,
+    )
+
+    for card in soup.select(".ebi-card__content"):
+        text = card.get_text(" | ", strip=True)
+        if not text:
+            continue
+        m = date_re.search(text)
+        if not m:
+            continue
+        mon = _MONTHS.get(m.group(1).lower())
+        if not mon:
+            continue
+        date_str = _safe_date(int(m.group(3)), mon, int(m.group(2)))
+        if not date_str:
+            continue
+        # Title = everything after the matched date, stripped of pipe noise
+        title = text[m.end():].strip(" |·-—,")
+        if not title or len(title) < 2:
+            continue
+        # Skip private events and other non-music
+        if title.lower() in {"private event", "closed", "tba", "tbd"}:
+            continue
+        key = (date_str, title.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append({"date": date_str, "title": title})
+
+    return events
+
+
 def parse_sandbox(html: str, year: int) -> list[dict]:
     """The Sandbox at Seastreak homepage at https://sandbox.seastreak.com/.
 
@@ -348,39 +401,115 @@ def parse_sandbox(html: str, year: int) -> list[dict]:
 
 
 def parse_seafarer(html: str, year: int) -> list[dict]:
-    """Free-text schedule block on the Seafarer homepage. Lines look like:
-        "Friday, May 22 — Charles Krause at 6PM"
-        "Saturday May 23: Band Name 7-10pm"
+    """The Seafarer homepage at https://www.seafarernj.com/.
+
+    The schedule lives in a single .sqs-html-content block whose text
+    looks like:
+
+        WE HAVE GUARENTEED FREE LIVE MUSIC
+        EVERY THURSDAY, FRIDAY, SATURDAY, SUNDAY
+        ALL SUMMER LONG! Weather Permitting!
+        LIVE MUSIC LINEUP
+        Friday May 22
+        Charles Krause 6PM
+        Saturday May 23
+        Michael Murphy 6PM
+        Sunday May 24
+        Moroccan Sheepherders 6:30PM
+        Monday 25                ← month elided; carry from previous
+        Amanda & Nick Duo 2PM
+
+    Lines come in pairs: weekday-date line, then band-line. The
+    weekday-date sometimes omits the month (rolls over from a prior
+    line); we carry the last seen month forward.
     """
     soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text("\n", strip=True)
+
+    # Find the music-schedule block — the one that mentions "LIVE MUSIC LINEUP"
+    # or "WE HAVE GUARENTEED FREE LIVE MUSIC". Falls back to body text if not
+    # found so a future restyle doesn't silently break us.
+    block_text: Optional[str] = None
+    for block in soup.select(".sqs-html-content"):
+        t = block.get_text("\n", strip=True)
+        if "LIVE MUSIC LINEUP" in t.upper() or "LIVE MUSIC" in t.upper():
+            block_text = t
+            break
+    if not block_text:
+        block_text = soup.get_text("\n", strip=True)
+
+    # Slice from the "LIVE MUSIC LINEUP" marker forward, if present
+    upper = block_text.upper()
+    marker = upper.find("LIVE MUSIC LINEUP")
+    if marker >= 0:
+        block_text = block_text[marker:]
+
+    lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
     events: list[dict] = []
-    pattern = re.compile(
-        r"(?:(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+)?"
+    seen: set[tuple[str, str]] = set()
+    today = date.today()
+
+    # Date-line patterns:
+    #   "Friday May 22"            full
+    #   "Saturday, May 23"         comma after weekday
+    #   "Sun May 24"               abbreviated weekday
+    #   "Monday 25"                month elided — carry last month
+    date_full = re.compile(
+        r"^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+"
         r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+"
-        r"(\d{1,2})(?:,\s+(\d{4}))?"
-        r"\s*[-–—:]\s*"
-        r"(.+?)"
-        r"(?=\n|$)",
+        r"(\d{1,2})(?:st|nd|rd|th)?$",
         re.I,
     )
-    for m in pattern.finditer(text):
-        mon = _MONTHS.get(m.group(1).lower())
-        if not mon:
-            continue
-        day = int(m.group(2))
-        yr = int(m.group(3)) if m.group(3) else year
-        d = _safe_date(yr, mon, day)
-        if not d:
-            continue
-        rest = m.group(4).strip()
-        time_m = re.search(r"(\d{1,2}(?::\d{2})?\s*(?:[APap][Mm])(?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?)",
-                           rest)
-        time_str = _normalize_time(time_m.group(0)) if time_m else None
-        title = re.sub(r"\s+(?:at|@)\s+\d.+$", "", rest).strip(" .,-—:")
-        if time_m:
-            title = title.replace(time_m.group(0), "").strip(" .,-—:")
-        if not title or len(title) < 3:
-            continue
-        events.append({"date": d, "title": title, "time": time_str})
+    date_month_elided = re.compile(
+        r"^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+"
+        r"(\d{1,2})(?:st|nd|rd|th)?$",
+        re.I,
+    )
+    time_re = re.compile(
+        r"(\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?)",
+    )
+
+    last_month: Optional[int] = None
+    pending_date: Optional[str] = None
+    for line in lines:
+        m_full = date_full.match(line)
+        m_short = date_month_elided.match(line)
+        if m_full:
+            mon = _MONTHS.get(m_full.group(1).lower())
+            if not mon:
+                continue
+            day = int(m_full.group(2))
+            d = _safe_date(year, mon, day)
+            if not d:
+                continue
+            parsed = date.fromisoformat(d)
+            if (parsed - today).days < -180:
+                d = _safe_date(year + 1, mon, day) or d
+            last_month = mon
+            pending_date = d
+        elif m_short and last_month is not None:
+            day = int(m_short.group(1))
+            d = _safe_date(year, last_month, day)
+            if not d:
+                continue
+            parsed = date.fromisoformat(d)
+            if (parsed - today).days < -180:
+                d = _safe_date(year + 1, last_month, day) or d
+            pending_date = d
+        elif pending_date:
+            # Band line — title + optional time
+            tm = time_re.search(line)
+            time_str = _normalize_time(tm.group(1)) if tm else None
+            title = (line[:tm.start()] + line[tm.end():]) if tm else line
+            title = title.strip(" -–—·,")
+            if not title or len(title) < 2:
+                pending_date = None
+                continue
+            key = (pending_date, title.lower())
+            if key in seen:
+                pending_date = None
+                continue
+            seen.add(key)
+            events.append({"date": pending_date, "title": title, "time": time_str})
+            pending_date = None  # consume — one band per date line
+
     return events

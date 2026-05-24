@@ -56,7 +56,23 @@ VENUES = [
         squarespace.fetch_events,
         {"collection_url": "https://www.onthedeckrestaurant.com/live-music"},
     ),
-    # ── Deferred ──────────────────────────────────────────────────
-    # Off the Hook   (Squarespace events collection is empty)
-    # Donovan's Reef (BeatGig client-side embed, needs Playwright)
+    # ── Sea Bright ────────────────────────────────────────────────
+    (
+        "Drifthouse by David Burke", "Sea Bright",
+        html_parse.fetch_events,
+        {"url": "https://drifthousenj.com/events/",
+         "parser": html_parse.parse_drifthouse},
+    ),
+    # ── Deferred (HTML scraping not viable) ───────────────────────
+    # Off the Hook                  Squarespace events collection empty
+    # Donovan's Reef                BeatGig client-side embed → Playwright
+    # The Chubby Pickle             JetEngine widget; events JS-rendered
+    # Barnacle Bill's (Rumson/SB)   Live-music page is static text, no calendar
+    # Eventide Grille               Schedule on Facebook only
+    # McLoone's Rum Runner          /entertainment.php returns 403 to bot UAs
+    # Tommy's Tavern + Tap          Chain site; FB only
+    # Wine Bar / Atlantic House     Static sites; FB only
+    # Copper Canyon @ Blue Bay Inn  Static site; FB only
+    # All of the above are candidates for the future
+    # crowdsourced-submission / FB-pipeline approach.
 ]

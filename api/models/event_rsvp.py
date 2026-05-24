@@ -16,9 +16,14 @@ UNIQUE (user_id, event_id) makes the POST endpoint idempotent: clicking
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
+
+
+# Allowed RSVP statuses. We keep the column free-form VARCHAR rather than a
+# Postgres ENUM so we can add new statuses without an ALTER TYPE migration.
+RSVP_STATUSES = ("going", "tentative", "follow_up")
 
 
 class EventRsvp(Base):
@@ -32,4 +37,9 @@ class EventRsvp(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     event_id = Column(UUID(as_uuid=True), nullable=False)  # references calendar_events.id; NOT a FK
+    # Status: 'going' (default), 'tentative', or 'follow_up' (saved for later
+    # without committing). Old rows pre-status get 'going' via the migration
+    # backfill so existing "I'm going" UX is preserved.
+    status = Column(String(16), nullable=False, default="going")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

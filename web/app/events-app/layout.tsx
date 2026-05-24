@@ -17,7 +17,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   HomeIcon, CalendarDaysIcon, BuildingStorefrontIcon,
-  MapPinIcon, ChatBubbleLeftRightIcon,
+  MapPinIcon, ChatBubbleLeftRightIcon, BookmarkIcon,
   ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -25,6 +25,7 @@ import {
   HomeIcon as HomeSolid, CalendarDaysIcon as CalendarSolid,
   BuildingStorefrontIcon as StoreSolid,
   MapPinIcon as PinSolid, ChatBubbleLeftRightIcon as ChatSolid,
+  BookmarkIcon as BookmarkSolid,
 } from "@heroicons/react/24/solid";
 
 // Lighter, friendlier brand color than the civic-research deep teal —
@@ -46,11 +47,14 @@ type Tab = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   iconActive: React.ComponentType<{ className?: string }>;
+  /** Hide from anon users — they can't have saved events. */
+  authOnly?: boolean;
 };
 
 const TABS: Tab[] = [
   { href: "/", label: "Home", icon: HomeIcon, iconActive: HomeSolid },
   { href: "/calendar", label: "Events", icon: CalendarDaysIcon, iconActive: CalendarSolid },
+  { href: "/my-calendar", label: "Saved", icon: BookmarkIcon, iconActive: BookmarkSolid, authOnly: true },
   { href: "/places", label: "Places", icon: BuildingStorefrontIcon, iconActive: StoreSolid },
   { href: "/checkin", label: "Check In", icon: MapPinIcon, iconActive: PinSolid },
   { href: "/chat", label: "Chat", icon: ChatBubbleLeftRightIcon, iconActive: ChatSolid },
@@ -61,6 +65,9 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
   const current = stripPrefix(raw);
   const { user, logout } = useAuth();
   const profileInitial = (user?.display_name || user?.email || "?").trim().charAt(0).toUpperCase();
+  // Anon users don't see auth-only tabs (Saved). Sign-in CTA replaces the
+  // profile slot so the navigation stays predictable across login state.
+  const visibleTabs = TABS.filter(t => !t.authOnly || user);
 
   function isActive(href: string): boolean {
     return href === "/" ? current === "/" : (current === href || current.startsWith(href + "/"));
@@ -87,7 +94,7 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
         </Link>
         {/* Nav */}
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const active = isActive(tab.href);
             const Icon = active ? tab.iconActive : tab.icon;
             return (
@@ -214,7 +221,7 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="max-w-3xl mx-auto flex">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const active = isActive(tab.href);
             const Icon = active ? tab.iconActive : tab.icon;
             return (

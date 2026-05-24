@@ -888,10 +888,14 @@ export interface RsvpUser {
   picture_url: string | null;
 }
 
+export type RsvpStatus = "going" | "tentative" | "follow_up";
+
 export interface RsvpSummary {
   event_id: string;
-  count: number;
-  is_going: boolean;
+  count: number;                  // everyone with any status
+  going_count: number;            // firm headcount (status='going')
+  is_going: boolean;              // back-compat: my_status === 'going'
+  my_status: RsvpStatus | null;   // caller's status, or null when not signed in / not RSVP'd
   sample_users: RsvpUser[];
 }
 
@@ -899,9 +903,13 @@ export async function getEventRsvp(eventId: string): Promise<RsvpSummary> {
   return request<RsvpSummary>(`/api/calendar/events/${encodeURIComponent(eventId)}/rsvp`);
 }
 
-export async function rsvpToEvent(eventId: string): Promise<RsvpSummary> {
+export async function rsvpToEvent(
+  eventId: string,
+  status: RsvpStatus = "going",
+): Promise<RsvpSummary> {
   return request<RsvpSummary>(`/api/calendar/events/${encodeURIComponent(eventId)}/rsvp`, {
     method: "POST",
+    body: JSON.stringify({ status }),
   });
 }
 
@@ -909,6 +917,28 @@ export async function unrsvpFromEvent(eventId: string): Promise<RsvpSummary> {
   return request<RsvpSummary>(`/api/calendar/events/${encodeURIComponent(eventId)}/rsvp`, {
     method: "DELETE",
   });
+}
+
+// ── My calendar ────────────────────────────────────────────────────────
+
+export interface SavedEvent {
+  rsvp_id: string;
+  status: RsvpStatus;
+  saved_at: string;
+  event_id: string;
+  title: string | null;
+  date: string | null;
+  time: string | null;
+  end_time: string | null;
+  venue: string | null;
+  city: string | null;
+  event_type: string | null;
+  ticket_url: string | null;
+}
+
+export async function getMyCalendar(opts: { upcoming_only?: boolean } = {}): Promise<SavedEvent[]> {
+  const qs = opts.upcoming_only === false ? "?upcoming_only=false" : "";
+  return request<SavedEvent[]>(`/api/calendar/me/calendar${qs}`);
 }
 
 export async function getCalendarEvents(

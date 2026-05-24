@@ -206,6 +206,10 @@ def _migrate():
         # Comment threads: inline-range anchor for highlight-comment
         ("presentation_comments", "anchor", "JSONB"),
         ("presentation_comments", "resolved_at", "TIMESTAMP"),
+        # RSVP status: tentative / going / follow_up. Pre-existing rows
+        # are backfilled to 'going' (the historical default).
+        ("event_rsvps", "status", "VARCHAR(16) NOT NULL DEFAULT 'going'"),
+        ("event_rsvps", "updated_at", "TIMESTAMP NOT NULL DEFAULT NOW()"),
     ]
 
     with engine.connect() as conn:

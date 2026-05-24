@@ -22,6 +22,7 @@ import {
   getCalendarEvent, listCheckinsAtVenue, createCheckin,
   getEventRsvp, rsvpToEvent, unrsvpFromEvent,
   postCommunityMessage,
+  type RsvpStatus,
 } from "@/lib/api";
 import { findBandInGuide, socialMediaUrl, CATEGORY_LABELS } from "@/lib/bandGuide";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -101,8 +102,10 @@ export default function EventDetailPage({
     refetchInterval: 90_000,
     refetchIntervalInBackground: false,
   });
-  const toggleRsvp = useMutation({
-    mutationFn: () => rsvp?.is_going ? unrsvpFromEvent(id) : rsvpToEvent(id),
+  const setStatus = useMutation({
+    // Click the active status to remove it; click a different one to switch.
+    mutationFn: (target: RsvpStatus) =>
+      rsvp?.my_status === target ? unrsvpFromEvent(id) : rsvpToEvent(id, target),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["event-rsvp", id] }),
   });
 
@@ -376,34 +379,58 @@ export default function EventDetailPage({
         </section>
       )}
 
-      {/* RSVP / Going — future intent. Renders for every event whether or
-          not it has a venue. */}
+      {/* Save / RSVP — future intent. 3-button selector so users can mark
+          a show Going / Tentative / Follow-up. Saved events appear on
+          /my-calendar. Re-clicking the active status removes it. */}
       <section className="bg-white border border-gray-200 rounded-lg p-3">
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="text-xs uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
             <UserGroupIcon className="w-3 h-3" />
-            Going
-            {rsvp && rsvp.count > 0 && (
-              <span className="text-gray-400">· {rsvp.count}</span>
+            Save to my calendar
+            {rsvp && rsvp.going_count > 0 && (
+              <span className="text-gray-400">· {rsvp.going_count} going</span>
             )}
           </div>
-          <button
-            onClick={() => toggleRsvp.mutate()}
-            disabled={toggleRsvp.isPending}
-            className={`px-3 py-1 text-xs rounded-md inline-flex items-center gap-1 ${
-              rsvp?.is_going
-                ? "border border-gray-300 text-gray-700 hover:bg-gray-50"
-                : "text-white"
-            }`}
-            style={!rsvp?.is_going ? { backgroundColor: eventsBrand } : {}}
-          >
-            {rsvp?.is_going
-              ? <><CheckIcon className="w-3.5 h-3.5" /> You&apos;re going</>
-              : <>I&apos;m going</>}
-          </button>
         </div>
+        {!user ? (
+          <div className="text-[11px] text-gray-500">
+            <Link href="/login" className="hover:underline font-medium" style={{ color: eventsBrand }}>
+              Sign in
+            </Link>{" "}
+            to save this event.
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {(["going", "tentative", "follow_up"] as RsvpStatus[]).map(s => {
+              const active = rsvp?.my_status === s;
+              const label = s === "going" ? "Going" : s === "tentative" ? "Tentative" : "Follow up";
+              const sub = s === "going" ? "I'll be there" : s === "tentative" ? "Maybe" : "Save for later";
+              return (
+                <button
+                  key={s}
+                  onClick={() => setStatus.mutate(s)}
+                  disabled={setStatus.isPending}
+                  className={`px-2 py-2 rounded-md text-xs flex flex-col items-center gap-0.5 transition ${
+                    active
+                      ? "text-white"
+                      : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                  style={active ? { backgroundColor: eventsBrand } : {}}
+                >
+                  <span className="font-medium inline-flex items-center gap-1">
+                    {active && <CheckIcon className="w-3.5 h-3.5" />}
+                    {label}
+                  </span>
+                  <span className={`text-[10px] ${active ? "opacity-90" : "text-gray-400"}`}>
+                    {sub}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {rsvp && rsvp.sample_users.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap mt-3 pt-3 border-t border-gray-100">
             {rsvp.sample_users.slice(0, 12).map(u => (
               <div key={u.user_id} className="flex items-center gap-1 text-[11px] text-gray-600">
                 <Avatar name={u.display_name} src={u.picture_url} />

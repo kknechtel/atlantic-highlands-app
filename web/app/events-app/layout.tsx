@@ -1,20 +1,24 @@
 "use client";
 
-// Events-app shell (events.ahnj.info). Brings its own brand color, top
-// header, and a bottom-tab nav. The civic-research sidebar/GlobalChat is
-// suppressed by the AuthGate when pathname starts with /events-app.
+// Events-app shell (events.ahnj.info).
+//   Mobile:  top bar (logo + profile avatar) + bottom tab nav
+//   Desktop: left sidebar with logo on top, nav links, profile at bottom
 //
-// The tab nav uses CLEAN URLs (no /events-app prefix) — the middleware
-// rewrites the user-visible URL on every request, so a `<Link href="/calendar">`
-// from a page served under events.ahnj.info navigates to
-// events.ahnj.info/calendar which the middleware then routes to
+// The civic-research sidebar/GlobalChat is suppressed by AuthGate when
+// hostname starts with "events." (see web/components/Providers.tsx).
+//
+// The nav uses CLEAN URLs (no /events-app prefix). The Host-based
+// middleware rewrites the user-visible URL on every request, so a
+// <Link href="/calendar"> from a page served under events.ahnj.info
+// navigates to events.ahnj.info/calendar → middleware routes to
 // /events-app/calendar/page.tsx.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   HomeIcon, CalendarDaysIcon, BuildingStorefrontIcon,
-  MapPinIcon, ChatBubbleLeftRightIcon, UserCircleIcon,
+  MapPinIcon, ChatBubbleLeftRightIcon,
+  ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
@@ -55,92 +59,139 @@ const TABS: Tab[] = [
 export default function EventsAppLayout({ children }: { children: React.ReactNode }) {
   const raw = usePathname();
   const current = stripPrefix(raw);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const profileInitial = (user?.display_name || user?.email || "?").trim().charAt(0).toUpperCase();
 
+  function isActive(href: string): boolean {
+    return href === "/" ? current === "/" : (current === href || current.startsWith(href + "/"));
+  }
+
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Top bar — on desktop the nav lives inline here. On mobile the nav
-          drops to the bottom (see <nav> below). */}
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-              style={{ backgroundColor: eventsBrand }}
-            >
-              AH
+    <div className="min-h-screen flex bg-gray-50">
+      {/* DESKTOP SIDEBAR (md+) ─────────────────────────────────────── */}
+      <aside className="hidden md:flex md:flex-col w-56 lg:w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
+        {/* Brand */}
+        <Link href="/" className="flex items-center gap-2.5 p-4 border-b border-gray-200">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+            style={{ backgroundColor: eventsBrand }}
+          >
+            AH
+          </div>
+          <div className="leading-tight min-w-0">
+            <div className="text-sm font-semibold text-gray-900 truncate">Around Town</div>
+            <div className="text-[10px] text-gray-500 truncate">
+              AH · Highlands · Sea Bright
             </div>
-            <div className="leading-tight">
-              <div className="text-sm font-semibold text-gray-900">Around Town</div>
-              <div className="hidden sm:block text-[10px] text-gray-500">
-                Atlantic Highlands · Highlands · Sea Bright
-              </div>
-            </div>
-          </Link>
-          {/* Desktop top nav */}
-          <nav className="hidden md:flex items-center gap-1">
-            {TABS.map((tab) => {
-              const active =
-                tab.href === "/"
-                  ? current === "/"
-                  : current === tab.href || current.startsWith(tab.href + "/");
-              const Icon = active ? tab.iconActive : tab.icon;
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                    active ? "" : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                  style={active ? { backgroundColor: `${eventsBrand}15`, color: eventsBrand } : {}}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          {/* Profile avatar / link — visible on every viewport in the header.
-              Renders nothing if AuthContext hasn't hydrated the user yet. */}
-          {user && (
+          </div>
+        </Link>
+        {/* Nav */}
+        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+          {TABS.map((tab) => {
+            const active = isActive(tab.href);
+            const Icon = active ? tab.iconActive : tab.icon;
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                  active ? "" : "text-gray-700 hover:bg-gray-50"
+                }`}
+                style={active ? { backgroundColor: `${eventsBrand}15`, color: eventsBrand } : {}}
+              >
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <span className="font-medium">{tab.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        {/* Profile + sign out */}
+        {user && (
+          <div className="p-3 border-t border-gray-200 flex items-center gap-2">
             <Link
               href="/profile"
-              className="flex-shrink-0 flex items-center gap-1.5 hover:opacity-80"
+              className="flex-1 min-w-0 flex items-center gap-2 p-1 -m-1 rounded-md hover:bg-gray-50"
               title="Profile"
             >
               {user.picture_url ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={user.picture_url} alt="" className="w-7 h-7 rounded-full object-cover" />
+                <img src={user.picture_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
               ) : (
                 <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
                   style={{ backgroundColor: eventsBrand }}
                 >
                   {profileInitial}
                 </div>
               )}
+              <div className="text-xs text-gray-700 truncate min-w-0">
+                {user.display_name || user.full_name || user.email.split("@")[0]}
+              </div>
             </Link>
-          )}
-        </div>
-      </header>
+            <button
+              onClick={logout}
+              className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex-shrink-0"
+              title="Sign out"
+            >
+              <ArrowRightOnRectangleIcon className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </aside>
 
-      {/* Main — wider container on desktop now that the nav doesn't compete
-          for horizontal space at the bottom. */}
-      <main className="flex-1 max-w-5xl w-full mx-auto pb-24 md:pb-8">{children}</main>
+      {/* MAIN COLUMN ────────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* MOBILE TOP BAR (md:hidden) ──────────────────────────────── */}
+        <header className="md:hidden sticky top-0 z-30 bg-white border-b border-gray-200">
+          <div className="px-4 py-3 flex items-center justify-between gap-4">
+            <Link href="/" className="flex items-center gap-2 flex-shrink-0">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                style={{ backgroundColor: eventsBrand }}
+              >
+                AH
+              </div>
+              <div className="leading-tight">
+                <div className="text-sm font-semibold text-gray-900">Around Town</div>
+                <div className="hidden sm:block text-[10px] text-gray-500">
+                  Atlantic Highlands · Highlands · Sea Bright
+                </div>
+              </div>
+            </Link>
+            {user && (
+              <Link
+                href="/profile"
+                className="flex-shrink-0 flex items-center gap-1.5 hover:opacity-80"
+                title="Profile"
+              >
+                {user.picture_url ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={user.picture_url} alt="" className="w-7 h-7 rounded-full object-cover" />
+                ) : (
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                    style={{ backgroundColor: eventsBrand }}
+                  >
+                    {profileInitial}
+                  </div>
+                )}
+              </Link>
+            )}
+          </div>
+        </header>
 
-      {/* Bottom tab nav — MOBILE ONLY. Desktop uses the top nav in the header
-          above. safe-area-inset-bottom handles the home-bar inset on iOS. */}
+        {/* Main scroll area */}
+        <main className="flex-1 max-w-5xl w-full mx-auto pb-24 md:pb-8 md:py-2">{children}</main>
+      </div>
+
+      {/* MOBILE BOTTOM TAB NAV (md:hidden) ──────────────────────────── */}
       <nav
         className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="max-w-3xl mx-auto flex">
           {TABS.map((tab) => {
-            const active =
-              tab.href === "/"
-                ? current === "/"
-                : current === tab.href || current.startsWith(tab.href + "/");
+            const active = isActive(tab.href);
             const Icon = active ? tab.iconActive : tab.icon;
             return (
               <Link

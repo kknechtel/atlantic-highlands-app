@@ -8,10 +8,12 @@
 // Data: we don't have a `bands` table yet. We filter the cached calendar
 // events by exact title (case-insensitive). Good enough at borough scale.
 //
-// "Find them online" links resolve in three layers:
-//   1. Admin-curated band_profiles row (DB) — admin edits inline
+// "Find them online" only shows buttons we have real URLs for, sourced from:
+//   1. Admin-curated band_profiles row (DB) — admin edits inline below
 //   2. Hardcoded canonical URLs in lib/knownBandLinks.ts
-//   3. Default search URLs (YouTube, Spotify, Google, etc.)
+// If we have nothing, a single "Search Google" fallback link replaces the
+// row of buttons — search-only links (YouTube/Bandsintown search) made
+// people click expecting a band page and land on a results list / login wall.
 
 import { use, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
@@ -38,58 +40,31 @@ function fmtDate(iso: string): string {
 
 type LinkOut = { label: string; href: string };
 
-// Default search URLs to use when we have no curated/known URL for a band.
-// Notes on what's been pruned vs. what was here before:
-//   - Instagram's keyword-search endpoint is gated (requires login, returns
-//     404 for guests) so we don't surface it as a default — better to have
-//     no link than a broken one.
-//   - Bandsintown's `searchSuggestions` URL is an internal AJAX endpoint
-//     that renders an empty page when opened directly. Use Google with a
-//     site: scope instead — it lands on the artist's real BIT page.
-//   - Google search no longer biases toward "NJ Atlantic Highlands": that
-//     biased away from the band's actual website/Spotify/YouTube hits.
-function defaultLinks(bandName: string): LinkOut[] {
-  const q = encodeURIComponent(`${bandName} band`);
-  const qExact = encodeURIComponent(`"${bandName}"`);
-  return [
-    { label: "YouTube",     href: `https://www.youtube.com/results?search_query=${q}` },
-    { label: "Spotify",     href: `https://open.spotify.com/search/${encodeURIComponent(bandName)}/artists` },
-    { label: "Bandsintown", href: `https://www.google.com/search?q=site%3Abandsintown.com+${qExact}` },
-    { label: "Facebook",    href: `https://www.facebook.com/search/top?q=${encodeURIComponent(bandName)}` },
-    { label: "Google",      href: `https://www.google.com/search?q=${q}` },
-  ];
-}
-
-// Merge admin-curated profile URLs and built-in known-band URLs on top of
-// the defaults so labels stay in a predictable order but any specific URL
-// we *do* know about overrides the corresponding search link.
-function mergeLinks(
+// Only emit a button when we have a real URL for it. A "YouTube" or
+// "Bandsintown" button that opens a search page is worse than nothing —
+// the user clicks expecting the band's page and lands on a results list
+// (or, for Instagram/Bandsintown, a login wall or empty AJAX endpoint).
+//
+// Sources, in priority order:
+//   1. Admin-curated band_profiles row (DB)
+//   2. lib/knownBandLinks.ts (hardcoded canonical URLs we know)
+function resolveLinks(
   bandName: string,
   profile: BandProfile | null | undefined,
 ): LinkOut[] {
   const known = findKnownBandLinks(bandName);
-  const overrides: Partial<Record<string, string>> = {
-    Website:     profile?.website_url     || known?.website     || undefined,
-    YouTube:     known?.youtube           || undefined,
-    Spotify:     known?.spotify           || undefined,
-    Bandcamp:    known?.bandcamp          || undefined,
-    Bandsintown: profile?.bandsintown_url || known?.bandsintown || undefined,
-    Facebook:    profile?.facebook_url    || known?.facebook    || undefined,
-    Instagram:   profile?.instagram_url   || known?.instagram   || undefined,
-  };
-  const defaults = defaultLinks(bandName);
-  const out: LinkOut[] = [];
-  // Website first when we have one.
-  if (overrides.Website) out.push({ label: "Website", href: overrides.Website });
-  for (const d of defaults) {
-    const override = overrides[d.label];
-    out.push({ label: d.label, href: override || d.href });
-  }
-  // Surface curated channels that aren't in the default set.
-  for (const extra of ["Bandcamp", "Instagram"] as const) {
-    if (overrides[extra]) out.push({ label: extra, href: overrides[extra]! });
-  }
-  return out;
+  const pairs: Array<[string, string | null | undefined]> = [
+    ["Website",     profile?.website_url     || known?.website],
+    ["YouTube",     known?.youtube],
+    ["Spotify",     known?.spotify],
+    ["Bandcamp",    known?.bandcamp],
+    ["Bandsintown", profile?.bandsintown_url || known?.bandsintown],
+    ["Facebook",    profile?.facebook_url    || known?.facebook],
+    ["Instagram",   profile?.instagram_url   || known?.instagram],
+  ];
+  return pairs
+    .filter(([, href]) => !!href)
+    .map(([label, href]) => ({ label, href: href as string }));
 }
 
 export default function BandDetailPage({
@@ -124,7 +99,7 @@ export default function BandDetailPage({
     queryFn: () => getBandProfile(bandName),
   });
 
-  const links = useMemo(() => mergeLinks(bandName, profile), [bandName, profile]);
+  const links = useMemo(() => resolveLinks(bandName, profile), [bandName, profile]);
 
   // Admin inline edit
   const [editing, setEditing] = useState(false);
@@ -295,26 +270,44 @@ export default function BandDetailPage({
         </section>
       )}
 
-      {/* Find online — deep links to FB/IG/etc. since we don't store
-          band profile URLs yet (or guide social didn't resolve to a URL). */}
-      <section>
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-          Find them online
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {links.map(l => (
-            <a
-              key={l.label}
-              href={l.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs rounded-full border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400"
-            >
-              {l.label} ↗
-            </a>
-          ))}
-        </div>
-      </section>
+      {/* Find online — only real URLs (curated profile + knownBandLinks).
+          If we have nothing, fall back to a single understated Google link
+          rather than a row of buttons that all open useless search pages. */}
+      {links.length > 0 ? (
+        <section>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Find them online
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {links.map(l => (
+              <a
+                key={l.label}
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 text-xs rounded-full border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400"
+              >
+                {l.label} ↗
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <section className="text-[11px] text-gray-400">
+          We don&apos;t have band info yet.{" "}
+          <a
+            href={`https://www.google.com/search?q=${encodeURIComponent(bandName + " band")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-gray-600"
+          >
+            Search Google ↗
+          </a>
+          {user?.is_admin && (
+            <span className="text-gray-400"> · admins: use the Curated profile editor above to add links.</span>
+          )}
+        </section>
+      )}
 
       <section>
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">

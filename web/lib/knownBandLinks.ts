@@ -27,6 +27,8 @@ export interface KnownBandLinks {
 const KNOWN: Record<string, KnownBandLinks> = {
   "moroccan sheepherders": {
     website: "https://sheepherders.com/",
+    youtube: "https://www.youtube.com/channel/UCrewkC2zqgQqEKc-mvnW7fw",
+    instagram: "https://www.instagram.com/mshmusic/",
     facebook: "https://www.facebook.com/profile.php?id=100063774751835",
     bandsintown: "https://www.bandsintown.com/a/1532933-moroccan-sheepherders",
   },

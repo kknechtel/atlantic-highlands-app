@@ -689,16 +689,39 @@ export async function generateReport(reportType: string, entityType?: string, cu
 }
 
 // ─── Calendar Events ──────────────────────────────────────────────────
+// Two flavors live in the same table:
+//   event_type='general'    — borough/town events from ahnj.com
+//   event_type='live_music' — venue-scraped shows (Proving Ground, Donovan's, etc.)
+
+export type EventType = "general" | "live_music";
 
 export interface CalendarEvent {
-  id: string; date: string; title: string; time: string | null;
-  location: string | null; description: string | null; source: string;
+  id: string;
+  date: string;
+  title: string;
+  time: string | null;
+  end_time?: string | null;
+  location: string | null;
+  description: string | null;
+  source: string;
+  source_url?: string | null;
+  venue?: string | null;
+  city?: string | null;
+  event_type?: EventType | null;
+  ticket_url?: string | null;
 }
 
-export async function getCalendarEvents(year?: number, month?: number): Promise<CalendarEvent[]> {
+export async function getCalendarEvents(
+  year?: number,
+  month?: number,
+  opts: { event_type?: EventType; city?: string; venue?: string } = {},
+): Promise<CalendarEvent[]> {
   const params = new URLSearchParams();
   if (year) params.set("year", String(year));
   if (month) params.set("month", String(month));
+  if (opts.event_type) params.set("event_type", opts.event_type);
+  if (opts.city) params.set("city", opts.city);
+  if (opts.venue) params.set("venue", opts.venue);
   const qs = params.toString();
   return request<CalendarEvent[]>(`/api/calendar/events${qs ? `?${qs}` : ""}`);
 }

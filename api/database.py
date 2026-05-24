@@ -247,6 +247,15 @@ def _migrate():
             ("documents", "fts_vector", "tsvector"),
             ("document_chunks", "embedding", f"vector({EMBEDDING_DIM})"),
             ("document_chunks", "fts_vector", "tsvector"),
+            # Live-music venue scrapers populate these (Squarespace /
+            # Tribe-Events adapters). On existing prod tables they're
+            # added here; on fresh installs the CREATE TABLE in
+            # scrape_events.save_to_db includes them.
+            ("calendar_events", "venue", "TEXT"),
+            ("calendar_events", "city", "TEXT"),
+            ("calendar_events", "event_type", "TEXT DEFAULT 'general'"),
+            ("calendar_events", "end_time", "TEXT"),
+            ("calendar_events", "ticket_url", "TEXT"),
         ]
         for table, column, col_type in rag_columns:
             if not _table_exists(table):

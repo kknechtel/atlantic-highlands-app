@@ -1,11 +1,15 @@
 """Entrypoint for the systemd-timer-driven nightly scrape.
 
-Runs in three steps each tick:
+Runs in three steps each tick, each isolated so a failure can't take
+out the next:
+
   1. Document scrape — `run_scraper(historical=True)` across all 13 crawlers.
      Tags the scraper_runs row with triggered_by="schedule".
-  2. Event calendar scrape — `run_events_scrape()` against ahnj.com/Upcoming
-     Events for the rolling current-month + 12-month window. Failure here is
-     logged but does not fail the unit, so docs always get committed.
+  2. Borough event calendar — `run_events_scrape()` against
+     ahnj.com/Upcoming Events for current month + 12 ahead.
+  3. Live-music scrape — `run_music_scrape()` iterates the venue registry
+     (Squarespace + WordPress Tribe Events adapters) across Atlantic
+     Highlands / Highlands / Sea Bright music venues.
 
 Wire-up on EC2:
   /etc/systemd/system/ah-scraper.service   (oneshot)
@@ -56,14 +60,33 @@ async def main() -> int:
         len(final["errors"]),
     )
 
-    # Step 2 — event calendar. Imported lazily so a bug here can't break
-    # the doc scrape's import-time path.
+    # Step 2 — borough event calendar. Imported lazily so a bug here can't
+    # break the doc scrape's import-time path.
     try:
         from scripts.scrape_events import run_events_scrape
         events_summary = run_events_scrape(months_ahead=12)
-        logger.info("Events scrape done: %s", events_summary)
+        logger.info("Borough events scrape done: %s", events_summary)
     except Exception as exc:
-        logger.exception("events scrape step failed: %s", exc)
+        logger.exception("borough events scrape failed: %s", exc)
+
+    # Step 3 — live-music venue scrape across all three towns.
+    try:
+        from services.event_scrapers import run_music_scrape
+        music_summary = run_music_scrape()
+        logger.info(
+            "Music scrape done: %d venues OK / %d failed, %d events scraped, %d new",
+            music_summary["venues_ok"],
+            music_summary["venues_failed"],
+            music_summary["scraped_total"],
+            music_summary["inserted_total"],
+        )
+        # Per-venue detail at INFO so journalctl shows which sites broke.
+        for v in music_summary["venues"]:
+            status = "ok" if v["ok"] else f"FAIL ({v.get('error', '?')})"
+            logger.info("  %s (%s): %d scraped, %d new — %s",
+                        v["venue"], v["city"], v["scraped"], v["inserted"], status)
+    except Exception as exc:
+        logger.exception("music scrape step failed: %s", exc)
 
     return 0
 

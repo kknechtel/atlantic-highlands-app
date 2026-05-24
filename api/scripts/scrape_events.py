@@ -142,7 +142,10 @@ def save_to_db(events: list[dict]):
 
     db = SessionLocal()
     try:
-        # Create table if not exists
+        # Create table if not exists. Extra columns (venue/city/event_type/
+        # end_time/ticket_url) added in 2026-05; the IF NOT EXISTS guards
+        # make this idempotent on fresh installs, and the migration in
+        # database.py picks them up on existing prod tables.
         db.execute(sql_text("""
             CREATE TABLE IF NOT EXISTS calendar_events (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -153,6 +156,11 @@ def save_to_db(events: list[dict]):
                 description TEXT,
                 source TEXT DEFAULT 'ahnj_calendar',
                 source_url TEXT,
+                venue TEXT,
+                city TEXT,
+                event_type TEXT DEFAULT 'general',
+                end_time TEXT,
+                ticket_url TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """))

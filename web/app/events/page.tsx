@@ -82,8 +82,11 @@ function getEventColor(title: string): string {
   return "bg-gray-50 border-gray-200 text-gray-700";
 }
 
+type FilterKey = "all" | "fun" | "govt" | "music";
+
 export default function EventsPage() {
-  const [filter, setFilter] = useState<"all" | "fun" | "govt">("fun");
+  const [filter, setFilter] = useState<FilterKey>("fun");
+  const [cityFilter, setCityFilter] = useState<string>("");  // only used when filter === 'music'
   const [view, setView] = useState<"list" | "calendar">("list");
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -102,20 +105,35 @@ export default function EventsPage() {
       const d = new Date(e.date + "T12:00:00");
       return d.getMonth() === month && d.getFullYear() === year;
     });
-    if (filter === "fun") list = list.filter(e => isFunEvent(e.title));
+    if (filter === "fun") list = list.filter(e => e.event_type !== "live_music" && isFunEvent(e.title));
     if (filter === "govt") list = list.filter(e => isGovtEvent(e.title));
+    if (filter === "music") {
+      list = list.filter(e => e.event_type === "live_music");
+      if (cityFilter) list = list.filter(e => e.city === cityFilter);
+    }
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [events, month, year, filter]);
+  }, [events, month, year, filter, cityFilter]);
 
-  // Upcoming highlights (next 30 days)
+  // Live-music cities present in the data (for the secondary filter chips)
+  const musicCities = useMemo(() => {
+    const s = new Set<string>();
+    (events || []).forEach(e => {
+      if (e.event_type === "live_music" && e.city) s.add(e.city);
+    });
+    return Array.from(s).sort();
+  }, [events]);
+
+  // Upcoming highlights (next 30 days). When the music filter is active,
+  // surface upcoming shows instead of generic fun events.
   const upcoming = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-    return (events || [])
-      .filter(e => e.date >= today && e.date <= in30 && isFunEvent(e.title))
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 6);
-  }, [events]);
+    const pool = (events || []).filter(e => e.date >= today && e.date <= in30);
+    const matches = filter === "music"
+      ? pool.filter(e => e.event_type === "live_music" && (!cityFilter || e.city === cityFilter))
+      : pool.filter(e => e.event_type !== "live_music" && isFunEvent(e.title));
+    return matches.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
+  }, [events, filter, cityFilter]);
 
   // Calendar grid data
   const calendarDays = useMemo(() => {
@@ -159,7 +177,11 @@ export default function EventsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Events &amp; Entertainment</h1>
-          <p className="text-xs md:text-sm text-gray-500 mt-0.5">What&apos;s happening in Atlantic Highlands</p>
+          <p className="text-xs md:text-sm text-gray-500 mt-0.5">
+            {filter === "music"
+              ? "Live music across Atlantic Highlands, Highlands, and Sea Bright"
+              : "What's happening in Atlantic Highlands"}
+          </p>
         </div>
         <Link href="/local-business" className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 self-start sm:self-auto">
           <BuildingStorefrontIcon className="w-3.5 h-3.5" /> Local Businesses
@@ -169,11 +191,16 @@ export default function EventsPage() {
       {/* Upcoming highlights */}
       {upcoming.length > 0 && filter !== "govt" && (
         <div className="mb-6">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Coming Up</h2>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            {filter === "music" ? "Upcoming Shows" : "Coming Up"}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {upcoming.map((ev, i) => {
-              const Icon = getEventIcon(ev.title);
-              const style = getEventColor(ev.title);
+              const isMusic = ev.event_type === "live_music";
+              const Icon = isMusic ? MusicalNoteIcon : getEventIcon(ev.title);
+              const style = isMusic
+                ? "bg-violet-50 border-violet-200 text-violet-700"
+                : getEventColor(ev.title);
               const d = new Date(ev.date + "T12:00:00");
               const venue = VENUE_LINKS[ev.source];
               return (
@@ -189,7 +216,11 @@ export default function EventsPage() {
                         <h3 className="font-semibold text-xs truncate">{ev.title}</h3>
                       </div>
                       {ev.time && <p className="text-[10px] opacity-75">{ev.time}</p>}
-                      {venue && (
+                      {isMusic && ev.venue ? (
+                        <p className="text-[10px] opacity-75 truncate">
+                          @ {ev.venue}{ev.city ? ` · ${ev.city}` : ""}
+                        </p>
+                      ) : venue && (
                         <a href={venue.url} target="_blank" rel="noopener noreferrer" className="text-[10px] underline opacity-75 hover:opacity-100">
                           {venue.name}
                         </a>
@@ -208,8 +239,8 @@ export default function EventsPage() {
 
       {/* Controls */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {([["fun", "Entertainment"], ["govt", "Government"], ["all", "All"]] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setFilter(key)}
+        {([["fun", "Entertainment"], ["music", "Live Music"], ["govt", "Government"], ["all", "All"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => { setFilter(key); if (key !== "music") setCityFilter(""); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               filter === key ? "text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
@@ -228,6 +259,25 @@ export default function EventsPage() {
           </button>
         </div>
       </div>
+
+      {/* Secondary city filter — only shows when Live Music is active */}
+      {filter === "music" && musicCities.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-[11px] uppercase tracking-wider text-gray-500">Town:</span>
+          <button onClick={() => setCityFilter("")}
+            className={`px-2.5 py-1 rounded-md text-xs ${cityFilter === "" ? "text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+            style={cityFilter === "" ? { backgroundColor: brandColor } : {}}>
+            All ({musicCities.length} towns)
+          </button>
+          {musicCities.map(c => (
+            <button key={c} onClick={() => setCityFilter(c)}
+              className={`px-2.5 py-1 rounded-md text-xs ${cityFilter === c ? "text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+              style={cityFilter === c ? { backgroundColor: brandColor } : {}}>
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Month navigation */}
       <div className="flex items-center justify-between mb-4 bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-3">
@@ -274,13 +324,23 @@ export default function EventsPage() {
           {monthEvents.length === 0 && (
             <div className="text-center py-12 text-gray-400">
               <CalendarDaysIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>No events found for {monthName}.</p>
+              <p>
+                {filter === "music"
+                  ? `No live music listed for ${monthName}${cityFilter ? ` in ${cityFilter}` : ""}.`
+                  : `No events found for ${monthName}.`}
+              </p>
+              {filter === "music" && (
+                <p className="text-xs mt-2">
+                  Venue scrapers run nightly at midnight ET — check back after the next run.
+                </p>
+              )}
             </div>
           )}
           {monthEvents.map((ev, i) => {
             const d = new Date(ev.date + "T12:00:00");
-            const Icon = getEventIcon(ev.title);
-            const isFun = isFunEvent(ev.title);
+            const isMusic = ev.event_type === "live_music";
+            const Icon = isMusic ? MusicalNoteIcon : getEventIcon(ev.title);
+            const isFun = isMusic || isFunEvent(ev.title);
             const venue = VENUE_LINKS[ev.source];
             return (
               <div key={i} className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
@@ -296,13 +356,27 @@ export default function EventsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm ${isFun ? "font-semibold text-gray-900" : "text-gray-600"}`}>{ev.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    {ev.time && <span>{ev.time}</span>}
-                    {venue && (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+                    {ev.time && <span>{ev.time}{ev.end_time ? `–${ev.end_time}` : ""}</span>}
+                    {isMusic && ev.venue ? (
+                      ev.ticket_url ? (
+                        <a href={ev.ticket_url} target="_blank" rel="noopener noreferrer"
+                          className="hover:underline" style={{ color: brandColor }}>
+                          @ {ev.venue}
+                        </a>
+                      ) : (
+                        <span style={{ color: brandColor }}>@ {ev.venue}</span>
+                      )
+                    ) : venue && (
                       <a href={venue.url} target="_blank" rel="noopener noreferrer"
                         className="hover:underline" style={{ color: brandColor }}>
                         @ {venue.name}
                       </a>
+                    )}
+                    {isMusic && ev.city && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                        {ev.city}
+                      </span>
                     )}
                   </div>
                 </div>

@@ -392,9 +392,18 @@ export default function EventsPage() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => downloadICS(ev)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" title="Download .ics">
-                  <ArrowDownTrayIcon className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Link
+                    href={`/calendar/${ev.id}`}
+                    className="px-2 py-1 text-[11px] rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    title="Open event detail + check in"
+                  >
+                    Details
+                  </Link>
+                  <button onClick={() => downloadICS(ev)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" title="Download .ics">
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             );
           })}

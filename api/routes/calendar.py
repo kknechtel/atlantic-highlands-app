@@ -1,6 +1,6 @@
 """Calendar events API - serves scraped borough events and document-derived dates."""
 import logging
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sql_text
 
@@ -54,24 +54,46 @@ def get_calendar_events(
 
     try:
         rows = db.execute(sql_text(query), params).fetchall()
-        return [
-            {
-                "id": str(r.id),
-                "date": r.date.isoformat(),
-                "title": r.title,
-                "time": r.time,
-                "end_time": getattr(r, "end_time", None),
-                "location": r.location,
-                "description": r.description,
-                "source": r.source,
-                "source_url": r.source_url,
-                "venue": getattr(r, "venue", None),
-                "city": getattr(r, "city", None),
-                "event_type": getattr(r, "event_type", None) or "general",
-                "ticket_url": getattr(r, "ticket_url", None),
-            }
-            for r in rows
-        ]
+        return [_row_to_dict(r) for r in rows]
     except Exception as e:
         logger.warning(f"Calendar events query failed (table may not exist): {e}")
         return []
+
+
+def _row_to_dict(r) -> dict:
+    return {
+        "id": str(r.id),
+        "date": r.date.isoformat(),
+        "title": r.title,
+        "time": r.time,
+        "end_time": getattr(r, "end_time", None),
+        "location": r.location,
+        "description": r.description,
+        "source": r.source,
+        "source_url": r.source_url,
+        "venue": getattr(r, "venue", None),
+        "city": getattr(r, "city", None),
+        "event_type": getattr(r, "event_type", None) or "general",
+        "ticket_url": getattr(r, "ticket_url", None),
+    }
+
+
+@router.get("/events/{event_id}")
+def get_calendar_event(
+    event_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Single event lookup for the events-app /calendar/[id] detail page."""
+    try:
+        row = db.execute(sql_text(
+            "SELECT id, date, title, time, end_time, location, description, "
+            "source, source_url, venue, city, event_type, ticket_url, created_at "
+            "FROM calendar_events WHERE id = CAST(:id AS uuid)"
+        ), {"id": event_id}).fetchone()
+    except Exception as e:
+        logger.warning(f"Calendar event lookup failed: {e}")
+        raise HTTPException(status_code=404, detail="Event not found")
+    if not row:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return _row_to_dict(row)

@@ -751,6 +751,10 @@ export interface CalendarEvent {
   ticket_url?: string | null;
 }
 
+export async function getCalendarEvent(id: string): Promise<CalendarEvent> {
+  return request<CalendarEvent>(`/api/calendar/events/${encodeURIComponent(id)}`);
+}
+
 export async function getCalendarEvents(
   year?: number,
   month?: number,

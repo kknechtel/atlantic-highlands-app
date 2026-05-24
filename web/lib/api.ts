@@ -689,11 +689,19 @@ export async function generateReport(reportType: string, entityType?: string, cu
 }
 
 // ─── Calendar Events ──────────────────────────────────────────────────
-// Two flavors live in the same table:
-//   event_type='general'    — borough/town events from ahnj.com
-//   event_type='live_music' — venue-scraped shows (Proving Ground, Donovan's, etc.)
+// Four flavors live in the same table. Classification happens server-side
+// in scripts/scrape_events.classify_borough_event so both apps consume
+// the same bucket assignment:
+//   event_type='govt'       — town business (council, planning, BOE, etc.)
+//                             → only surfaced on the civic app's /calendar
+//   event_type='community'  — borough fun: parades, fireworks, holidays
+//                             → only surfaced on events.ahnj.info
+//   event_type='live_music' — venue-scraped shows (Proving Ground, etc.)
+//                             → only surfaced on events.ahnj.info
+//   event_type='general'    — legacy, pre-classification. Backfill in
+//                             database.py reclassifies these on next API restart.
 
-export type EventType = "general" | "live_music";
+export type EventType = "govt" | "community" | "live_music" | "general";
 
 export interface CalendarEvent {
   id: string;

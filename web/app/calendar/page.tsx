@@ -25,16 +25,20 @@ export default function CalendarPage() {
     queryFn: () => getDocuments(),
   });
 
-  // Borough calendar events (scraped from ahnj.com)
+  // Borough calendar — govt meetings only. Concerts, fireworks, and other
+  // community events live on events.ahnj.info, not the civic-research calendar.
   const { data: boroughEvents } = useQuery({
-    queryKey: ["calendar-borough-events"],
-    queryFn: () => getCalendarEvents(),
+    queryKey: ["calendar-borough-events", "govt"],
+    queryFn: () => getCalendarEvents(undefined, undefined, { event_type: "govt" }),
   });
 
-  // Merge borough events into a map keyed by date
+  // Merge borough events into a map keyed by date. Belt-and-suspenders
+  // client-side filter: even if the API surfaces a non-govt row by mistake
+  // (legacy 'general' rows the backfill hasn't reclassified), drop it here.
   const boroughEventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const ev of boroughEvents || []) {
+      if (ev.event_type && ev.event_type !== "govt") continue;
       if (!map.has(ev.date)) map.set(ev.date, []);
       map.get(ev.date)!.push(ev);
     }

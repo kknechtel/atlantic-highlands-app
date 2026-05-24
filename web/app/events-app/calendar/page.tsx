@@ -55,17 +55,6 @@ const VENUE_LINKS: Record<string, { name: string; url: string }> = {
   "ahnj_calendar": { name: "Borough Calendar", url: "https://www.ahnj.com/ahnj/Upcoming%20Events/" },
 };
 
-function isGovtEvent(title: string): boolean {
-  const govt = ["council", "planning board", "commission", "board of education", "boe", "reorganization", "offices"];
-  return govt.some(g => title.toLowerCase().includes(g));
-}
-
-function isFunEvent(title: string): boolean {
-  const notFun = ["hydrant", "cancelled", "rabies", "offices closed", "flushing"];
-  const t = title.toLowerCase();
-  return !isGovtEvent(title) && !notFun.some(n => t.includes(n));
-}
-
 function getEventIcon(title: string) {
   const t = title.toLowerCase();
   for (const [key, Icon] of Object.entries(EVENT_ICONS)) {
@@ -82,10 +71,13 @@ function getEventColor(title: string): string {
   return "bg-gray-50 border-gray-200 text-gray-700";
 }
 
-type FilterKey = "all" | "fun" | "govt" | "music";
+// Govt events live on the civic app — this page only filters between
+// "all non-govt" and "live music only". The Government filter pill
+// shipped earlier was a mistake; it's removed below.
+type FilterKey = "all" | "music";
 
 export default function EventsPage() {
-  const [filter, setFilter] = useState<FilterKey>("fun");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [cityFilter, setCityFilter] = useState<string>("");  // only used when filter === 'music'
   const [view, setView] = useState<"list" | "calendar">("list");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -99,14 +91,14 @@ export default function EventsPage() {
     queryFn: () => getCalendarEvents(year),
   });
 
-  // Filter for current month
+  // Filter for current month — never include govt regardless of filter.
   const monthEvents = useMemo(() => {
     let list = (events || []).filter(e => {
       const d = new Date(e.date + "T12:00:00");
       return d.getMonth() === month && d.getFullYear() === year;
     });
-    if (filter === "fun") list = list.filter(e => e.event_type !== "live_music" && isFunEvent(e.title));
-    if (filter === "govt") list = list.filter(e => isGovtEvent(e.title));
+    // Hard exclusion: govt meetings never appear on the events app.
+    list = list.filter(e => e.event_type !== "govt");
     if (filter === "music") {
       list = list.filter(e => e.event_type === "live_music");
       if (cityFilter) list = list.filter(e => e.city === cityFilter);
@@ -124,14 +116,14 @@ export default function EventsPage() {
   }, [events]);
 
   // Upcoming highlights (next 30 days). When the music filter is active,
-  // surface upcoming shows instead of generic fun events.
+  // surface upcoming shows; otherwise everything-non-govt.
   const upcoming = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-    const pool = (events || []).filter(e => e.date >= today && e.date <= in30);
+    const pool = (events || []).filter(e => e.date >= today && e.date <= in30 && e.event_type !== "govt");
     const matches = filter === "music"
       ? pool.filter(e => e.event_type === "live_music" && (!cityFilter || e.city === cityFilter))
-      : pool.filter(e => e.event_type !== "live_music" && isFunEvent(e.title));
+      : pool;
     return matches.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
   }, [events, filter, cityFilter]);
 
@@ -189,7 +181,7 @@ export default function EventsPage() {
       </div>
 
       {/* Upcoming highlights */}
-      {upcoming.length > 0 && filter !== "govt" && (
+      {upcoming.length > 0 && (
         <div className="mb-6">
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
             {filter === "music" ? "Upcoming Shows" : "Coming Up"}
@@ -239,7 +231,7 @@ export default function EventsPage() {
 
       {/* Controls */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {([["fun", "Entertainment"], ["music", "Live Music"], ["govt", "Government"], ["all", "All"]] as const).map(([key, label]) => (
+        {([["all", "All Events"], ["music", "Live Music"]] as const).map(([key, label]) => (
           <button key={key} onClick={() => { setFilter(key); if (key !== "music") setCityFilter(""); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               filter === key ? "text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -340,7 +332,8 @@ export default function EventsPage() {
             const d = new Date(ev.date + "T12:00:00");
             const isMusic = ev.event_type === "live_music";
             const Icon = isMusic ? MusicalNoteIcon : getEventIcon(ev.title);
-            const isFun = isMusic || isFunEvent(ev.title);
+            // Govt is filtered out upstream — every row here is fun-styled.
+            const isFun = true;
             const venue = VENUE_LINKS[ev.source];
             return (
               <div key={i} className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${

@@ -299,6 +299,25 @@ def _migrate():
             except Exception as e:
                 logger.warning(f"Index {name} skipped: {e}")
 
+        # 4b. Backfill calendar_events.event_type for rows still tagged
+        # 'general' (pre-classification). Keyword list mirrors
+        # scripts.scrape_events._GOVT_KEYWORDS so both sides agree on what
+        # counts as a govt meeting. Idempotent — only touches rows whose
+        # event_type is still NULL or 'general'.
+        if _table_exists("calendar_events"):
+            try:
+                conn.execute(text("""
+                    UPDATE calendar_events
+                    SET event_type = CASE
+                        WHEN LOWER(title) ~ '(council|planning board|commission|board of education|\\mboe\\M|reorganization|offices? (are )?closed|borough hall|town hall|court|zoning board|shade tree|environmental commission|recreation commission)'
+                            THEN 'govt'
+                        ELSE 'community'
+                    END
+                    WHERE event_type IS NULL OR event_type = 'general'
+                """))
+            except Exception as e:
+                logger.warning(f"calendar_events event_type backfill skipped: {e}")
+
         # 5. Per-user scoping: add user_id to chat_history so each user only sees
         # their own sessions. Existing rows (pre-migration) get NULL — they're
         # treated as legacy/unowned and only visible to admins.

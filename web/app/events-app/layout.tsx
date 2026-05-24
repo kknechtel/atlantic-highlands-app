@@ -57,10 +57,11 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Top bar */}
+      {/* Top bar — on desktop the nav lives inline here. On mobile the nav
+          drops to the bottom (see <nav> below). */}
       <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2 flex-shrink-0">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
               style={{ backgroundColor: eventsBrand }}
@@ -69,20 +70,45 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
             </div>
             <div className="leading-tight">
               <div className="text-sm font-semibold text-gray-900">Around Town</div>
-              <div className="text-[10px] text-gray-500">Atlantic Highlands · Highlands · Sea Bright</div>
+              <div className="hidden sm:block text-[10px] text-gray-500">
+                Atlantic Highlands · Highlands · Sea Bright
+              </div>
             </div>
           </Link>
+          {/* Desktop top nav */}
+          <nav className="hidden md:flex items-center gap-1">
+            {TABS.map((tab) => {
+              const active =
+                tab.href === "/"
+                  ? current === "/"
+                  : current === tab.href || current.startsWith(tab.href + "/");
+              const Icon = active ? tab.iconActive : tab.icon;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
+                    active ? "" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                  style={active ? { backgroundColor: `${eventsBrand}15`, color: eventsBrand } : {}}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
-      {/* Main */}
-      <main className="flex-1 max-w-3xl w-full mx-auto pb-24">{children}</main>
+      {/* Main — wider container on desktop now that the nav doesn't compete
+          for horizontal space at the bottom. */}
+      <main className="flex-1 max-w-5xl w-full mx-auto pb-24 md:pb-8">{children}</main>
 
-      {/* Bottom tab nav — mobile-first, also on desktop since this is a
-          community/social UI and the surface area is small. safe-area-inset-bottom
-          handles the home-bar inset on modern iOS. */}
+      {/* Bottom tab nav — MOBILE ONLY. Desktop uses the top nav in the header
+          above. safe-area-inset-bottom handles the home-bar inset on iOS. */}
       <nav
-        className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="max-w-3xl mx-auto flex">

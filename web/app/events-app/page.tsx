@@ -28,8 +28,13 @@ export default function EventsHome() {
     queryFn: () => getCalendarEvents(new Date().getFullYear()),
   });
 
+  // Around Town never shows govt meetings — those live on the civic app's
+  // /calendar. Anything event_type != 'govt' counts (community + live_music
+  // + any legacy 'general' rows the backfill hasn't reached yet — we
+  // include those too to avoid empty-state on first deploy).
   const upcoming = (allEvents || [])
     .filter((e: CalendarEvent) => e.date >= today && e.date <= in14)
+    .filter((e: CalendarEvent) => e.event_type !== "govt")
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 8);
 

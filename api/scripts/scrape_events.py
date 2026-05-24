@@ -135,6 +135,26 @@ def scrape_all_months(start_year=2026, start_month=1, end_year=2026, end_month=1
     return all_events
 
 
+# Borough-calendar classification. Lives server-side so both apps consume
+# the SAME bucket assignment instead of duplicating heuristics in TS.
+#   - 'govt'      → council, planning, harbor commission, BOE, offices-closed
+#   - 'community' → parades, fireworks, concerts, farmers markets, holidays,
+#                   anything else not matching a govt keyword
+_GOVT_KEYWORDS = (
+    "council", "planning board", "commission",
+    "board of education", "boe", "reorganization",
+    "offices closed", "offices are closed",
+    "borough hall", "town hall", "court",
+    "zoning board", "shade tree",
+    "environmental commission", "recreation commission",
+)
+
+
+def classify_borough_event(title: str) -> str:
+    t = (title or "").lower()
+    return "govt" if any(k in t for k in _GOVT_KEYWORDS) else "community"
+
+
 def save_to_db(events: list[dict]):
     """Save events to the database calendar_events table."""
     from database import SessionLocal
@@ -175,14 +195,15 @@ def save_to_db(events: list[dict]):
 
             if not exists:
                 db.execute(sql_text("""
-                    INSERT INTO calendar_events (date, title, time, source, source_url)
-                    VALUES (:date, :title, :time, :source, :url)
+                    INSERT INTO calendar_events (date, title, time, source, source_url, event_type)
+                    VALUES (:date, :title, :time, :source, :url, :event_type)
                 """), {
                     "date": event["date"],
                     "title": event["title"],
                     "time": event.get("time"),
                     "source": event.get("source", "ahnj_calendar"),
                     "url": event.get("url"),
+                    "event_type": classify_borough_event(event["title"]),
                 })
                 inserted += 1
 

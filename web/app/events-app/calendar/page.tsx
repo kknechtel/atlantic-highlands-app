@@ -358,7 +358,16 @@ export default function EventsPage() {
                   <Icon className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${isFun ? "font-semibold text-gray-900" : "text-gray-600"}`}>{ev.title}</p>
+                  {isMusic ? (
+                    <Link
+                      href={`/bands/${encodeURIComponent(ev.title)}`}
+                      className={`text-sm font-semibold text-gray-900 hover:underline block truncate`}
+                    >
+                      {ev.title}
+                    </Link>
+                  ) : (
+                    <p className={`text-sm ${isFun ? "font-semibold text-gray-900" : "text-gray-600"}`}>{ev.title}</p>
+                  )}
                   <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
                     {ev.time && <span>{ev.time}{ev.end_time ? `–${ev.end_time}` : ""}</span>}
                     {isMusic && ev.venue ? (

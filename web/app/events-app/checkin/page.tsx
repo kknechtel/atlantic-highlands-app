@@ -8,6 +8,7 @@
 // All check-ins expire server-side after 4 hours. Refetches every 60s so
 // the board feels live without WebSocket overhead at borough scale.
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -297,7 +298,12 @@ export default function CheckinPage() {
             {tonight.map(e => (
               <li key={e.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-sm text-gray-900 truncate">{e.title}</div>
+                  <Link
+                    href={`/bands/${encodeURIComponent(e.title)}`}
+                    className="text-sm text-gray-900 truncate hover:underline block"
+                  >
+                    {e.title}
+                  </Link>
                   <div className="text-[11px] text-gray-500">
                     {e.time && <span>{e.time} · </span>}
                     {e.venue}{e.city ? ` · ${e.city}` : ""}

@@ -93,7 +93,16 @@ export default function EventsHome() {
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-900 truncate">{ev.title}</div>
+                  {ev.event_type === "live_music" ? (
+                    <Link
+                      href={`/bands/${encodeURIComponent(ev.title)}`}
+                      className="text-sm text-gray-900 hover:underline block truncate"
+                    >
+                      {ev.title}
+                    </Link>
+                  ) : (
+                    <div className="text-sm text-gray-900 truncate">{ev.title}</div>
+                  )}
                   <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
                     {ev.time && <span>{ev.time}</span>}
                     {ev.venue && (

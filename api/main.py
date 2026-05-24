@@ -47,6 +47,7 @@ from routes.extraction import router as extraction_router
 from routes.parcels import router as parcels_router
 from routes.meetings import router as meetings_router
 from routes.alerts import router as alerts_router
+from routes.checkins import router as checkins_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -69,6 +70,7 @@ app.include_router(extraction_router, prefix="/api/extraction", tags=["extractio
 app.include_router(parcels_router, prefix="/api/parcels", tags=["parcels"])
 app.include_router(meetings_router, prefix="/api/meetings", tags=["meetings"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(checkins_router, prefix="/api/checkins", tags=["checkins"])
 
 
 @app.on_event("startup")

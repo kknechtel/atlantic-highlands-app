@@ -8,3 +8,4 @@ from .contract import Vendor, Contract, Payment
 from .parcel import Parcel
 from .scraper_run import ScraperRun
 from .saved_alert import SavedAlert, AlertKind, DigestFrequency
+from .checkin import Checkin

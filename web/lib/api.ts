@@ -1037,6 +1037,61 @@ export async function updateAlert(id: string, payload: AlertUpdate): Promise<Sav
   });
 }
 
+// ─── Check-ins ────────────────────────────────────────────────────────
+// "I'm at X right now" markers. Active window is 4 hours server-side.
+
+export interface Checkin {
+  id: string;
+  user_id: string;
+  user_display_name: string | null;
+  user_picture_url: string | null;
+  venue_name: string;
+  city: string | null;
+  message: string | null;
+  checked_in_at: string;
+}
+
+export interface VenueSummary {
+  venue_name: string;
+  city: string | null;
+  active_count: number;
+  last_checked_in_at: string;
+}
+
+export async function listActiveCheckins(limit = 50): Promise<Checkin[]> {
+  return request<Checkin[]>(`/api/checkins/?limit=${limit}`);
+}
+
+export async function listCheckinVenues(): Promise<VenueSummary[]> {
+  return request<VenueSummary[]>("/api/checkins/venues");
+}
+
+export async function listCheckinsAtVenue(venueName: string): Promise<Checkin[]> {
+  return request<Checkin[]>(`/api/checkins/by-venue/${encodeURIComponent(venueName)}`);
+}
+
+export async function createCheckin(payload: {
+  venue_name: string;
+  city?: string;
+  message?: string;
+}): Promise<Checkin> {
+  return request<Checkin>("/api/checkins/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCheckin(id: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/checkins/${id}`, { method: "DELETE", headers });
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Delete failed: ${res.status}`);
+  }
+}
+
 export async function deleteAlert(id: string): Promise<void> {
   const token = getToken();
   const headers: Record<string, string> = {};

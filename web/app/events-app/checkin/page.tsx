@@ -23,31 +23,55 @@ import { useAuth } from "@/app/contexts/AuthContext";
 const eventsBrand = "#1d7a6c";
 
 // Known venues we'll always offer in the picker. Derived from the live-music
-// scraper registry + a few well-known SB/AH spots. Free text is still
+// scraper registry + a few well-known SB/AH spots + the public beaches
+// along Sea Bright and Sandy Hook (Gateway NRA). Free text is still
 // allowed as a fallback so users can check in anywhere.
-const KNOWN_VENUES: { name: string; city: string }[] = [
-  { name: "The Proving Ground", city: "Highlands" },
-  { name: "The Chubby Pickle", city: "Highlands" },
-  { name: "The Seafarer", city: "Highlands" },
-  { name: "The Sandbox at Seastreak", city: "Highlands" },
-  { name: "Off the Hook", city: "Highlands" },
-  { name: "Bahrs Landing", city: "Highlands" },
-  { name: "Inlet Cafe", city: "Highlands" },
-  { name: "One Willow", city: "Highlands" },
-  { name: "Mule Barn Tavern", city: "Highlands" },
-  { name: "On the Deck", city: "Atlantic Highlands" },
-  { name: "Gaslight Gastropub", city: "Atlantic Highlands" },
-  { name: "Carton Brewing", city: "Atlantic Highlands" },
-  { name: "Copper Canyon", city: "Atlantic Highlands" },
-  { name: "The Wine Bar", city: "Atlantic Highlands" },
-  { name: "Atlantic House", city: "Atlantic Highlands" },
-  { name: "Smodcastle Cinemas", city: "Atlantic Highlands" },
-  { name: "First Ave Playhouse", city: "Atlantic Highlands" },
-  { name: "Donovan's Reef", city: "Sea Bright" },
-  { name: "Drifthouse by David Burke", city: "Sea Bright" },
-  { name: "McLoone's Rum Runner", city: "Sea Bright" },
-  { name: "Tommy's Tavern + Tap", city: "Sea Bright" },
-  { name: "Eventide Grille", city: "Sea Bright" },
+type VenueGroup = "Restaurants & Bars" | "Beaches & Parks";
+
+const KNOWN_VENUES: { name: string; city: string; group: VenueGroup }[] = [
+  // ── Highlands ─────────────────────────────────────────────
+  { name: "The Proving Ground", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "The Chubby Pickle", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "The Seafarer", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "The Sandbox at Seastreak", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "Off the Hook", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "Bahrs Landing", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "Inlet Cafe", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "One Willow", city: "Highlands", group: "Restaurants & Bars" },
+  { name: "Mule Barn Tavern", city: "Highlands", group: "Restaurants & Bars" },
+  // ── Atlantic Highlands ───────────────────────────────────
+  { name: "On the Deck", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "Gaslight Gastropub", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "Carton Brewing", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "Copper Canyon", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "The Wine Bar", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "Atlantic House", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "Smodcastle Cinemas", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "First Ave Playhouse", city: "Atlantic Highlands", group: "Restaurants & Bars" },
+  { name: "Atlantic Highlands Harbor", city: "Atlantic Highlands", group: "Beaches & Parks" },
+  // ── Sea Bright (restaurants) ──────────────────────────────
+  { name: "Donovan's Reef", city: "Sea Bright", group: "Restaurants & Bars" },
+  { name: "Drifthouse by David Burke", city: "Sea Bright", group: "Restaurants & Bars" },
+  { name: "McLoone's Rum Runner", city: "Sea Bright", group: "Restaurants & Bars" },
+  { name: "Tommy's Tavern + Tap", city: "Sea Bright", group: "Restaurants & Bars" },
+  { name: "Eventide Grille", city: "Sea Bright", group: "Restaurants & Bars" },
+  // ── Sea Bright beaches + clubs ────────────────────────────
+  { name: "Sea Bright Public Beach", city: "Sea Bright", group: "Beaches & Parks" },
+  { name: "Chapel Beach Club", city: "Sea Bright", group: "Beaches & Parks" },
+  { name: "Sea Bright Beach Club", city: "Sea Bright", group: "Beaches & Parks" },
+  { name: "The Sands Beach Club", city: "Sea Bright", group: "Beaches & Parks" },
+  { name: "Driftwood Beach Club", city: "Sea Bright", group: "Beaches & Parks" },
+  // ── Sandy Hook (Gateway NRA) ──────────────────────────────
+  { name: "Sandy Hook Beach B", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Sandy Hook Beach C", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Sandy Hook Beach D", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Sandy Hook Beach E", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "North Beach (Sandy Hook)", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "South Beach (Sandy Hook)", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Gunnison Beach", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Sandy Hook Lighthouse", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Fort Hancock", city: "Sandy Hook", group: "Beaches & Parks" },
+  { name: "Plum Island", city: "Sandy Hook", group: "Beaches & Parks" },
 ];
 
 function fmtAgo(iso: string): string {
@@ -292,26 +316,28 @@ export default function CheckinPage() {
         </section>
       )}
 
-      <section>
-        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-          Pick a spot
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {KNOWN_VENUES.map(v => (
-            <button
-              key={v.name}
-              onClick={() => openModal(v)}
-              className="bg-white border border-gray-200 rounded-lg p-3 text-left hover:border-gray-300 flex items-start justify-between gap-2"
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">{v.name}</div>
-                <div className="text-[11px] text-gray-500">{v.city}</div>
-              </div>
-              <PlusIcon className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
-            </button>
-          ))}
-        </div>
-      </section>
+      {(["Restaurants & Bars", "Beaches & Parks"] as VenueGroup[]).map(group => (
+        <section key={group}>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            {group}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {KNOWN_VENUES.filter(v => v.group === group).map(v => (
+              <button
+                key={v.name}
+                onClick={() => openModal({ name: v.name, city: v.city })}
+                className="bg-white border border-gray-200 rounded-lg p-3 text-left hover:border-gray-300 flex items-start justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">{v.name}</div>
+                  <div className="text-[11px] text-gray-500">{v.city}</div>
+                </div>
+                <PlusIcon className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
 
       {/* Free-text fallback */}
       <section className="bg-white border border-gray-200 rounded-lg p-3">

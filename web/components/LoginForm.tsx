@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useAuth } from "@/app/contexts/AuthContext";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 const brandColor = "#385854";
+const HAS_GOOGLE = !!process.env.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID;
 
 // Detect events-app subdomain to swap branding + Google-first emphasis.
 // Window check is safe — LoginForm is "use client".
@@ -91,16 +93,21 @@ export default function LoginForm() {
           </p>
 
           {/* Google Sign-In — primary on events-app, secondary on civic.
-              Renders null when NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID is unset. */}
-          <div className="mb-4 flex justify-center">
-            <GoogleSignInButton onError={setError} />
-          </div>
-          {!inviteToken && (
-            <div className="flex items-center gap-2 mb-4 text-[10px] uppercase tracking-wider text-gray-400">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span>or email</span>
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
+              Hide entirely (button + divider) when CLIENT_ID is unset so
+              we don't render a dangling "or email" separator. */}
+          {HAS_GOOGLE && (
+            <>
+              <div className="mb-4 flex justify-center">
+                <GoogleSignInButton onError={setError} />
+              </div>
+              {!inviteToken && (
+                <div className="flex items-center gap-2 mb-4 text-[10px] uppercase tracking-wider text-gray-400">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span>or email</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+              )}
+            </>
           )}
 
           {/* Invite checking */}
@@ -190,16 +197,35 @@ export default function LoginForm() {
               type="submit"
               disabled={loading || (inviteToken !== null && !inviteValid)}
               className="w-full text-white py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors font-medium"
-              style={{ backgroundColor: brandColor }}
+              style={{ backgroundColor: headerBg }}
             >
               {loading ? "..." : isInviteFlow ? "Create Account & Sign In" : "Sign In"}
             </button>
           </form>
+
+          {/* Signup CTA — events-app only (civic is invite-only). */}
+          {eventsApp && !isInviteFlow && (
+            <p className="text-center text-xs text-gray-500 mt-5">
+              New here?{" "}
+              <Link href="/signup" className="font-medium hover:underline" style={{ color: headerBg }}>
+                Create an account
+              </Link>
+            </p>
+          )}
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-4">
-          Borough of Atlantic Highlands, NJ
-        </p>
+        {eventsApp ? (
+          <a
+            href="/"
+            className="block text-center text-xs text-gray-500 hover:text-gray-700 mt-4"
+          >
+            ← Browse as guest
+          </a>
+        ) : (
+          <p className="text-center text-xs text-gray-400 mt-4">
+            Borough of Atlantic Highlands, NJ
+          </p>
+        )}
       </div>
     </div>
   );

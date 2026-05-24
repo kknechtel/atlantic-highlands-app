@@ -91,12 +91,21 @@ export default function EventsPage() {
     queryFn: () => getCalendarEvents(year),
   });
 
-  // Filter for current month — never include govt regardless of filter.
+  // Today's date as an ISO yyyy-mm-dd string for past-date filtering.
+  // Computed once per render — fine for a calendar page that doesn't
+  // refresh on the minute.
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // Filter for current month — never include govt regardless of filter,
+  // and never include dates earlier than today (no "what already happened"
+  // on a forward-looking events listing).
   const monthEvents = useMemo(() => {
     let list = (events || []).filter(e => {
       const d = new Date(e.date + "T12:00:00");
       return d.getMonth() === month && d.getFullYear() === year;
     });
+    // Drop past dates. String compare on YYYY-MM-DD is lexically correct.
+    list = list.filter(e => e.date >= todayIso);
     // Hard exclusion: govt meetings never appear on the events app.
     // Uses the keyword fallback so legacy 'general' rows are filtered too.
     list = list.filter(e => !isGovtCalendarEvent(e));
@@ -105,7 +114,7 @@ export default function EventsPage() {
       if (cityFilter) list = list.filter(e => e.city === cityFilter);
     }
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [events, month, year, filter, cityFilter]);
+  }, [events, month, year, filter, cityFilter, todayIso]);
 
   // Live-music cities present in the data (for the secondary filter chips)
   const musicCities = useMemo(() => {

@@ -10,6 +10,7 @@ import { getCalendarEvents, isGovtCalendarEvent, type CalendarEvent } from "@/li
 import {
   CalendarDaysIcon, MusicalNoteIcon, BuildingStorefrontIcon,
   MapPinIcon, ChatBubbleLeftRightIcon, ArrowRightIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 
 const eventsBrand = "#1d7a6c";
@@ -144,7 +145,7 @@ export default function EventsHome() {
         >
           <MapPinIcon className="w-5 h-5 mb-1.5" style={{ color: eventsBrand }} />
           <div className="text-sm font-semibold text-gray-900">Check in</div>
-          <div className="text-[11px] text-gray-500 mt-0.5">Coming soon</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">Who&apos;s out tonight</div>
         </Link>
         <Link
           href="/chat"
@@ -152,7 +153,7 @@ export default function EventsHome() {
         >
           <ChatBubbleLeftRightIcon className="w-5 h-5 mb-1.5" style={{ color: eventsBrand }} />
           <div className="text-sm font-semibold text-gray-900">Chat</div>
-          <div className="text-[11px] text-gray-500 mt-0.5">Coming soon</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">Around-Town feed</div>
         </Link>
         <Link
           href="/calendar"
@@ -161,6 +162,16 @@ export default function EventsHome() {
           <CalendarDaysIcon className="w-5 h-5 mb-1.5" style={{ color: eventsBrand }} />
           <div className="text-sm font-semibold text-gray-900">All events</div>
           <div className="text-[11px] text-gray-500 mt-0.5">Calendar + Live Music filters</div>
+        </Link>
+        <Link
+          href="/submit"
+          className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 col-span-2"
+        >
+          <PencilSquareIcon className="w-5 h-5 mb-1.5" style={{ color: eventsBrand }} />
+          <div className="text-sm font-semibold text-gray-900">Submit an event</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">
+            Spotted a show we missed? Tell us and an admin will add it.
+          </div>
         </Link>
       </section>
     </div>

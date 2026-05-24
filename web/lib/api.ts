@@ -767,6 +767,76 @@ export async function getCalendarEvent(id: string): Promise<CalendarEvent> {
   return request<CalendarEvent>(`/api/calendar/events/${encodeURIComponent(id)}`);
 }
 
+// ─── Event submissions (crowdsourced) ──────────────────────────────
+// Anyone logged in can submit; admins approve / reject.
+
+export type SubmissionStatus = "pending" | "approved" | "rejected";
+
+export interface EventSubmission {
+  id: string;
+  submitter_user_id: string | null;
+  submitter_email: string | null;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  end_time: string | null;
+  venue_name: string;
+  city: string | null;
+  description: string | null;
+  ticket_url: string | null;
+  submitter_note: string | null;
+  status: SubmissionStatus;
+  admin_note: string | null;
+  calendar_event_id: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface EventSubmissionCreate {
+  title: string;
+  event_date: string;  // YYYY-MM-DD
+  event_time?: string;
+  end_time?: string;
+  venue_name: string;
+  city?: string;
+  description?: string;
+  ticket_url?: string;
+  submitter_note?: string;
+}
+
+export async function createEventSubmission(payload: EventSubmissionCreate): Promise<EventSubmission> {
+  return request<EventSubmission>("/api/event-submissions/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listEventSubmissions(status?: SubmissionStatus): Promise<EventSubmission[]> {
+  const qs = status ? `?status=${status}` : "";
+  return request<EventSubmission[]>(`/api/event-submissions/${qs}`);
+}
+
+export async function approveEventSubmission(id: string): Promise<EventSubmission> {
+  return request<EventSubmission>(`/api/event-submissions/${id}/approve`, { method: "POST" });
+}
+
+export async function rejectEventSubmission(id: string, reason?: string): Promise<EventSubmission> {
+  return request<EventSubmission>(`/api/event-submissions/${id}/reject`, {
+    method: "POST", body: JSON.stringify({ reason }),
+  });
+}
+
+export async function deleteEventSubmission(id: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/event-submissions/${id}`, { method: "DELETE", headers });
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Delete failed: ${res.status}`);
+  }
+}
+
 // ─── Band profiles (admin-curated) ─────────────────────────────────
 // Overrides the static bandGuide.ts when an admin fills in real URLs.
 

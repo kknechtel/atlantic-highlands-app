@@ -18,7 +18,7 @@ v2 status (2026-05-24):
     the browser. Needs headless (Playwright) which we don't run in prod.
     Hand-curate or add headless infra later.
 """
-from . import squarespace, html_parse, bandsintown
+from . import squarespace, html_parse, bandsintown, playwright_adapter
 
 VENUES = [
     # ── Highlands ─────────────────────────────────────────────────
@@ -65,16 +65,32 @@ VENUES = [
         {"url": "https://drifthousenj.com/events/",
          "parser": html_parse.parse_drifthouse},
     ),
-    # ── Deferred (HTML scraping not viable) ───────────────────────
+    # ── Playwright (JS-rendered venue pages) ──────────────────────
+    (
+        "The Chubby Pickle", "Highlands",
+        playwright_adapter.fetch_events,
+        # JetEngine grid widget renders events client-side.
+        {"url": "https://thechubbypicklenj.com/calendar/",
+         "parser": playwright_adapter.parse_chubby_pickle_dom,
+         "wait_for_selector": ".jet-listing-grid__item, .jet-listing-grid-item"},
+    ),
+    (
+        "Donovan's Reef", "Sea Bright",
+        playwright_adapter.fetch_events,
+        # BeatGig embed script injects events client-side.
+        {"url": "https://www.donovansreefbeachbar.com/calendar",
+         "parser": playwright_adapter.parse_donovans_dom,
+         "wait_for_selector": 'div[class*="bg-event"], .beatgig-event'},
+    ),
+    # ── Deferred (no scrape path that's realistic from EC2) ───────
     # Off the Hook                  Squarespace events collection empty
-    # Donovan's Reef                BeatGig client-side embed → Playwright
-    # The Chubby Pickle             JetEngine widget; events JS-rendered
     # Barnacle Bill's (Rumson/SB)   Live-music page is static text, no calendar
     # Eventide Grille               Schedule on Facebook only
     # McLoone's Rum Runner          /entertainment.php returns 403 to bot UAs
     # Tommy's Tavern + Tap          Chain site; FB only
     # Wine Bar / Atlantic House     Static sites; FB only
     # Copper Canyon @ Blue Bay Inn  Static site; FB only
-    # All of the above are candidates for the future
-    # crowdsourced-submission / FB-pipeline approach.
+    # Bandsintown (Sandbox full season)  Cloudflare-blocked from EC2 IPs
+    # All of the above are candidates for the crowdsourced-submission /
+    # FB-pipeline approach (see FB/IG plan doc).
 ]

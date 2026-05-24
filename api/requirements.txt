@@ -58,6 +58,15 @@ pydantic==2.9.1
 # Scraper
 requests==2.33.0
 beautifulsoup4==4.12.3
+# Playwright is used by api/services/event_scrapers/playwright_adapter.py
+# to render JS-heavy venue calendars (Chubby Pickle's JetEngine widget,
+# Donovan's Reef BeatGig embed). After installing the wheel you ALSO
+# have to download the browser binary on the host:
+#     /opt/atlantic-highlands/api/venv/bin/playwright install --with-deps chromium
+# That step adds ~200MB to the EC2 image and requires sudo for the
+# `--with-deps` (libnss3, libatk-bridge, etc.). Without those deps,
+# Chromium fails to launch and the scrapers log a warning + skip.
+playwright==1.45.0
 
 # Utilities
 python-dotenv==1.2.2

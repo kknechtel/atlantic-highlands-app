@@ -1,10 +1,15 @@
 """Calendar events API - serves scraped borough events and document-derived dates."""
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sql_text
 
 from database import get_db
+from models.event_rsvp import EventRsvp
 from models.user import User
 from auth import get_current_user
 
@@ -97,3 +102,86 @@ def get_calendar_event(
     if not row:
         raise HTTPException(status_code=404, detail="Event not found")
     return _row_to_dict(row)
+
+
+# ── RSVPs ────────────────────────────────────────────────────────────
+
+class RsvpUser(BaseModel):
+    user_id: str
+    display_name: str | None
+    picture_url: str | None
+
+
+class RsvpSummary(BaseModel):
+    event_id: str
+    count: int
+    is_going: bool
+    sample_users: list[RsvpUser]  # up to 12 most recent
+
+
+def _display_for(u: User) -> str | None:
+    return u.display_name or u.full_name or ((u.email or "").split("@", 1)[0] or None)
+
+
+@router.get("/events/{event_id}/rsvp", response_model=RsvpSummary)
+def get_event_rsvp(
+    event_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    total = db.query(func.count(EventRsvp.id)).filter(EventRsvp.event_id == event_id).scalar() or 0
+    mine = db.query(EventRsvp).filter(
+        EventRsvp.event_id == event_id, EventRsvp.user_id == user.id,
+    ).first()
+    sample_rows = (db.query(EventRsvp, User)
+                     .join(User, User.id == EventRsvp.user_id)
+                     .filter(EventRsvp.event_id == event_id)
+                     .order_by(EventRsvp.created_at.desc())
+                     .limit(12).all())
+    return RsvpSummary(
+        event_id=event_id,
+        count=int(total),
+        is_going=mine is not None,
+        sample_users=[
+            RsvpUser(user_id=str(u.id),
+                     display_name=_display_for(u),
+                     picture_url=u.picture_url)
+            for _, u in sample_rows
+        ],
+    )
+
+
+@router.post("/events/{event_id}/rsvp", response_model=RsvpSummary, status_code=status.HTTP_201_CREATED)
+def rsvp_to_event(
+    event_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # Verify the event exists before letting users RSVP to a typo.
+    row = db.execute(sql_text(
+        "SELECT 1 FROM calendar_events WHERE id = CAST(:id AS uuid)"
+    ), {"id": event_id}).fetchone()
+    if not row:
+        raise HTTPException(404, "Event not found")
+    existing = db.query(EventRsvp).filter(
+        EventRsvp.user_id == user.id, EventRsvp.event_id == event_id,
+    ).first()
+    if not existing:
+        db.add(EventRsvp(user_id=user.id, event_id=event_id))
+        db.commit()
+    return get_event_rsvp(event_id, db, user)
+
+
+@router.delete("/events/{event_id}/rsvp", response_model=RsvpSummary)
+def unrsvp_from_event(
+    event_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    existing = db.query(EventRsvp).filter(
+        EventRsvp.user_id == user.id, EventRsvp.event_id == event_id,
+    ).first()
+    if existing:
+        db.delete(existing)
+        db.commit()
+    return get_event_rsvp(event_id, db, user)

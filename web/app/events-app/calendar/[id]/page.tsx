@@ -11,12 +11,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftIcon, CalendarDaysIcon, ClockIcon, MapPinIcon,
   MusicalNoteIcon, TicketIcon, UserGroupIcon, XMarkIcon,
+  CheckIcon,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import { StarIcon } from "@heroicons/react/24/outline";
 
 import {
   getCalendarEvent, listCheckinsAtVenue, createCheckin,
+  getEventRsvp, rsvpToEvent, unrsvpFromEvent,
 } from "@/lib/api";
 import { findBandInGuide, socialMediaUrl, CATEGORY_LABELS } from "@/lib/bandGuide";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -88,6 +90,18 @@ export default function EventDetailPage({
     () => (hereNow || []).find(c => c.user_id === user?.id) || null,
     [hereNow, user?.id],
   );
+
+  // RSVP — future intent ("I'm going")
+  const { data: rsvp } = useQuery({
+    queryKey: ["event-rsvp", id],
+    queryFn: () => getEventRsvp(id),
+    refetchInterval: 90_000,
+    refetchIntervalInBackground: false,
+  });
+  const toggleRsvp = useMutation({
+    mutationFn: () => rsvp?.is_going ? unrsvpFromEvent(id) : rsvpToEvent(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["event-rsvp", id] }),
+  });
 
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState("");
@@ -232,6 +246,47 @@ export default function EventDetailPage({
           )}
         </section>
       )}
+
+      {/* RSVP / Going — future intent. Renders for every event whether or
+          not it has a venue. */}
+      <section className="bg-white border border-gray-200 rounded-lg p-3">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="text-xs uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+            <UserGroupIcon className="w-3 h-3" />
+            Going
+            {rsvp && rsvp.count > 0 && (
+              <span className="text-gray-400">· {rsvp.count}</span>
+            )}
+          </div>
+          <button
+            onClick={() => toggleRsvp.mutate()}
+            disabled={toggleRsvp.isPending}
+            className={`px-3 py-1 text-xs rounded-md inline-flex items-center gap-1 ${
+              rsvp?.is_going
+                ? "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                : "text-white"
+            }`}
+            style={!rsvp?.is_going ? { backgroundColor: eventsBrand } : {}}
+          >
+            {rsvp?.is_going
+              ? <><CheckIcon className="w-3.5 h-3.5" /> You&apos;re going</>
+              : <>I&apos;m going</>}
+          </button>
+        </div>
+        {rsvp && rsvp.sample_users.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {rsvp.sample_users.slice(0, 12).map(u => (
+              <div key={u.user_id} className="flex items-center gap-1 text-[11px] text-gray-600">
+                <Avatar name={u.display_name} src={u.picture_url} />
+                <span className="max-w-[80px] truncate">{u.display_name || "Someone"}</span>
+              </div>
+            ))}
+            {rsvp.count > rsvp.sample_users.length && (
+              <span className="text-[11px] text-gray-400">+{rsvp.count - rsvp.sample_users.length} more</span>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Check-in action */}
       {venueName && (

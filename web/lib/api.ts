@@ -767,6 +767,38 @@ export async function getCalendarEvent(id: string): Promise<CalendarEvent> {
   return request<CalendarEvent>(`/api/calendar/events/${encodeURIComponent(id)}`);
 }
 
+// ─── Event RSVPs ─────────────────────────────────────────────────────
+// "I'm planning to go." Distinct from check-ins (present-tense, expires 4h).
+
+export interface RsvpUser {
+  user_id: string;
+  display_name: string | null;
+  picture_url: string | null;
+}
+
+export interface RsvpSummary {
+  event_id: string;
+  count: number;
+  is_going: boolean;
+  sample_users: RsvpUser[];
+}
+
+export async function getEventRsvp(eventId: string): Promise<RsvpSummary> {
+  return request<RsvpSummary>(`/api/calendar/events/${encodeURIComponent(eventId)}/rsvp`);
+}
+
+export async function rsvpToEvent(eventId: string): Promise<RsvpSummary> {
+  return request<RsvpSummary>(`/api/calendar/events/${encodeURIComponent(eventId)}/rsvp`, {
+    method: "POST",
+  });
+}
+
+export async function unrsvpFromEvent(eventId: string): Promise<RsvpSummary> {
+  return request<RsvpSummary>(`/api/calendar/events/${encodeURIComponent(eventId)}/rsvp`, {
+    method: "DELETE",
+  });
+}
+
 export async function getCalendarEvents(
   year?: number,
   month?: number,

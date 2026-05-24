@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents, type CalendarEvent } from "@/lib/api";
+import { getCalendarEvents, isGovtCalendarEvent, type CalendarEvent } from "@/lib/api";
 import {
   CalendarDaysIcon, MusicalNoteIcon, BuildingStorefrontIcon,
   MapPinIcon, ChatBubbleLeftRightIcon, ArrowRightIcon,
@@ -28,13 +28,13 @@ export default function EventsHome() {
     queryFn: () => getCalendarEvents(new Date().getFullYear()),
   });
 
-  // Around Town never shows govt meetings — those live on the civic app's
-  // /calendar. Anything event_type != 'govt' counts (community + live_music
-  // + any legacy 'general' rows the backfill hasn't reached yet — we
-  // include those too to avoid empty-state on first deploy).
+  // Around Town never shows govt meetings. Uses isGovtCalendarEvent which
+  // checks event_type AND falls back to the keyword classifier for legacy
+  // 'general' rows so council/planning/etc don't leak in before the
+  // server-side backfill runs.
   const upcoming = (allEvents || [])
     .filter((e: CalendarEvent) => e.date >= today && e.date <= in14)
-    .filter((e: CalendarEvent) => e.event_type !== "govt")
+    .filter((e: CalendarEvent) => !isGovtCalendarEvent(e))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 8);
 

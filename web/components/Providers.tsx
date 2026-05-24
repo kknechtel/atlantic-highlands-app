@@ -157,9 +157,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Events-app subdomain (events.ahnj.info) — served from this same Next.js
   // app via middleware rewrite to /events-app/*. It brings its own layout
-  // (community bottom-tab nav) so we skip the civic sidebar + GlobalChat.
-  // Auth is still required, and reuses the same JWT/user model.
-  const isEventsApp = pathname?.startsWith("/events-app") ?? false;
+  // so we skip the civic sidebar + GlobalChat. Auth is still required and
+  // reuses the same JWT/user model.
+  //
+  // Detect via EITHER:
+  //   - pathname /events-app/* (dev / direct visits to the main domain)
+  //   - hostname events.* (prod — middleware rewrites the path internally
+  //     so usePathname() returns the user-facing URL like "/", not the
+  //     rewritten "/events-app". The pathname check alone misses this case.)
+  const isEventsApp =
+    (pathname?.startsWith("/events-app") ?? false) ||
+    (typeof window !== "undefined" && window.location.hostname.startsWith("events."));
   if (isEventsApp) {
     if (loading) {
       return (

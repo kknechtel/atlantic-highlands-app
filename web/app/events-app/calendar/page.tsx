@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents, type CalendarEvent } from "@/lib/api";
+import { getCalendarEvents, isGovtCalendarEvent, type CalendarEvent } from "@/lib/api";
 import Link from "next/link";
 import {
   CalendarDaysIcon,
@@ -98,7 +98,8 @@ export default function EventsPage() {
       return d.getMonth() === month && d.getFullYear() === year;
     });
     // Hard exclusion: govt meetings never appear on the events app.
-    list = list.filter(e => e.event_type !== "govt");
+    // Uses the keyword fallback so legacy 'general' rows are filtered too.
+    list = list.filter(e => !isGovtCalendarEvent(e));
     if (filter === "music") {
       list = list.filter(e => e.event_type === "live_music");
       if (cityFilter) list = list.filter(e => e.city === cityFilter);
@@ -120,7 +121,7 @@ export default function EventsPage() {
   const upcoming = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-    const pool = (events || []).filter(e => e.date >= today && e.date <= in30 && e.event_type !== "govt");
+    const pool = (events || []).filter(e => e.date >= today && e.date <= in30 && !isGovtCalendarEvent(e));
     const matches = filter === "music"
       ? pool.filter(e => e.event_type === "live_music" && (!cityFilter || e.city === cityFilter))
       : pool;

@@ -703,6 +703,27 @@ export async function generateReport(reportType: string, entityType?: string, cu
 
 export type EventType = "govt" | "community" | "live_music" | "general";
 
+// Same keyword list as api/scripts/scrape_events._GOVT_KEYWORDS. Used as a
+// fallback so events tagged 'general' (pre-backfill) get classified
+// correctly in the UI without waiting for the API to restart.
+const GOVT_KEYWORDS = [
+  "council", "planning board", "commission",
+  "board of education", "boe", "reorganization",
+  "offices closed", "offices are closed",
+  "borough hall", "town hall", "court",
+  "zoning board", "shade tree",
+  "environmental commission", "recreation commission",
+];
+
+/** True if the event is a govt/town meeting — either explicitly tagged or
+ * matched against the keyword list (covers legacy 'general' rows). */
+export function isGovtCalendarEvent(ev: { event_type?: EventType | null; title: string }): boolean {
+  if (ev.event_type === "govt") return true;
+  if (ev.event_type === "community" || ev.event_type === "live_music") return false;
+  const t = (ev.title || "").toLowerCase();
+  return GOVT_KEYWORDS.some(k => t.includes(k));
+}
+
 export interface CalendarEvent {
   id: string;
   date: string;

@@ -15,8 +15,6 @@ import {
   EnvelopeIcon, DevicePhoneMobileIcon, LinkIcon,
 } from "@heroicons/react/24/outline";
 import { googleCalendarUrl, outlookCalendarUrl, downloadIcs } from "@/lib/calendarLinks";
-import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
-import { StarIcon } from "@heroicons/react/24/outline";
 
 import {
   getCalendarEvent, listCheckinsAtVenue, createCheckin,
@@ -24,7 +22,6 @@ import {
   postCommunityMessage,
   type RsvpStatus,
 } from "@/lib/api";
-import { findBandInGuide, socialMediaUrl, CATEGORY_LABELS } from "@/lib/bandGuide";
 import { useAuth } from "@/app/contexts/AuthContext";
 
 const eventsBrand = "#1d7a6c";
@@ -83,12 +80,6 @@ export default function EventDetailPage({
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
-
-  const guide = useMemo(
-    () => (ev && ev.event_type === "live_music" ? findBandInGuide(ev.title) : null),
-    [ev],
-  );
-  const social = socialMediaUrl(guide?.socialMedia);
 
   const myActive = useMemo(
     () => (hereNow || []).find(c => c.user_id === user?.id) || null,
@@ -338,46 +329,6 @@ export default function EventDetailPage({
           </div>
         )}
       </section>
-
-      {/* Band guide enrichment (music events only) */}
-      {guide && (
-        <section
-          className="bg-white border rounded-lg p-3"
-          style={{ borderColor: `${eventsBrand}40` }}
-        >
-          <div className="flex items-center gap-2 mb-1.5">
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map(n =>
-                n <= guide.rating
-                  ? <StarSolid key={n} className="w-3.5 h-3.5" style={{ color: "#eab308" }} />
-                  : <StarIcon key={n} className="w-3.5 h-3.5 text-gray-300" />
-              )}
-            </div>
-            <span className="text-[11px] text-gray-500">{CATEGORY_LABELS[guide.category]}</span>
-          </div>
-          <p className="text-sm text-gray-800">{guide.description}</p>
-          {guide.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {guide.tags.map(t => (
-                <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-          {social && (
-            <a
-              href={social.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-2 text-xs hover:underline"
-              style={{ color: eventsBrand }}
-            >
-              {social.label} ↗
-            </a>
-          )}
-        </section>
-      )}
 
       {/* Save / RSVP — future intent. 3-button selector so users can mark
           a show Going / Tentative / Follow-up. Saved events appear on

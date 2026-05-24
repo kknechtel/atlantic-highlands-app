@@ -8,9 +8,10 @@
 // Data: we don't have a `bands` table yet. We filter the cached calendar
 // events by exact title (case-insensitive). Good enough at borough scale.
 //
-// "Find online" links open Facebook / Instagram / Google search in new
-// tabs. We don't fetch / store band profiles ourselves yet — that needs
-// a metadata table and either manual entry or scraping (deferred).
+// "Find them online" links resolve in three layers:
+//   1. Admin-curated band_profiles row (DB) — admin edits inline
+//   2. Hardcoded canonical URLs in lib/knownBandLinks.ts
+//   3. Default search URLs (YouTube, Spotify, Google, etc.)
 
 import { use, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
@@ -19,13 +20,12 @@ import {
   getCalendarEvents, getBandProfile, upsertBandProfile,
   type CalendarEvent, type BandProfile,
 } from "@/lib/api";
-import { findBandInGuide, socialMediaUrl, CATEGORY_LABELS } from "@/lib/bandGuide";
+import { findKnownBandLinks } from "@/lib/knownBandLinks";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
-  ArrowLeftIcon, CalendarDaysIcon, MusicalNoteIcon,
-  MapPinIcon, StarIcon, PencilIcon, XMarkIcon,
+  ArrowLeftIcon, MusicalNoteIcon,
+  MapPinIcon, PencilIcon,
 } from "@heroicons/react/24/outline";
-import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 
 const eventsBrand = "#1d7a6c";
 
@@ -36,27 +36,60 @@ function fmtDate(iso: string): string {
   });
 }
 
-function externalLinks(bandName: string) {
-  const q = encodeURIComponent(bandName);
+type LinkOut = { label: string; href: string };
+
+// Default search URLs to use when we have no curated/known URL for a band.
+// Notes on what's been pruned vs. what was here before:
+//   - Instagram's keyword-search endpoint is gated (requires login, returns
+//     404 for guests) so we don't surface it as a default — better to have
+//     no link than a broken one.
+//   - Bandsintown's `searchSuggestions` URL is an internal AJAX endpoint
+//     that renders an empty page when opened directly. Use Google with a
+//     site: scope instead — it lands on the artist's real BIT page.
+//   - Google search no longer biases toward "NJ Atlantic Highlands": that
+//     biased away from the band's actual website/Spotify/YouTube hits.
+function defaultLinks(bandName: string): LinkOut[] {
+  const q = encodeURIComponent(`${bandName} band`);
+  const qExact = encodeURIComponent(`"${bandName}"`);
   return [
-    {
-      label: "Facebook",
-      href: `https://www.facebook.com/search/top?q=${q}`,
-    },
-    {
-      label: "Instagram",
-      href: `https://www.instagram.com/explore/search/keyword/?q=${q}`,
-    },
-    {
-      label: "Bandsintown",
-      href: `https://www.bandsintown.com/searchSuggestions?searchTerm=${q}&searchTab=artist`,
-    },
-    {
-      label: "Google",
-      // Bias toward NJ + band/music so we don't return random homonyms.
-      href: `https://www.google.com/search?q=${q}+band+NJ+Atlantic+Highlands+OR+Sea+Bright`,
-    },
+    { label: "YouTube",     href: `https://www.youtube.com/results?search_query=${q}` },
+    { label: "Spotify",     href: `https://open.spotify.com/search/${encodeURIComponent(bandName)}/artists` },
+    { label: "Bandsintown", href: `https://www.google.com/search?q=site%3Abandsintown.com+${qExact}` },
+    { label: "Facebook",    href: `https://www.facebook.com/search/top?q=${encodeURIComponent(bandName)}` },
+    { label: "Google",      href: `https://www.google.com/search?q=${q}` },
   ];
+}
+
+// Merge admin-curated profile URLs and built-in known-band URLs on top of
+// the defaults so labels stay in a predictable order but any specific URL
+// we *do* know about overrides the corresponding search link.
+function mergeLinks(
+  bandName: string,
+  profile: BandProfile | null | undefined,
+): LinkOut[] {
+  const known = findKnownBandLinks(bandName);
+  const overrides: Partial<Record<string, string>> = {
+    Website:     profile?.website_url     || known?.website     || undefined,
+    YouTube:     known?.youtube           || undefined,
+    Spotify:     known?.spotify           || undefined,
+    Bandcamp:    known?.bandcamp          || undefined,
+    Bandsintown: profile?.bandsintown_url || known?.bandsintown || undefined,
+    Facebook:    profile?.facebook_url    || known?.facebook    || undefined,
+    Instagram:   profile?.instagram_url   || known?.instagram   || undefined,
+  };
+  const defaults = defaultLinks(bandName);
+  const out: LinkOut[] = [];
+  // Website first when we have one.
+  if (overrides.Website) out.push({ label: "Website", href: overrides.Website });
+  for (const d of defaults) {
+    const override = overrides[d.label];
+    out.push({ label: d.label, href: override || d.href });
+  }
+  // Surface curated channels that aren't in the default set.
+  for (const extra of ["Bandcamp", "Instagram"] as const) {
+    if (overrides[extra]) out.push({ label: extra, href: overrides[extra]! });
+  }
+  return out;
 }
 
 export default function BandDetailPage({
@@ -84,16 +117,14 @@ export default function BandDetailPage({
       .sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
   }, [events, bandName, todayIso]);
 
-  const links = externalLinks(bandName);
-  const guide = findBandInGuide(bandName);
-  const social = socialMediaUrl(guide?.socialMedia);
-
   const { user } = useAuth();
   const qc = useQueryClient();
   const { data: profile } = useQuery({
     queryKey: ["band-profile", bandName.toLowerCase()],
     queryFn: () => getBandProfile(bandName),
   });
+
+  const links = useMemo(() => mergeLinks(bandName, profile), [bandName, profile]);
 
   // Admin inline edit
   const [editing, setEditing] = useState(false);
@@ -151,57 +182,6 @@ export default function BandDetailPage({
           </p>
         )}
       </header>
-
-      {/* Curated profile from the band guide — only shown when we have a match */}
-      {guide && (
-        <section
-          className="bg-white border rounded-lg p-4"
-          style={{ borderColor: `${eventsBrand}40` }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map(n => (
-                n <= guide.rating
-                  ? <StarSolid key={n} className="w-3.5 h-3.5" style={{ color: "#eab308" }} />
-                  : <StarIcon key={n} className="w-3.5 h-3.5 text-gray-300" />
-              ))}
-            </div>
-            <span className="text-[11px] text-gray-500">
-              {CATEGORY_LABELS[guide.category]}
-            </span>
-          </div>
-          <p className="text-sm text-gray-900 leading-snug">{guide.description}</p>
-          {guide.vibe && (
-            <p className="text-xs text-gray-600 mt-1 italic">{guide.vibe}</p>
-          )}
-          {guide.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {guide.tags.map(t => (
-                <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-gray-500">
-            {guide.regularVenues && (
-              <div><span className="text-gray-400">Regulars at:</span> {guide.regularVenues}</div>
-            )}
-            {guide.reviews && (
-              <div><span className="text-gray-400">Reviews:</span> {guide.reviews}</div>
-            )}
-            {social && (
-              <div>
-                <span className="text-gray-400">Social:</span>{" "}
-                <a href={social.url} target="_blank" rel="noopener noreferrer"
-                  className="hover:underline" style={{ color: eventsBrand }}>
-                  {social.label} ↗
-                </a>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* Curated profile section. Renders when an admin has filled in
           real URLs; admin sees an edit button. */}

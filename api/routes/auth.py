@@ -110,6 +110,51 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 # ── Google Sign-In ──────────────────────────────────────────────────────────
 
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str | None = None
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.post("/signup", response_model=TokenResponse)
+def signup(req: SignupRequest, db: Session = Depends(get_db)):
+    """Self-service signup for the events-app community.
+
+    Creates the account with is_active=False — the user gets a JWT
+    immediately (so the SPA can show their pending state without a
+    re-login), but every gated endpoint will reject them until an admin
+    flips is_active=True via /admin/users.
+    """
+    email = req.email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Enter a valid email address")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=409, detail="An account with that email already exists")
+
+    user = User(
+        email=email,
+        username=_slugify_username(email, db),
+        hashed_password=hash_password(req.password),
+        full_name=(req.full_name or "").strip() or None,
+        display_name=(req.full_name or "").strip().split(" ")[0] or None,
+        is_active=False,   # ← pending admin approval
+        is_admin=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    logger.info("Self-signup pending approval: %s", email)
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token, pending_approval=True)
+
+
 class GoogleLoginRequest(BaseModel):
     id_token: str
 

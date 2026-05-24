@@ -105,8 +105,8 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
-        {/* Profile + sign out */}
-        {user && (
+        {/* Profile + sign out (logged in) OR Sign in/up CTA (anon) */}
+        {user ? (
           <div className="p-3 border-t border-gray-200 flex items-center gap-2">
             <Link
               href="/profile"
@@ -136,6 +136,22 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
               <ArrowRightOnRectangleIcon className="w-4 h-4" />
             </button>
           </div>
+        ) : (
+          <div className="p-3 border-t border-gray-200 space-y-1.5">
+            <Link
+              href="/login"
+              className="block w-full text-center text-xs font-medium px-3 py-2 rounded-md text-white"
+              style={{ backgroundColor: eventsBrand }}
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/signup"
+              className="block w-full text-center text-xs px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Create account
+            </Link>
+          </div>
         )}
       </aside>
 
@@ -158,7 +174,7 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
                 </div>
               </div>
             </Link>
-            {user && (
+            {user ? (
               <Link
                 href="/profile"
                 className="flex-shrink-0 flex items-center gap-1.5 hover:opacity-80"
@@ -175,6 +191,14 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
                     {profileInitial}
                   </div>
                 )}
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-md text-white"
+                style={{ backgroundColor: eventsBrand }}
+              >
+                Sign in
               </Link>
             )}
           </div>

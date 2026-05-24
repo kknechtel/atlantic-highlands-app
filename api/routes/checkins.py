@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import get_current_user, get_current_user_optional
 from database import get_db
 from models.checkin import Checkin
 from models.user import User
@@ -125,7 +125,7 @@ def create_checkin(
 def list_active_checkins(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     """All active check-ins across all venues — feeds the Around Town
     "who's out tonight" pane on the home page."""
@@ -142,7 +142,7 @@ def list_active_checkins(
 @router.get("/venues", response_model=list[VenueSummary])
 def list_venues_with_checkins(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     """Distinct venues that have at least one ACTIVE check-in, with
     per-venue counts. Used by the /checkin page to surface "places
@@ -170,7 +170,7 @@ def list_venues_with_checkins(
 def list_checkins_at_venue(
     venue_name: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     cutoff = _active_cutoff()
     rows = (db.query(Checkin, User)

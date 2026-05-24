@@ -11,7 +11,7 @@ from sqlalchemy import text as sql_text
 from database import get_db
 from models.event_rsvp import EventRsvp
 from models.user import User
-from auth import get_current_user
+from auth import get_current_user, get_current_user_optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -25,7 +25,7 @@ def get_calendar_events(
     city: str = Query(None),
     venue: str = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     """Get calendar events from the scraped borough calendar + live-music
     venue scrapers. Filterable by year/month and by event_type/city/venue."""
@@ -87,7 +87,7 @@ def _row_to_dict(r) -> dict:
 def get_calendar_event(
     event_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     """Single event lookup for the events-app /calendar/[id] detail page."""
     try:
@@ -127,12 +127,12 @@ def _display_for(u: User) -> str | None:
 def get_event_rsvp(
     event_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     total = db.query(func.count(EventRsvp.id)).filter(EventRsvp.event_id == event_id).scalar() or 0
     mine = db.query(EventRsvp).filter(
         EventRsvp.event_id == event_id, EventRsvp.user_id == user.id,
-    ).first()
+    ).first() if user else None
     sample_rows = (db.query(EventRsvp, User)
                      .join(User, User.id == EventRsvp.user_id)
                      .filter(EventRsvp.event_id == event_id)

@@ -80,6 +80,27 @@ def get_current_user(
     return user
 
 
+def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Returns the active user if a valid token is supplied, else None.
+
+    Use for endpoints that should be readable anonymously (e.g. events-app
+    public browsing) but want to personalize the response when a user IS
+    signed in (e.g. include their RSVP/check-in state). Never raises 401.
+    """
+    if not credentials:
+        return None
+    try:
+        user = _resolve_user_from_token(credentials, db)
+    except HTTPException:
+        return None
+    if not user.is_active:
+        return None
+    return user
+
+
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
     """Require admin privileges."""
     if not current_user.is_admin:

@@ -9,6 +9,7 @@
 // the board feels live without WebSocket overhead at borough scale.
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +21,7 @@ import {
   type Checkin,
 } from "@/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
+import LoginNotice from "@/components/events/LoginNotice";
 
 const eventsBrand = "#1d7a6c";
 
@@ -101,6 +103,7 @@ function Avatar({ name, src }: { name: string | null; src: string | null }) {
 
 export default function CheckinPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const qc = useQueryClient();
 
   const { data: active } = useQuery({
@@ -163,6 +166,7 @@ export default function CheckinPage() {
   const [message, setMessage] = useState("");
 
   function openModal(v: { name: string; city: string }) {
+    if (!user) { router.push("/login"); return; }
     setPickerVenue(v);
     setMessage("");
   }
@@ -176,6 +180,7 @@ export default function CheckinPage() {
     setPickerVenue(null);
   }
   function submitCustom() {
+    if (!user) { router.push("/login"); return; }
     if (!customName.trim()) return;
     create.mutate({
       venue_name: customName.trim(),
@@ -204,6 +209,13 @@ export default function CheckinPage() {
           Let people know where you are. Check-ins clear after 4 hours.
         </p>
       </div>
+
+      {!user && (
+        <LoginNotice
+          title="Sign in to check in"
+          detail="Browse who's out tonight without an account. To check yourself in or join a venue, sign in or create an account — admin approval takes a moment."
+        />
+      )}
 
       {/* Your active check-ins */}
       {myActive.length > 0 && (

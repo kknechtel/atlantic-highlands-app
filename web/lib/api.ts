@@ -82,6 +82,18 @@ export async function loginWithGoogle(idToken: string) {
   return data;
 }
 
+/** Self-service signup for the events-app. Creates a User with is_active=false
+ *  pending admin approval. Returns the JWT + pending_approval=true so the SPA
+ *  can route straight to the "pending" screen. */
+export async function signup(email: string, password: string, fullName?: string) {
+  const data = await request<{ access_token: string; pending_approval?: boolean }>("/api/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ email, password, full_name: fullName }),
+  });
+  localStorage.setItem("ah_token", data.access_token);
+  return data;
+}
+
 export async function getMe(): Promise<User> { return request<User>("/api/auth/me"); }
 export function logout() { localStorage.removeItem("ah_token"); }
 

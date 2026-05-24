@@ -180,9 +180,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
       );
     }
-    if (!user) return <LoginForm />;
-    if (pendingApproval) return <PendingApproval />;
-    if (user.must_change_password) return <ChangePasswordScreen />;
+    // Events-app is PUBLIC by default — anyone can browse events, venues, bands.
+    // Auth-gated actions (RSVP, check-in, post-to-chat, profile) prompt to sign
+    // in inline. Only enforce pending-approval / must-change-password when a
+    // user IS signed in.
+    if (user && pendingApproval) return <PendingApproval />;
+    if (user && user.must_change_password) return <ChangePasswordScreen />;
     return <>{children}</>;
   }
 

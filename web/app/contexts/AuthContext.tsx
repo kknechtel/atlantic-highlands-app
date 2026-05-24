@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { User, getMe, login as apiLogin, loginWithGoogle as apiLoginGoogle, logout as apiLogout } from "@/lib/api";
+import { User, getMe, login as apiLogin, loginWithGoogle as apiLoginGoogle, logout as apiLogout, signup as apiSignup } from "@/lib/api";
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +11,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   magicLinkLogin: (inviteToken: string, email: string, password: string, fullName?: string) => Promise<void>;
+  signup: (email: string, password: string, fullName?: string) => Promise<void>;
   logout: () => void;
   setUser: (user: User) => void;
 }
@@ -96,6 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setInviteToken(null);
   }, []);
 
+  const signup = useCallback(async (email: string, password: string, fullName?: string) => {
+    const data = await apiSignup(email, password, fullName);
+    localStorage.setItem("ah_token", data.access_token);
+    const me = await getMe();
+    setUser(me);
+    setPendingApproval(!!data.pending_approval);
+  }, []);
+
   const logout = useCallback(() => {
     apiLogout();
     setUser(null);
@@ -105,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, loading, pendingApproval, inviteToken,
-      login, loginWithGoogle, magicLinkLogin, logout, setUser,
+      login, loginWithGoogle, magicLinkLogin, signup, logout, setUser,
     }}>
       {children}
     </AuthContext.Provider>

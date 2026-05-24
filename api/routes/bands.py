@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import get_current_user, get_current_user_optional
 from database import get_db
 from models.band_profile import BandProfile
 from models.user import User
@@ -65,7 +65,7 @@ def _require_admin(user: User) -> None:
 def get_profile(
     name: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     key = (name or "").strip().lower()
     if not key:

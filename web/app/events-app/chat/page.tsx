@@ -22,6 +22,7 @@ import {
   type CommunityMessage, type CommunityRefKind,
 } from "@/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
+import LoginNotice from "@/components/events/LoginNotice";
 
 const eventsBrand = "#1d7a6c";
 
@@ -216,7 +217,16 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Compose */}
+      {/* Compose (logged in) OR sign-in notice (anonymous) */}
+      {!user ? (
+        <div className="border-t border-gray-200 bg-white p-3"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
+          <LoginNotice
+            title="Sign in to join the conversation"
+            detail="You can read the feed without an account. Posting messages and tagging events needs a quick sign-in."
+          />
+        </div>
+      ) : (
       <div className="border-t border-gray-200 bg-white p-2"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}>
         {pendingRef && (
@@ -282,6 +292,7 @@ export default function ChatPage() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Picker overlay */}
       {pickerKind && (

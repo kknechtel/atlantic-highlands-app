@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import get_current_user, get_current_user_optional
 from database import get_db
 from models.checkin import Checkin
 from models.community_message import CommunityMessage, CommunityMessageRefType
@@ -128,7 +128,7 @@ def list_messages(
     after: Optional[datetime] = Query(None, description="Return only messages newer than this ISO timestamp"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
 ):
     """Newest-first list. With `after`, returns only rows strictly newer
     than the cursor (polling). Without, returns the newest `limit`."""

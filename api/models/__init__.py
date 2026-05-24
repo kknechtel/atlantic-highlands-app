@@ -9,3 +9,4 @@ from .parcel import Parcel
 from .scraper_run import ScraperRun
 from .saved_alert import SavedAlert, AlertKind, DigestFrequency
 from .checkin import Checkin
+from .community_message import CommunityMessage, CommunityMessageRefType

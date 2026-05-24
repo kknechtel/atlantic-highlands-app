@@ -1081,6 +1081,62 @@ export async function createCheckin(payload: {
   });
 }
 
+// ─── Community Chat ───────────────────────────────────────────────────
+// Single global feed for events.ahnj.info. Polling-based (~10s).
+
+export type CommunityRefKind = "event" | "checkin";
+
+export interface CommunityRefSnapshot {
+  kind: CommunityRefKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+}
+
+export interface CommunityMessage {
+  id: string;
+  user_id: string;
+  user_display_name: string | null;
+  user_picture_url: string | null;
+  body: string;
+  ref: CommunityRefSnapshot | null;
+  created_at: string;
+}
+
+export async function listCommunityMessages(
+  opts: { after?: string; limit?: number } = {},
+): Promise<CommunityMessage[]> {
+  const params = new URLSearchParams();
+  if (opts.after) params.set("after", opts.after);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return request<CommunityMessage[]>(`/api/community/chat/messages${qs ? `?${qs}` : ""}`);
+}
+
+export async function postCommunityMessage(payload: {
+  body: string;
+  ref_type?: CommunityRefKind;
+  ref_id?: string;
+}): Promise<CommunityMessage> {
+  return request<CommunityMessage>("/api/community/chat/messages", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCommunityMessage(id: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/community/chat/messages/${id}`, {
+    method: "DELETE", headers,
+  });
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Delete failed: ${res.status}`);
+  }
+}
+
 export async function deleteCheckin(id: string): Promise<void> {
   const token = getToken();
   const headers: Record<string, string> = {};

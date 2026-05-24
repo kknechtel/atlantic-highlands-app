@@ -80,6 +80,19 @@ def main() -> int:
         print(f"\n--- inner text of first 3 `{sel}` ---")
         for i, el in enumerate(soup.select(sel)[:3]):
             print(f"\n[{i}]\n{el.prettify()[:1200]}")
+
+    # CLI flag: --text <selector> prints SVG-stripped text of first 8 elements
+    if "--text" in sys.argv:
+        sel = sys.argv[sys.argv.index("--text") + 1]
+        # Drop visual noise so plain text comes through clean
+        for s in soup.find_all(["svg", "style", "script"]):
+            s.decompose()
+        items = soup.select(sel)
+        print(f"\n--- text of first 8 `{sel}` (svg-stripped, {len(items)} total) ---")
+        for i, el in enumerate(items[:8]):
+            classes = " ".join(el.get("class") or []) if el.name else ""
+            print(f"\n[{i}] .{classes}")
+            print(f"  text: {el.get_text(' | ', strip=True)[:300]}")
     return 0
 
 

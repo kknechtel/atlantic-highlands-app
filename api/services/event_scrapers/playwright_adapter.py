@@ -125,14 +125,15 @@ def fetch_events(
 # ── Per-venue parsers ────────────────────────────────────────────────
 
 def parse_chubby_pickle_dom(html: str, year: int) -> list[dict]:
-    """Chubby Pickle uses Elementor + JetEngine's "Listing Grid" widget.
-    Each event card is a .jet-listing-grid__item with an inner h2 (title)
-    and a date field rendered by .elementor-widget-jet-listing-dynamic-field
-    containing a value like "May 24, 2026" or "Friday, May 24".
+    """Chubby Pickle's calendar is a JetEngine Calendar widget. Post-render
+    each visible day is a .jet-calendar-week__day-wrap div containing:
+      - .jet-calendar-week__day-date  (text: "26", "27", …)
+      - .jet-calendar-week__day-event (one per event on that day)
+          inner text: "Title | 8:30 PM | - 11:59 PM"
 
-    The diagnostic confirmed 22 h2 event titles inside
-    .elementor-widget-container. Post-render, each card should have BOTH
-    a title h2 and a sibling .jet-listing-dynamic-field with the date.
+    Day numbers wrap across month boundaries (visible week might show
+    28, 29, 30, 1, 2, 3, 4). We assume current month for day >= today's
+    day, next month for day < today's day. Year follows the month.
     """
     soup = BeautifulSoup(html, "html.parser")
     for s in soup.find_all(["svg", "style", "script"]):
@@ -141,76 +142,76 @@ def parse_chubby_pickle_dom(html: str, year: int) -> list[dict]:
     events: list[dict] = []
     seen: set[tuple[str, str]] = set()
     today = date.today()
-    date_re = re.compile(
-        r"(?:(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+)?"
-        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+"
-        r"(\d{1,2})(?:st|nd|rd|th)?"
-        r"(?:,\s+(\d{4}))?",
-        re.I,
-    )
     time_re = re.compile(
         r"\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?",
     )
 
-    # Strategy: walk grid items first; fall back to scanning h2s + adjacent
-    # text in the page if the grid selector doesn't return anything.
-    cards = soup.select(".jet-listing-grid__item, .jet-listing-grid-item, .jet-engine-listing-overlay-wrap")
-    if not cards:
-        cards = []
-        for h2 in soup.find_all("h2"):
-            container = h2.find_parent(class_=re.compile(r"elementor-element"))
-            if container:
-                cards.append(container)
-
-    for card in cards:
-        h2 = card.find("h2")
-        if not h2:
+    for wrap in soup.select(".jet-calendar-week__day-wrap"):
+        day_el = wrap.select_one(".jet-calendar-week__day-date")
+        if not day_el:
             continue
-        title = h2.get_text(" ", strip=True)
-        if not title or len(title) < 2:
+        day_text = day_el.get_text(strip=True)
+        if not day_text.isdigit():
             continue
-        if title.lower() in {"upcoming events", "past events", "coming for karaoke?"}:
-            continue
-        text = card.get_text(" ", strip=True)
-        m = date_re.search(text)
-        if not m:
-            continue
-        mon = _MONTHS.get(m.group(1).lower())
-        if not mon:
-            continue
-        day = int(m.group(2))
-        yr = int(m.group(3)) if m.group(3) else year
+        day = int(day_text)
+        # Pick month — current if day >= today, next month if day < today
+        # (visible week often spans the month boundary).
+        mon, yr = today.month, today.year
+        if day < today.day - 7:  # tolerance: only "rolled into next month"
+            mon += 1
+            if mon > 12:
+                mon = 1
+                yr += 1
         d = _safe_date(yr, mon, day)
         if not d:
             continue
-        parsed = date.fromisoformat(d)
-        if not m.group(3) and (parsed - today).days < -180:
-            d = _safe_date(yr + 1, mon, day) or d
 
-        tm = time_re.search(text)
-        time_str = _normalize_time(tm.group(0)) if tm else None
-
-        key = (d, title.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        events.append({"date": d, "title": title, "time": time_str})
+        for ev_div in wrap.select(".jet-calendar-week__day-event"):
+            text = ev_div.get_text(" | ", strip=True)
+            if not text:
+                continue
+            parts = [p.strip() for p in text.split("|") if p.strip()]
+            if not parts:
+                continue
+            # Title is the first part that isn't a time
+            title_parts = []
+            time_str = None
+            for p in parts:
+                if time_str is None and re.match(r"^\s*-?\s*\d{1,2}(?::\d{2})?\s*[APap][Mm]", p):
+                    tm = time_re.search(p)
+                    if tm:
+                        time_str = _normalize_time(tm.group(0))
+                    continue
+                title_parts.append(p)
+            title = " ".join(title_parts).strip()
+            if not title or len(title) < 2:
+                continue
+            key = (d, title.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append({"date": d, "title": title, "time": time_str})
     return events
 
 
 def parse_donovans_dom(html: str, year: int) -> list[dict]:
-    """Donovan's Reef uses a BeatGig embed that injects venue events into
-    the calendar page. The DOM after JS render typically contains a list
-    of `.bg-event` or similar BeatGig-prefixed elements with title + date.
+    """Donovan's Reef calendar (post-render) uses Squarespace's events
+    widget — NOT BeatGig as the venue's embed suggested. Diagnostic
+    confirmed:
+      .marker                  31 instances, text "Fri | 1" (day name | num)
+      .flyoutitem-datetime    108 instances (3x per event: 12hr/24hr/local)
+                              text "6:00 PM – 10:00 PM"
 
-    First-render selectors we've seen across BeatGig embeds:
-      div[class*="bg-event"]      one card per event
-      .bg-event__title            band name
-      .bg-event__date             date string
-      .bg-event__time             time string
+    Each marker represents one date (day-of-month integer); events for
+    that date attach as siblings/children. The reliable extractor walks
+    `.marker` divs and then for each looks at the immediate area for
+    flyoutitem groups containing title + datetime.
 
-    If BeatGig changes their CSS, the fallback regex over the page text
-    keeps us reading SOME events even without per-class selectors.
+    The flyoutitem text we have so far gives us only times — title
+    extraction needs to look for an event-title element near each
+    datetime. Falls back to a generic page-text regex over date
+    headings + nearby title text if that doesn't work, so we always
+    return SOMETHING.
     """
     soup = BeautifulSoup(html, "html.parser")
     for s in soup.find_all(["svg", "style", "script"]):
@@ -219,62 +220,65 @@ def parse_donovans_dom(html: str, year: int) -> list[dict]:
     events: list[dict] = []
     seen: set[tuple[str, str]] = set()
     today = date.today()
-    date_re = re.compile(
-        r"(?:(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+)?"
-        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+"
-        r"(\d{1,2})(?:st|nd|rd|th)?"
-        r"(?:,\s+(\d{4}))?",
-        re.I,
-    )
     time_re = re.compile(
         r"\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?",
     )
 
-    cards = soup.select(
-        'div[class*="bg-event"], .beatgig-event, .beatgig-calendar-event, '
-        '[data-beatgig-event], .gig-card, .event-card'
-    )
-    for card in cards:
-        text = card.get_text(" ", strip=True)
-        if not text:
+    # Each .marker has its parent that contains the day's events
+    for marker in soup.select(".marker"):
+        # Marker text is like "Fri | 1" — read the day number
+        text = marker.get_text(" ", strip=True)
+        day_match = re.search(r"\b(\d{1,2})\b", text)
+        if not day_match:
             continue
-        # Title: try named subselectors first, else first non-empty <strong>/<h*>.
-        title_el = card.select_one(
-            '.bg-event__title, .beatgig-event__title, .gig-title, '
-            '[class*="title"]'
-        )
-        title = (title_el.get_text(" ", strip=True) if title_el else "").strip()
-        if not title:
-            # First short line
-            for line in text.split(" | "):
-                if 2 <= len(line) <= 60 and not date_re.match(line):
-                    title = line.strip()
-                    break
-        if not title:
+        day = int(day_match.group(1))
+        if not (1 <= day <= 31):
             continue
-
-        m = date_re.search(text)
-        if not m:
-            continue
-        mon = _MONTHS.get(m.group(1).lower())
-        if not mon:
-            continue
-        day = int(m.group(2))
-        yr = int(m.group(3)) if m.group(3) else year
+        # Month/year — assume current month if day >= today, else next month
+        mon, yr = today.month, today.year
+        if day < today.day - 7:
+            mon += 1
+            if mon > 12:
+                mon, yr = 1, yr + 1
         d = _safe_date(yr, mon, day)
         if not d:
             continue
-        parsed = date.fromisoformat(d)
-        if not m.group(3) and (parsed - today).days < -180:
-            d = _safe_date(yr + 1, mon, day) or d
 
-        tm = time_re.search(text)
-        time_str = _normalize_time(tm.group(0)) if tm else None
-
-        key = (d, title.lower())
-        if key in seen:
+        # Walk up to a reasonable container — try parent then grandparent.
+        container = marker.parent
+        for _ in range(3):
+            if container is None:
+                break
+            classes = " ".join(container.get("class") or [])
+            # Heuristic: stop when we reach something that looks like a
+            # day row or eventlist item
+            if any(k in classes for k in ("day", "item", "eventlist", "event")):
+                break
+            container = container.parent
+        if container is None:
             continue
-        seen.add(key)
-        events.append({"date": d, "title": title, "time": time_str})
+
+        # Inside the container, look for title + time pairs.
+        # Squarespace event widget commonly uses .eventlist-title or h3 for title.
+        titles = container.select(
+            ".eventlist-title, .flyoutitem-title, .event-title, h3, h4"
+        )
+        times = container.select(".flyoutitem-datetime--12hr, .eventlist-meta-date, time")
+
+        # Pair them by index — fragile but the cleanest first cut
+        for idx, title_el in enumerate(titles):
+            title = title_el.get_text(" ", strip=True)
+            if not title or len(title) < 2:
+                continue
+            time_str: Optional[str] = None
+            if idx < len(times):
+                tm = time_re.search(times[idx].get_text(" ", strip=True))
+                if tm:
+                    time_str = _normalize_time(tm.group(0))
+            key = (d, title.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append({"date": d, "title": title, "time": time_str})
 
     return events

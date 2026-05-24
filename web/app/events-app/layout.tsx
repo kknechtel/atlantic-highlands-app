@@ -223,8 +223,9 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        {/* Main scroll area */}
-        <main className="flex-1 max-w-5xl w-full mx-auto pb-24 md:pb-8 md:py-2">{children}</main>
+        {/* Main scroll area — wider on desktop so the calendar grid can
+            actually breathe. List-y pages still center inside this. */}
+        <main className="flex-1 max-w-5xl xl:max-w-7xl w-full mx-auto pb-24 md:pb-8 md:py-2">{children}</main>
       </div>
 
       {/* MOBILE BOTTOM TAB NAV (md:hidden) ──────────────────────────────

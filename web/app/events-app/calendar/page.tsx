@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getCalendarEvents, isGovtCalendarEvent, type CalendarEvent } from "@/lib/api";
 import Link from "next/link";
@@ -79,7 +79,14 @@ type FilterKey = "all" | "music";
 export default function EventsPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [cityFilter, setCityFilter] = useState<string>("");  // only used when filter === 'music'
+  // Desktop defaults to grid view (uses the wide screen), mobile to list.
+  // We start with "list" to match SSR, then flip to "calendar" on mount
+  // if the viewport is md+, so users on a phone don't see a useless grid.
   const [view, setView] = useState<"list" | "calendar">("list");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 768px)").matches) setView("calendar");
+  }, []);
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();
@@ -174,7 +181,7 @@ export default function EventsPage() {
   };
 
   return (
-    <div className="p-3 md:p-8 max-w-6xl mx-auto">
+    <div className="p-3 md:p-6 lg:p-8 max-w-6xl xl:max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="min-w-0">
@@ -292,34 +299,85 @@ export default function EventsPage() {
         <button onClick={nextMonth} className="p-1 hover:bg-gray-100 rounded"><ChevronRightIcon className="w-5 h-5 text-gray-600" /></button>
       </div>
 
-      {/* Calendar View */}
+      {/* Calendar View — month grid. Sized for desktop (tall cells, readable
+          chips, 6 events visible). Mobile keeps it tight since they have
+          a dedicated list view anyway. */}
       {view === "calendar" ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-gray-200">
+          <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-              <div key={d} className="text-center text-xs font-medium text-gray-500 py-2 border-r border-gray-100 last:border-0">{d}</div>
+              <div key={d} className="text-center text-[11px] md:text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 border-r border-gray-100 last:border-0">{d}</div>
             ))}
           </div>
           <div className="grid grid-cols-7">
             {calendarDays.map((day, i) => {
-              if (day === null) return <div key={`e-${i}`} className="min-h-[60px] md:min-h-[90px] border-r border-b border-gray-100" />;
+              if (day === null) {
+                return <div key={`e-${i}`} className="min-h-[70px] md:min-h-[140px] xl:min-h-[160px] border-r border-b border-gray-100 bg-gray-50/40" />;
+              }
               const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const dayEvents = eventsByDate.get(dateStr) || [];
               const isToday = new Date().toISOString().slice(0, 10) === dateStr;
+              // Show more events per cell on desktop where there's room.
+              // Mobile keeps it tight to avoid horizontal overflow.
+              const MAX_DESKTOP = 6;
+              const MAX_MOBILE = 3;
               return (
-                <div key={day} className={`min-h-[60px] md:min-h-[90px] p-1 border-r border-b border-gray-100 ${isToday ? "bg-blue-50" : ""}`}>
-                  <div className={`text-xs font-medium mb-0.5 ${isToday ? "text-blue-600" : "text-gray-500"}`}>{day}</div>
-                  {dayEvents.slice(0, 4).map((ev, ei) => {
-                    const venue = VENUE_LINKS[ev.source];
-                    return (
-                      <Link key={ei} href={`/calendar/${ev.id}`}
-                        className={`text-[8px] leading-tight px-1 py-0.5 rounded mb-0.5 truncate hover:opacity-70 block ${getEventColor(ev.title)}`}
-                        title={`${ev.title}${ev.time ? " " + ev.time : ""}${venue ? " @ " + venue.name : ""}`}>
+                <div
+                  key={day}
+                  className={`min-h-[70px] md:min-h-[140px] xl:min-h-[160px] p-1.5 md:p-2 border-r border-b border-gray-100 flex flex-col ${
+                    isToday ? "bg-blue-50/60" : ""
+                  }`}
+                >
+                  <div className={`text-xs md:text-sm font-semibold mb-1 flex items-center justify-between ${
+                    isToday ? "text-blue-600" : "text-gray-700"
+                  }`}>
+                    <span className={isToday ? "w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs" : ""}>
+                      {day}
+                    </span>
+                    {dayEvents.length > MAX_DESKTOP && (
+                      <span className="hidden md:inline text-[10px] text-gray-400 font-normal">{dayEvents.length}</span>
+                    )}
+                  </div>
+                  {/* Mobile: up to 3, terse. */}
+                  <div className="md:hidden space-y-0.5">
+                    {dayEvents.slice(0, MAX_MOBILE).map((ev, ei) => (
+                      <Link
+                        key={ei} href={`/calendar/${ev.id}`}
+                        className={`text-[9px] leading-tight px-1 py-0.5 rounded truncate hover:opacity-70 block ${getEventColor(ev.title)}`}
+                        title={`${ev.title}${ev.time ? " " + ev.time : ""}`}
+                      >
                         {ev.title}
                       </Link>
-                    );
-                  })}
-                  {dayEvents.length > 4 && <div className="text-[8px] text-gray-400">+{dayEvents.length - 4} more</div>}
+                    ))}
+                    {dayEvents.length > MAX_MOBILE && (
+                      <div className="text-[9px] text-gray-400">+{dayEvents.length - MAX_MOBILE}</div>
+                    )}
+                  </div>
+                  {/* Desktop: up to 6, with time when available. */}
+                  <div className="hidden md:flex md:flex-col md:gap-0.5 md:flex-1">
+                    {dayEvents.slice(0, MAX_DESKTOP).map((ev, ei) => (
+                      <Link
+                        key={ei} href={`/calendar/${ev.id}`}
+                        className={`text-[11px] leading-tight px-1.5 py-1 rounded truncate hover:shadow-sm transition ${getEventColor(ev.title)}`}
+                        title={`${ev.title}${ev.time ? " · " + ev.time : ""}${ev.venue ? " @ " + ev.venue : ""}`}
+                      >
+                        {ev.time && (
+                          <span className="font-medium opacity-70 mr-1">
+                            {ev.time.replace(/:00 /, "").toLowerCase()}
+                          </span>
+                        )}
+                        {ev.title}
+                      </Link>
+                    ))}
+                    {dayEvents.length > MAX_DESKTOP && (
+                      <Link
+                        href={`/search?q=${encodeURIComponent(dateStr)}`}
+                        className="text-[10px] text-gray-400 hover:text-gray-700 mt-auto"
+                      >
+                        + {dayEvents.length - MAX_DESKTOP} more
+                      </Link>
+                    )}
+                  </div>
                 </div>
               );
             })}

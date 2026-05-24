@@ -18,7 +18,7 @@ v2 status (2026-05-24):
     the browser. Needs headless (Playwright) which we don't run in prod.
     Hand-curate or add headless infra later.
 """
-from . import squarespace, html_parse
+from . import squarespace, html_parse, bandsintown
 
 VENUES = [
     # ── Highlands ─────────────────────────────────────────────────
@@ -43,12 +43,21 @@ VENUES = [
     ),
     (
         "The Sandbox at Seastreak", "Highlands",
-        html_parse.fetch_events,
-        # Home page only — no /events page. Each daily scrape pulls the
-        # current week (~4 acts). Future weeks load via client-side
-        # calendar widget which a plain HTTP GET can't trigger.
-        {"url": "https://sandbox.seastreak.com/",
-         "parser": html_parse.parse_sandbox},
+        bandsintown.fetch_events,
+        # Bandsintown carries the full season (~24 shows through Sep).
+        # The venue's own homepage only renders the current week, and
+        # ?week=YYYY-MM-DD doesn't change the rendered HTML — the week
+        # picker is purely client-side JS. Bandsintown is the only path
+        # without standing up Playwright in prod.
+        {"venue_url": "https://www.bandsintown.com/v/10206567-the-sandbox-at-seastreak-beach"},
+    ),
+    (
+        "The Chubby Pickle", "Highlands",
+        bandsintown.fetch_events,
+        # Their own /calendar uses a JetEngine widget that's JS-rendered.
+        # Bandsintown has a venue profile but Chubby Pickle only posts
+        # touring-act bookings there (~1-2 events at a time).
+        {"venue_url": "https://www.bandsintown.com/v/10063573-the-chubby-pickle"},
     ),
     # ── Atlantic Highlands ────────────────────────────────────────
     (

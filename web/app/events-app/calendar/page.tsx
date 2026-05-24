@@ -183,7 +183,7 @@ export default function EventsPage() {
               : "What's happening in Atlantic Highlands"}
           </p>
         </div>
-        <Link href="/local-business" className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 self-start sm:self-auto">
+        <Link href="/places" className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 self-start sm:self-auto">
           <BuildingStorefrontIcon className="w-3.5 h-3.5" /> Local Businesses
         </Link>
       </div>

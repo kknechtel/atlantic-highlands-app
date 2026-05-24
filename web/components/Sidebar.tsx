@@ -8,9 +8,9 @@ import {
   FolderIcon, ChartBarIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon,
   DocumentTextIcon, BuildingOfficeIcon, AcademicCapIcon, GlobeAltIcon,
   CalendarDaysIcon,
-  ChevronLeftIcon, ChevronRightIcon, UserIcon, BuildingStorefrontIcon,
-  MusicalNoteIcon, ClipboardDocumentListIcon, PresentationChartLineIcon,
-  MicrophoneIcon, HomeModernIcon, BellIcon,
+  ChevronLeftIcon, ChevronRightIcon, UserIcon,
+  ClipboardDocumentListIcon, PresentationChartLineIcon,
+  MicrophoneIcon, HomeModernIcon, BellIcon, ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -32,8 +32,6 @@ const navItems = [
   { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
   { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon },
   { name: "Meetings", href: "/meetings", icon: MicrophoneIcon },
-  { name: "Local Business", href: "/local-business", icon: BuildingStorefrontIcon },
-  { name: "Events", href: "/events", icon: MusicalNoteIcon },
   { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
   { name: "Alerts", href: "/alerts", icon: BellIcon },
   { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
@@ -119,6 +117,22 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Cross-app link to the community subdomain. External href (not next/Link)
+          because we want a hard navigation across origins. */}
+      {!collapsed && (
+        <div className="px-2 pb-2">
+          <a
+            href="https://events.ahnj.info"
+            target="_blank"
+            rel="noopener"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-600 hover:bg-gray-50 border border-gray-200"
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4 flex-shrink-0" />
+            <span>Around Town — events &amp; check-ins</span>
+          </a>
+        </div>
+      )}
 
       {/* User — admin link lives here next to the email so it's clearly an
           account-level surface, not part of the primary product nav. */}

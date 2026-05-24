@@ -11,7 +11,6 @@ import {
   PresentationChartLineIcon,
   HomeModernIcon,
   BuildingStorefrontIcon,
-  MusicalNoteIcon,
   DocumentTextIcon,
   ClipboardDocumentListIcon,
   GlobeAltIcon,
@@ -44,12 +43,15 @@ const moreItems: MoreItem[] = [
   { name: "Financials", href: "/financial-analysis", icon: DocumentTextIcon },
   { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
   { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
-  { name: "Local Business", href: "/local-business", icon: BuildingStorefrontIcon },
-  { name: "Events", href: "/events", icon: MusicalNoteIcon },
   { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
   { name: "Scraper", href: "/scraper", icon: GlobeAltIcon, adminOnly: true },
   { name: "Admin", href: "/admin", icon: Cog6ToothIcon, adminOnly: true },
 ];
+
+// External — community subdomain. Rendered separately in the More sheet
+// with an "open in new tab" icon so users know they're leaving the
+// civic-research app.
+const COMMUNITY_APP_URL = "https://events.ahnj.info";
 
 const DISMISSED_CHAT_KEY = "ah_chat_dismissed";
 
@@ -95,6 +97,20 @@ export default function MobileNav() {
                   </Link>
                 );
               })}
+              {/* Cross-app link to the community subdomain. Hard navigation
+                  (not next/Link) since we're crossing origins. */}
+              <a
+                href={COMMUNITY_APP_URL}
+                target="_blank"
+                rel="noopener"
+                onClick={() => setShowMore(false)}
+                className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors min-h-[72px] justify-center border border-dashed border-gray-200"
+              >
+                <BuildingStorefrontIcon className="w-6 h-6 text-gray-500" />
+                <span className="text-[11px] font-medium text-center leading-tight text-gray-700">
+                  Around Town
+                </span>
+              </a>
               <button
                 onClick={() => {
                   // Touch counterpart to Cmd/Ctrl+/ on desktop. The chat

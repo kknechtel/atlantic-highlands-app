@@ -155,6 +155,29 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  // Events-app subdomain (events.ahnj.info) — served from this same Next.js
+  // app via middleware rewrite to /events-app/*. It brings its own layout
+  // (community bottom-tab nav) so we skip the civic sidebar + GlobalChat.
+  // Auth is still required, and reuses the same JWT/user model.
+  const isEventsApp = pathname?.startsWith("/events-app") ?? false;
+  if (isEventsApp) {
+    if (loading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 rounded-full animate-spin"
+              style={{ borderColor: "#38585440", borderTopColor: brandColor }} />
+            <span className="text-sm text-gray-600">Loading...</span>
+          </div>
+        </div>
+      );
+    }
+    if (!user) return <LoginForm />;
+    if (pendingApproval) return <PendingApproval />;
+    if (user.must_change_password) return <ChangePasswordScreen />;
+    return <>{children}</>;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">

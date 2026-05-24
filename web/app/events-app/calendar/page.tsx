@@ -206,7 +206,8 @@ export default function EventsPage() {
               const d = new Date(ev.date + "T12:00:00");
               const venue = VENUE_LINKS[ev.source];
               return (
-                <div key={i} className={`rounded-xl border p-3 ${style} transition-shadow hover:shadow-md`}>
+                <Link key={i} href={`/calendar/${ev.id}`}
+                  className={`block rounded-xl border p-3 ${style} transition-shadow hover:shadow-md`}>
                   <div className="flex items-start gap-2">
                     <div className="w-10 h-10 rounded-lg flex flex-col items-center justify-center flex-shrink-0 bg-white/60 text-center">
                       <span className="text-[9px] font-bold uppercase">{d.toLocaleDateString("en-US", { month: "short" })}</span>
@@ -223,16 +224,19 @@ export default function EventsPage() {
                           @ {ev.venue}{ev.city ? ` · ${ev.city}` : ""}
                         </p>
                       ) : venue && (
-                        <a href={venue.url} target="_blank" rel="noopener noreferrer" className="text-[10px] underline opacity-75 hover:opacity-100">
+                        <span className="text-[10px] underline opacity-75">
                           {venue.name}
-                        </a>
+                        </span>
                       )}
                     </div>
-                    <button onClick={() => downloadICS(ev)} className="p-0.5 opacity-40 hover:opacity-100" title="Add to calendar">
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadICS(ev); }}
+                      className="p-0.5 opacity-40 hover:opacity-100"
+                      title="Add to calendar">
                       <ArrowDownTrayIcon className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -308,10 +312,11 @@ export default function EventsPage() {
                   {dayEvents.slice(0, 4).map((ev, ei) => {
                     const venue = VENUE_LINKS[ev.source];
                     return (
-                      <div key={ei} className={`text-[8px] leading-tight px-1 py-0.5 rounded mb-0.5 truncate cursor-default ${getEventColor(ev.title)}`}
+                      <Link key={ei} href={`/calendar/${ev.id}`}
+                        className={`text-[8px] leading-tight px-1 py-0.5 rounded mb-0.5 truncate hover:opacity-70 block ${getEventColor(ev.title)}`}
                         title={`${ev.title}${ev.time ? " " + ev.time : ""}${venue ? " @ " + venue.name : ""}`}>
                         {ev.title}
-                      </div>
+                      </Link>
                     );
                   })}
                   {dayEvents.length > 4 && <div className="text-[8px] text-gray-400">+{dayEvents.length - 4} more</div>}
@@ -360,13 +365,18 @@ export default function EventsPage() {
                 <div className="flex-1 min-w-0">
                   {isMusic ? (
                     <Link
-                      href={`/bands/${encodeURIComponent(ev.title)}`}
-                      className={`text-sm font-semibold text-gray-900 hover:underline block truncate`}
+                      href={`/calendar/${ev.id}`}
+                      className="text-sm font-semibold text-gray-900 hover:underline block truncate"
                     >
                       {ev.title}
                     </Link>
                   ) : (
-                    <p className={`text-sm ${isFun ? "font-semibold text-gray-900" : "text-gray-600"}`}>{ev.title}</p>
+                    <Link
+                      href={`/calendar/${ev.id}`}
+                      className={`text-sm hover:underline block truncate ${isFun ? "font-semibold text-gray-900" : "text-gray-600"}`}
+                    >
+                      {ev.title}
+                    </Link>
                   )}
                   <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
                     {ev.time && <span>{ev.time}{ev.end_time ? `–${ev.end_time}` : ""}</span>}

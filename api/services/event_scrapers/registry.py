@@ -2,49 +2,44 @@
 
 Each entry: (display_name, city, adapter_callable, adapter_kwargs).
 
-The 7 venues below cover the highest-volume live-music rooms in
-Atlantic Highlands, Highlands, and Sea Bright. Facebook-only spots
-(Bahrs, Gaslight, Inlet, etc.) are deliberately omitted — adding
-the FB Graph integration would require app review for permissions
-that are over-scoped for this use case.
-
 If a URL breaks (site redesign etc.) the runner logs and continues
 with the others, so a single dead venue can't take out the whole
 nightly run.
-"""
-from . import squarespace, tribe_events
 
-# Each tuple's adapter_kwargs are spread into the adapter's signature.
-# Add new venues by appending a tuple — no other code touched.
+v2 status (2026-05-24):
+  - Squarespace adapter rewritten for `?format=json-pretty` + `upcoming[]`
+  - WordPress Tribe Events adapter is unused (no venue actually exposes it)
+  - New html_parse adapter with per-venue parsers covers Proving Ground,
+    Chubby Pickle (via WP REST page render), Seafarer
+  - Off the Hook and The Sandbox at Seastreak removed — both publish
+    nothing scrapeable. Schedules live on Facebook only. Re-add if a
+    Facebook Graph integration ships, or hand-curate via an admin form.
+  - Donovan's Reef removed — uses a BeatGig embed that only renders in
+    the browser. Needs headless (Playwright) which we don't run in prod.
+    Hand-curate or add headless infra later.
+"""
+from . import squarespace, html_parse
+
 VENUES = [
     # ── Highlands ─────────────────────────────────────────────────
     (
         "The Proving Ground", "Highlands",
-        squarespace.fetch_events,
-        {"collection_url": "https://www.theprovingground.com/events"},
+        html_parse.fetch_events,
+        {"url": "https://www.theprovingground.com/events",
+         "parser": html_parse.parse_proving_ground},
     ),
     (
         "The Chubby Pickle", "Highlands",
-        tribe_events.fetch_events,
-        {"site_base": "https://thechubbypicklenj.com"},
-    ),
-    (
-        "Off the Hook", "Highlands",
-        squarespace.fetch_events,
-        {"collection_url": "https://offthehookhighlands.com/events"},
+        html_parse.fetch_events,
+        # WP REST returns the calendar page as JSON with pre-rendered HTML.
+        {"url": "https://thechubbypicklenj.com/wp-json/wp/v2/pages?slug=calendar",
+         "parser": html_parse.parse_chubby_pickle},
     ),
     (
         "The Seafarer", "Highlands",
-        squarespace.fetch_events,
-        # Seafarer uses a homepage schedule — try the common `/events` slug
-        # first; if empty we'll iterate to a different collection on the
-        # next deploy after inspecting their site source.
-        {"collection_url": "https://www.seafarernj.com/events"},
-    ),
-    (
-        "The Sandbox at Seastreak", "Highlands",
-        tribe_events.fetch_events,
-        {"site_base": "https://sandbox.seastreak.com"},
+        html_parse.fetch_events,
+        {"url": "https://www.seafarernj.com/",
+         "parser": html_parse.parse_seafarer},
     ),
     # ── Atlantic Highlands ────────────────────────────────────────
     (
@@ -52,10 +47,8 @@ VENUES = [
         squarespace.fetch_events,
         {"collection_url": "https://www.onthedeckrestaurant.com/live-music"},
     ),
-    # ── Sea Bright ────────────────────────────────────────────────
-    (
-        "Donovan's Reef", "Sea Bright",
-        squarespace.fetch_events,
-        {"collection_url": "https://www.donovansreefbeachbar.com/calendar"},
-    ),
+    # ── Deferred ──────────────────────────────────────────────────
+    # Off the Hook            (Squarespace events collection is empty)
+    # The Sandbox at Seastreak (WordPress home page only, no event CPT)
+    # Donovan's Reef          (BeatGig client-side embed, needs Playwright)
 ]

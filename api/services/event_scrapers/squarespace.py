@@ -1,25 +1,33 @@
 """Squarespace events-collection adapter.
 
-Squarespace exposes any collection page as JSON by appending `?format=json`.
-For events collections the response shape is:
+Squarespace exposes any collection page as JSON by appending
+`?format=json-pretty`. For an Events Collection (recordType 12) the
+response is:
 
     {
-      "items": [
+      "upcoming": [
         {
+          "id": "...",
           "title": "Ray Tigre",
+          "urlId": "ray-tigre",
           "startDate": 1748073600000,   # Unix ms
           "endDate":   1748081400000,
-          "fullUrl": "/events/ray-tigre",
-          "excerpt": "<p>Live music…</p>",
-          "body": "<p>…</p>",
+          "body": "<p>Live music…</p>",
+          "recordType": 12,
           ...
-        },
-        ...
-      ]
+        }
+      ],
+      "past":     [ ... ],
+      "calendarLayoutItems": { ... }
     }
 
-We render each item into our normalized event dict. Times are derived
-from startDate in the venue's local timezone (assumed America/New_York).
+We only read `upcoming[]`. Past events would just churn the dedupe key
+without surfacing anywhere useful.
+
+The earlier version of this file used `?format=json` and read `items[]`,
+which is the shape Squarespace returns for blog/portfolio collections,
+not Events. That's why every Squarespace venue returned 0 events on the
+first prod run.
 
 Failures here never raise — they return [] and log. The runner treats
 empty as "venue had no events" rather than "venue is broken".
@@ -91,7 +99,7 @@ def fetch_events(
         site_base = f"{parsed.scheme}://{parsed.netloc}"
 
     join_char = "&" if "?" in collection_url else "?"
-    url = f"{collection_url}{join_char}format=json"
+    url = f"{collection_url}{join_char}format=json-pretty"
 
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT)
@@ -101,9 +109,18 @@ def fetch_events(
         logger.warning("[squarespace:%s] fetch failed: %s", venue_name, exc)
         return []
 
-    items = payload.get("items") or []
+    # Squarespace Events Collections return `upcoming` + `past` at the top
+    # level. Non-Events collections return `items[]` — when we see that, we
+    # treat it as "this URL isn't an events collection" and bail.
+    items = payload.get("upcoming")
+    if items is None:
+        if "items" in payload:
+            logger.info("[squarespace:%s] URL is not an Events collection (got items[]) — skipping", venue_name)
+        else:
+            logger.info("[squarespace:%s] no `upcoming` array in response", venue_name)
+        return []
     if not items:
-        logger.info("[squarespace:%s] no items in response", venue_name)
+        logger.info("[squarespace:%s] 0 upcoming events", venue_name)
         return []
 
     out: list[dict] = []
@@ -116,7 +133,12 @@ def fetch_events(
             continue
 
         title = (it.get("title") or "").strip() or "Live music"
-        full_url = it.get("fullUrl") or ""
+        # Events Collection items expose `fullUrl` (when set) or `urlId`
+        # (slug). The collection URL minus the host gives the parent path;
+        # append the slug for the per-event detail page.
+        from urllib.parse import urlparse
+        coll_path = urlparse(collection_url).path.rstrip("/")
+        full_url = it.get("fullUrl") or (f"{coll_path}/{it['urlId']}" if it.get("urlId") else "")
         ticket_url = urljoin(site_base, full_url) if full_url else None
 
         out.append({

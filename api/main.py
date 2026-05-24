@@ -49,6 +49,7 @@ from routes.meetings import router as meetings_router
 from routes.alerts import router as alerts_router
 from routes.checkins import router as checkins_router
 from routes.community_chat import router as community_chat_router
+from routes.bands import router as bands_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -73,6 +74,7 @@ app.include_router(meetings_router, prefix="/api/meetings", tags=["meetings"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(checkins_router, prefix="/api/checkins", tags=["checkins"])
 app.include_router(community_chat_router, prefix="/api/community/chat", tags=["community-chat"])
+app.include_router(bands_router, prefix="/api/bands", tags=["bands"])
 
 
 @app.on_event("startup")

@@ -767,6 +767,36 @@ export async function getCalendarEvent(id: string): Promise<CalendarEvent> {
   return request<CalendarEvent>(`/api/calendar/events/${encodeURIComponent(id)}`);
 }
 
+// ─── Band profiles (admin-curated) ─────────────────────────────────
+// Overrides the static bandGuide.ts when an admin fills in real URLs.
+
+export interface BandProfile {
+  name: string;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  website_url: string | null;
+  bandsintown_url: string | null;
+  bio: string | null;
+  photo_url: string | null;
+}
+
+/** Returns null when no curated profile exists (404 → null). */
+export async function getBandProfile(name: string): Promise<BandProfile | null> {
+  try {
+    return await request<BandProfile>(`/api/bands/profile/${encodeURIComponent(name)}`);
+  } catch (e) {
+    if (e instanceof Error && /404|not yet curated|Not found/i.test(e.message)) return null;
+    throw e;
+  }
+}
+
+export async function upsertBandProfile(name: string, payload: Omit<BandProfile, "name">): Promise<BandProfile> {
+  return request<BandProfile>(`/api/bands/profile/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ─── Event RSVPs ─────────────────────────────────────────────────────
 // "I'm planning to go." Distinct from check-ins (present-tense, expires 4h).
 

@@ -12,14 +12,18 @@
 // tabs. We don't fetch / store band profiles ourselves yet — that needs
 // a metadata table and either manual entry or scraping (deferred).
 
-import { use, useMemo } from "react";
+import { use, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents, type CalendarEvent } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getCalendarEvents, getBandProfile, upsertBandProfile,
+  type CalendarEvent, type BandProfile,
+} from "@/lib/api";
 import { findBandInGuide, socialMediaUrl, CATEGORY_LABELS } from "@/lib/bandGuide";
+import { useAuth } from "@/app/contexts/AuthContext";
 import {
   ArrowLeftIcon, CalendarDaysIcon, MusicalNoteIcon,
-  MapPinIcon, StarIcon,
+  MapPinIcon, StarIcon, PencilIcon, XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 
@@ -83,6 +87,46 @@ export default function BandDetailPage({
   const links = externalLinks(bandName);
   const guide = findBandInGuide(bandName);
   const social = socialMediaUrl(guide?.socialMedia);
+
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const { data: profile } = useQuery({
+    queryKey: ["band-profile", bandName.toLowerCase()],
+    queryFn: () => getBandProfile(bandName),
+  });
+
+  // Admin inline edit
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Omit<BandProfile, "name">>({
+    facebook_url: "", instagram_url: "", website_url: "",
+    bandsintown_url: "", bio: "", photo_url: "",
+  });
+  useEffect(() => {
+    if (profile) {
+      setDraft({
+        facebook_url: profile.facebook_url || "",
+        instagram_url: profile.instagram_url || "",
+        website_url: profile.website_url || "",
+        bandsintown_url: profile.bandsintown_url || "",
+        bio: profile.bio || "",
+        photo_url: profile.photo_url || "",
+      });
+    }
+  }, [profile]);
+  const save = useMutation({
+    mutationFn: () => upsertBandProfile(bandName, {
+      facebook_url: draft.facebook_url?.trim() || null,
+      instagram_url: draft.instagram_url?.trim() || null,
+      website_url: draft.website_url?.trim() || null,
+      bandsintown_url: draft.bandsintown_url?.trim() || null,
+      bio: draft.bio?.trim() || null,
+      photo_url: draft.photo_url?.trim() || null,
+    }),
+    onSuccess: () => {
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ["band-profile", bandName.toLowerCase()] });
+    },
+  });
 
   return (
     <div className="p-4 space-y-5">
@@ -156,6 +200,118 @@ export default function BandDetailPage({
               </div>
             )}
           </div>
+        </section>
+      )}
+
+      {/* Curated profile section. Renders when an admin has filled in
+          real URLs; admin sees an edit button. */}
+      {(profile || user?.is_admin) && (
+        <section
+          className="bg-white border rounded-lg p-4"
+          style={{ borderColor: `${eventsBrand}40` }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Curated profile
+            </div>
+            {user?.is_admin && !editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
+              >
+                <PencilIcon className="w-3.5 h-3.5" /> {profile ? "Edit" : "Add"}
+              </button>
+            )}
+          </div>
+
+          {!editing ? (
+            <>
+              {profile?.photo_url && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={profile.photo_url} alt="" className="w-full h-40 object-cover rounded-md mb-3" />
+              )}
+              {profile?.bio && (
+                <p className="text-sm text-gray-800 whitespace-pre-wrap mb-2">{profile.bio}</p>
+              )}
+              {profile && (
+                <div className="flex flex-wrap gap-2">
+                  {profile.facebook_url && (
+                    <a href={profile.facebook_url} target="_blank" rel="noopener noreferrer"
+                      className="px-2.5 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-50"
+                      style={{ color: eventsBrand }}>
+                      Facebook ↗
+                    </a>
+                  )}
+                  {profile.instagram_url && (
+                    <a href={profile.instagram_url} target="_blank" rel="noopener noreferrer"
+                      className="px-2.5 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-50"
+                      style={{ color: eventsBrand }}>
+                      Instagram ↗
+                    </a>
+                  )}
+                  {profile.website_url && (
+                    <a href={profile.website_url} target="_blank" rel="noopener noreferrer"
+                      className="px-2.5 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-50"
+                      style={{ color: eventsBrand }}>
+                      Website ↗
+                    </a>
+                  )}
+                  {profile.bandsintown_url && (
+                    <a href={profile.bandsintown_url} target="_blank" rel="noopener noreferrer"
+                      className="px-2.5 py-1 text-xs rounded-full border border-gray-300 hover:bg-gray-50"
+                      style={{ color: eventsBrand }}>
+                      Bandsintown ↗
+                    </a>
+                  )}
+                </div>
+              )}
+              {!profile && user?.is_admin && (
+                <div className="text-xs text-gray-400 italic">No curated profile yet. Click Add.</div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              {(["facebook_url", "instagram_url", "website_url", "bandsintown_url", "photo_url"] as const).map(field => (
+                <div key={field}>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                    {field.replace(/_url$/, "").replace(/_/g, " ")}
+                  </label>
+                  <input
+                    type="url"
+                    value={draft[field] || ""}
+                    onChange={e => setDraft(d => ({ ...d, [field]: e.target.value }))}
+                    placeholder="https://…"
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Bio</label>
+                <textarea
+                  value={draft.bio || ""}
+                  onChange={e => setDraft(d => ({ ...d, bio: e.target.value }))}
+                  rows={3}
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => setEditing(false)}
+                  className="px-3 py-1.5 text-xs rounded-md text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => save.mutate()}
+                  disabled={save.isPending}
+                  className="px-3 py-1.5 text-xs rounded-md text-white disabled:opacity-50"
+                  style={{ backgroundColor: eventsBrand }}
+                >
+                  {save.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

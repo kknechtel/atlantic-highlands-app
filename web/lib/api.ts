@@ -995,7 +995,14 @@ export async function getMyCalendar(opts: { upcoming_only?: boolean } = {}): Pro
 export async function getCalendarEvents(
   year?: number,
   month?: number,
-  opts: { event_type?: EventType; city?: string; venue?: string } = {},
+  opts: {
+    event_type?: EventType;
+    city?: string;
+    venue?: string;
+    q?: string;
+    upcoming_only?: boolean;
+    limit?: number;
+  } = {},
 ): Promise<CalendarEvent[]> {
   const params = new URLSearchParams();
   if (year) params.set("year", String(year));
@@ -1003,8 +1010,22 @@ export async function getCalendarEvents(
   if (opts.event_type) params.set("event_type", opts.event_type);
   if (opts.city) params.set("city", opts.city);
   if (opts.venue) params.set("venue", opts.venue);
+  if (opts.q) params.set("q", opts.q);
+  if (opts.upcoming_only) params.set("upcoming_only", "true");
+  if (opts.limit) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return request<CalendarEvent[]>(`/api/calendar/events${qs ? `?${qs}` : ""}`);
+}
+
+/** Free-text event search. Returns up to `limit` hits (default 100),
+ *  sorted by date ascending. Set upcoming_only=true to skip past events. */
+export async function searchEvents(
+  q: string,
+  opts: { upcoming_only?: boolean; limit?: number } = {},
+): Promise<CalendarEvent[]> {
+  return getCalendarEvents(undefined, undefined, {
+    q, upcoming_only: opts.upcoming_only, limit: opts.limit ?? 100,
+  });
 }
 
 // ─── Admin ────────────────────────────────────────────────────────────

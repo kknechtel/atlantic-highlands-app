@@ -24,11 +24,17 @@ def get_calendar_events(
     event_type: str = Query(None, description="'general' (borough) or 'live_music'"),
     city: str = Query(None),
     venue: str = Query(None),
+    q: str = Query(None, description="Free-text — case-insensitive substring match on title/venue/description"),
+    upcoming_only: bool = Query(False, description="If true, hide events whose date is in the past"),
+    limit: int = Query(None, ge=1, le=500),
     db: Session = Depends(get_db),
     user: User | None = Depends(get_current_user_optional),
 ):
     """Get calendar events from the scraped borough calendar + live-music
-    venue scrapers. Filterable by year/month and by event_type/city/venue."""
+    venue scrapers. Filterable by year/month, event_type/city/venue, and
+    free-text query `q`. When `q` is provided we cross-search title +
+    venue + description so a band name typed by a user matches the show
+    regardless of which venue posted it."""
     query = (
         "SELECT id, date, title, time, end_time, location, description, "
         "source, source_url, venue, city, event_type, ticket_url, created_at "
@@ -52,10 +58,26 @@ def get_calendar_events(
     if venue:
         conditions.append("venue = :venue")
         params["venue"] = venue
+    if q:
+        # Split on whitespace and require every token to appear somewhere
+        # (title / venue / description). Matches "brian kirk" against
+        # "Brian Kirk and the Jirks" the same way Google would.
+        tokens = [t for t in q.strip().split() if t][:6]
+        if tokens:
+            for idx, tok in enumerate(tokens):
+                key = f"q{idx}"
+                conditions.append(
+                    f"(title ILIKE :{key} OR venue ILIKE :{key} OR description ILIKE :{key})"
+                )
+                params[key] = f"%{tok}%"
+    if upcoming_only:
+        conditions.append("date >= CURRENT_DATE")
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY date ASC, time ASC NULLS LAST"
+    if limit:
+        query += f" LIMIT {int(limit)}"
 
     try:
         rows = db.execute(sql_text(query), params).fetchall()

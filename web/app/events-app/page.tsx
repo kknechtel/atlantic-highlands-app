@@ -10,8 +10,10 @@ import { getCalendarEvents, isGovtCalendarEvent, type CalendarEvent } from "@/li
 import {
   CalendarDaysIcon, MusicalNoteIcon, BuildingStorefrontIcon,
   MapPinIcon, ChatBubbleLeftRightIcon, ArrowRightIcon,
-  PencilSquareIcon,
+  PencilSquareIcon, MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 const eventsBrand = "#1d7a6c";
 
@@ -47,6 +49,8 @@ export default function EventsHome() {
         <h1 className="text-xl font-bold text-gray-900">What&apos;s on</h1>
         <p className="text-xs text-gray-500 mt-0.5">Next two weeks around town</p>
       </div>
+
+      <SearchBox />
 
       {/* Live music shortcut card */}
       {upcomingMusic.length > 0 && (
@@ -171,5 +175,30 @@ export default function EventsHome() {
         </Link>
       </section>
     </div>
+  );
+}
+
+// Lightweight search launcher — submits to /search?q=… where the real
+// debounced search + result rendering lives. Keeps the home page fast.
+function SearchBox() {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const trimmed = q.trim();
+        router.push(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
+      }}
+      className="relative"
+    >
+      <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search bands, venues, events…"
+        className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 bg-white"
+      />
+    </form>
   );
 }

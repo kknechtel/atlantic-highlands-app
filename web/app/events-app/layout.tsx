@@ -18,7 +18,7 @@ import { usePathname } from "next/navigation";
 import {
   HomeIcon, CalendarDaysIcon, BuildingStorefrontIcon,
   MapPinIcon, ChatBubbleLeftRightIcon, BookmarkIcon,
-  ArrowRightOnRectangleIcon,
+  ArrowRightOnRectangleIcon, MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
@@ -183,33 +183,43 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
                 </div>
               </div>
             </Link>
-            {user ? (
+            <div className="flex items-center gap-2 flex-shrink-0">
               <Link
-                href="/profile"
-                className="flex-shrink-0 flex items-center gap-1.5 hover:opacity-80"
-                title="Profile"
+                href="/search"
+                aria-label="Search events"
+                className="p-1.5 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                title="Search events"
               >
-                {user.picture_url ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={user.picture_url} alt="" className="w-7 h-7 rounded-full object-cover" />
-                ) : (
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-                    style={{ backgroundColor: eventsBrand }}
-                  >
-                    {profileInitial}
-                  </div>
-                )}
+                <MagnifyingGlassIcon className="w-5 h-5" />
               </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-md text-white"
-                style={{ backgroundColor: eventsBrand }}
-              >
-                Sign in
-              </Link>
-            )}
+              {user ? (
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-1.5 hover:opacity-80"
+                  title="Profile"
+                >
+                  {user.picture_url ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={user.picture_url} alt="" className="w-7 h-7 rounded-full object-cover" />
+                  ) : (
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                      style={{ backgroundColor: eventsBrand }}
+                    >
+                      {profileInitial}
+                    </div>
+                  )}
+                </Link>
+              ) : (
+                <Link
+                  href="/login"
+                  className="text-xs font-medium px-3 py-1.5 rounded-md text-white"
+                  style={{ backgroundColor: eventsBrand }}
+                >
+                  Sign in
+                </Link>
+              )}
+            </div>
           </div>
         </header>
 

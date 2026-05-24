@@ -35,10 +35,11 @@ def main() -> int:
     # Show title + first 600 chars of body text
     title = soup.find("title")
     print(f"\n<title>: {title.get_text() if title else '(none)'}")
-    print(f"\n--- first 400 chars of body text ---")
-    print(soup.get_text(" ", strip=True)[:400])
-    print(f"\n--- last 400 chars of body text ---")
-    print(soup.get_text(" ", strip=True)[-400:])
+    print(f"\n--- first 30 <h2> texts + their parent classes ---")
+    for i, h2 in enumerate(soup.find_all("h2")[:30]):
+        parent = h2.parent
+        pc = " ".join(parent.get("class") or []) if parent else "?"
+        print(f"  [{i}] parent.class='{pc[:60]}' :: {h2.get_text(' ', strip=True)[:80]}")
     return 0
 
 

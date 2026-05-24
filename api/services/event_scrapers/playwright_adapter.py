@@ -106,6 +106,136 @@ def _render_page(url: str, wait_for_selector: Optional[str] = None) -> Optional[
             return None
 
 
+def _render_paginated_inner(
+    url: str,
+    next_selector: str,
+    steps: int = 8,
+    wait_between_ms: int = 1500,
+    wait_for_selector: Optional[str] = None,
+) -> list[str]:
+    """Load the page, snapshot the DOM, click `next_selector`, wait, snapshot
+    again — repeat up to `steps` times. Returns one HTML string per snapshot
+    (current + each subsequent click). For sites like Sandbox where future
+    weeks are only rendered after a JS click."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        logger.warning("playwright not installed; cannot render %s", url)
+        return []
+
+    snapshots: list[str] = []
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 1800})
+                page = context.new_page()
+                page.set_default_timeout(PAGE_TIMEOUT_MS)
+                page.goto(url, wait_until="networkidle")
+                if wait_for_selector:
+                    try:
+                        page.wait_for_selector(wait_for_selector, timeout=PAGE_TIMEOUT_MS)
+                    except Exception:
+                        pass
+                page.wait_for_timeout(SETTLE_WAIT_MS)
+                snapshots.append(page.content())
+
+                for i in range(steps):
+                    el = page.query_selector(next_selector)
+                    if not el:
+                        logger.info("[playwright] no more next-button at step %d on %s", i, url)
+                        break
+                    try:
+                        el.click()
+                    except Exception as exc:
+                        logger.info("[playwright] click failed at step %d on %s: %s", i, url, exc)
+                        break
+                    page.wait_for_timeout(wait_between_ms)
+                    snapshots.append(page.content())
+                return snapshots
+            finally:
+                browser.close()
+    except Exception as exc:
+        logger.warning("[playwright] paginated render failed for %s: %s", url, exc)
+        return snapshots  # whatever we got before the crash
+
+
+def _render_paginated(
+    url: str,
+    next_selector: str,
+    steps: int = 8,
+    wait_between_ms: int = 1500,
+    wait_for_selector: Optional[str] = None,
+) -> list[str]:
+    """Threaded wrapper for _render_paginated_inner (see _render_page docstring
+    for the asyncio rationale)."""
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(
+            _render_paginated_inner, url, next_selector, steps, wait_between_ms, wait_for_selector,
+        )
+        # Budget = full render + (steps * settle) + buffer
+        budget = (PAGE_TIMEOUT_MS / 1000) + 15 + (steps * wait_between_ms / 1000) + 10
+        try:
+            return future.result(timeout=budget)
+        except concurrent.futures.TimeoutError:
+            logger.warning("[playwright] paginated thread timeout on %s", url)
+            return []
+
+
+def fetch_events_paginated(
+    venue_name: str,
+    city: str,
+    url: str,
+    parser: ParserFn,
+    next_selector: str,
+    steps: int = 8,
+    wait_between_ms: int = 1500,
+    wait_for_selector: Optional[str] = None,
+    year_context: Optional[int] = None,
+) -> list[dict]:
+    """Multi-snapshot variant for sites that only render one page-slice at
+    a time (Sandbox shows one week per click). Runs `parser` on every
+    snapshot and dedupes by (date, title)."""
+    snapshots = _render_paginated(
+        url=url, next_selector=next_selector, steps=steps,
+        wait_between_ms=wait_between_ms, wait_for_selector=wait_for_selector,
+    )
+    yr = year_context or date.today().year
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for snap in snapshots:
+        try:
+            partials = parser(snap, yr)
+        except Exception as exc:
+            logger.exception("[playwright:%s] parser raised on snapshot: %s", venue_name, exc)
+            continue
+        for p in partials:
+            if not p.get("date") or not p.get("title"):
+                continue
+            key = (p["date"], p["title"].lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "date": p["date"],
+                "title": p["title"],
+                "time": p.get("time"),
+                "end_time": p.get("end_time"),
+                "venue": venue_name,
+                "city": city,
+                "location": f"{venue_name}, {city}",
+                "event_type": "live_music",
+                "source": f"playwright:{venue_name}",
+                "url": p.get("url") or url,
+                "ticket_url": p.get("url"),
+                "description": p.get("description"),
+            })
+    logger.info("[playwright-paginated:%s] %d snapshots → %d unique events",
+                venue_name, len(snapshots), len(out))
+    return out
+
+
 def fetch_events(
     venue_name: str,
     city: str,

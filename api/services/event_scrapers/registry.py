@@ -20,6 +20,10 @@ v2 status (2026-05-24):
 """
 from . import squarespace, html_parse, bandsintown, playwright_adapter
 
+# Re-export the html-parse parsers we use from Playwright too, so the
+# registry kwargs read cleanly without long dotted imports.
+_parse_sandbox = html_parse.parse_sandbox
+
 VENUES = [
     # ── Highlands ─────────────────────────────────────────────────
     (
@@ -42,15 +46,21 @@ VENUES = [
          "parser": html_parse.parse_seafarer},
     ),
     (
+        # 2026-05-24: switched to playwright-paginated. The static HTML
+        # only contains the CURRENT week (future weeks are JS-loaded on
+        # click). We click `span.week-next` 12 times to cover ~3 months.
+        # Bandsintown has the full season but Cloudflare-blocks our EC2
+        # IPs (residential proxy required), so this is the practical path.
         "The Sandbox at Seastreak", "Highlands",
-        html_parse.fetch_events,
-        # Homepage only (~current week). Their own ?week=YYYY-MM-DD does
-        # not change the rendered HTML (verified). Bandsintown has the
-        # full season but is Cloudflare-blocked from EC2 (HTTP 403
-        # regardless of UA — residential proxy needed). So we accept the
-        # 1-week ceiling and pick up new shows as the date rolls forward.
-        {"url": "https://sandbox.seastreak.com/",
-         "parser": html_parse.parse_sandbox},
+        playwright_adapter.fetch_events_paginated,
+        {
+            "url": "https://sandbox.seastreak.com/",
+            "parser": _parse_sandbox,
+            "next_selector": "span.week-next",
+            "steps": 12,
+            "wait_between_ms": 1200,
+            "wait_for_selector": "div.event",
+        },
     ),
     # ── Atlantic Highlands ────────────────────────────────────────
     (

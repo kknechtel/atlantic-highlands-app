@@ -8,11 +8,13 @@ applications:
             - npm ci
         build:
           commands:
-            # EC2 IP is ephemeral — rotates on stop/start. Once we get an
-            # Elastic IP allocated to the instance (the dev AWS account is
-            # currently at the EIP cap, so amplify.yml must be edited each
-            # time the instance restarts).
-            - echo "NEXT_PUBLIC_API_URL=http://107.20.14.246" > .env.local
+            # Use the HTTPS hostname (nginx + Let's Encrypt cert managed on
+            # the EC2 box). Previously this was the raw EC2 public IP over
+            # plain HTTP — that meant JWT bearer tokens were sent in cleartext
+            # to the API. Going through api.ahnj.info also means IP rotation
+            # on instance stop/start no longer requires an amplify.yml edit
+            # (DNS is updated by update_api_dns.sh).
+            - echo "NEXT_PUBLIC_API_URL=https://api.ahnj.info" > .env.local
             # Google Sign-In client ID. Stored in Amplify env vars (Console →
             # App settings → Environment variables) so it can rotate without
             # a code change. Empty string disables the Google button cleanly.

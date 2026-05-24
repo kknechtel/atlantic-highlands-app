@@ -3,9 +3,14 @@ post-render DOM.
 
 Use this only for venues that fail with requests + BeautifulSoup
 because their events are injected client-side (Chubby Pickle's
-JetEngine widget, Donovan's Reef BeatGig embed). The synchronous
-Playwright API is fine here — the music scrape runs in its own
-process out of the systemd timer, not inside the FastAPI event loop.
+JetEngine widget, Donovan's Reef BeatGig embed).
+
+Playwright's sync API refuses to run inside an asyncio event loop
+("Please use the Async API instead"). scheduled_scrape.py runs the
+whole batch under asyncio.run(), so we offload the actual
+sync_playwright call into a dedicated worker thread — a thread with
+no event loop = sync_playwright is happy. This costs ~one thread per
+playwright venue per scrape and keeps the rest of the scraper sync.
 
 Per-venue parsers in this module:
   parse_chubby_pickle_dom   — JetEngine event-list grid
@@ -49,10 +54,9 @@ USER_AGENT = (
 ParserFn = Callable[[str, int], list[dict]]
 
 
-def _render_page(url: str, wait_for_selector: Optional[str] = None) -> Optional[str]:
-    """Open the URL in headless Chromium, wait for network idle + selector,
-    return the post-render HTML. Returns None on any failure so the
-    caller can log + continue."""
+def _render_page_inner(url: str, wait_for_selector: Optional[str] = None) -> Optional[str]:
+    """The actual sync_playwright work. MUST run on a thread that has no
+    asyncio event loop — see module docstring for why."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -80,6 +84,26 @@ def _render_page(url: str, wait_for_selector: Optional[str] = None) -> Optional[
     except Exception as exc:
         logger.warning("[playwright] render failed for %s: %s", url, exc)
         return None
+
+
+def _render_page(url: str, wait_for_selector: Optional[str] = None) -> Optional[str]:
+    """Public entry — runs the sync Playwright call on a worker thread so it
+    doesn't trip on the caller's asyncio loop (scheduled_scrape.py runs
+    under asyncio.run). Returns the rendered HTML or None on failure."""
+    import concurrent.futures
+    # max_workers=1 + a fresh executor per call guarantees a brand-new thread
+    # with no inherited event loop. Cheaper than spawning a subprocess and
+    # avoids the Playwright import cost on every call.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_render_page_inner, url, wait_for_selector)
+        try:
+            # Slightly more than PAGE_TIMEOUT_MS to give the inner function
+            # time to log + return None on its own timeout rather than us
+            # killing the thread mid-render.
+            return future.result(timeout=(PAGE_TIMEOUT_MS / 1000) + 15)
+        except concurrent.futures.TimeoutError:
+            logger.warning("[playwright] thread timeout on %s", url)
+            return None
 
 
 def fetch_events(

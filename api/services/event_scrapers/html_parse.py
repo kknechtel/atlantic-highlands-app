@@ -123,53 +123,85 @@ def _normalize_time(t: str) -> Optional[str]:
 def parse_proving_ground(html: str, year: int) -> list[dict]:
     """SpotApps event list at https://www.theprovingground.com/events.
 
-    SpotApps renders each event as a card with a date label like
-    "Sunday, May 25" + the title. Layout is fragile but consistent enough
-    to grep with text-only soup.
+    Each event renders as:
+        <h3>Event Title</h3>
+        <p>Sunday May 24th</p>
+        <p>7:00 PM - 10:00 PM</p>
+        <p>Description (optional)</p>
+
+    The page has no per-event container class — just headings + paragraph
+    siblings in the page flow. We walk every <h3>, then look at its next
+    siblings for a date-shaped paragraph.
+
+    The earlier version scanned the entire page text with a regex, which
+    matched calendar-header strings like "January 1st, 2027" and produced
+    610 garbage rows.
     """
     soup = BeautifulSoup(html, "html.parser")
     events: list[dict] = []
-
-    # Cards on SpotApps usually live inside `div.spot-event` or similar.
-    # Fall back to scanning the whole page text for date headings.
-    cards = soup.find_all(attrs={"class": re.compile(r"event", re.I)})
-    if not cards:
-        cards = [soup]
-
     seen: set[tuple[str, str]] = set()
-    for card in cards:
-        text = card.get_text("\n", strip=True)
-        # Match lines like: "Sunday, May 25" or "May 25" or "May 25, 2026"
-        date_pattern = re.compile(
-            r"(?:(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+)?"
-            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})"
-            r"(?:,\s+(\d{4}))?",
-            re.I,
-        )
-        for m in date_pattern.finditer(text):
-            mon = _MONTHS.get(m.group(1).lower())
-            if not mon:
+
+    # "Sunday May 24th" / "May 24" / "May 24, 2026"
+    date_re = re.compile(
+        r"^\s*(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*[,\s]+"
+        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+"
+        r"(\d{1,2})(?:st|nd|rd|th)?"
+        r"(?:,\s+(\d{4}))?\s*$",
+        re.I,
+    )
+    time_re = re.compile(
+        r"\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?",
+    )
+
+    for h3 in soup.find_all("h3"):
+        title = h3.get_text(" ", strip=True)
+        if not title or len(title) < 3:
+            continue
+        # Skip section headings that aren't actual event titles. SpotApps
+        # uses <h3> sparingly so this is mostly safe, but guard anyway.
+        if title.lower() in {"events", "upcoming events", "past events", "calendar"}:
+            continue
+
+        # Scan the next few siblings for the first date-shaped <p>.
+        date_str: str | None = None
+        time_str: str | None = None
+        for sib in h3.find_next_siblings(limit=6):
+            if sib.name == "h3":
+                break  # next event starts
+            ptxt = sib.get_text(" ", strip=True) if sib.name else ""
+            if not ptxt:
                 continue
-            day = int(m.group(2))
-            yr = int(m.group(3)) if m.group(3) else year
-            d = _safe_date(yr, mon, day)
-            if not d:
-                continue
-            # Title is the next non-empty line after the date.
-            tail = text[m.end():].lstrip()
-            title_line = tail.split("\n", 1)[0].strip() if tail else ""
-            title_line = re.sub(r"^[-–—:]\s*", "", title_line)
-            if not title_line or len(title_line) < 3:
-                continue
-            # Time is a "7PM" / "1pm-4pm" pattern anywhere in the next 200 chars.
-            time_m = re.search(r"\d{1,2}(?::\d{2})?\s*(?:[APap][Mm])(?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?",
-                               tail[:200])
-            t = _normalize_time(time_m.group(0)) if time_m else None
-            key = (d, title_line.lower())
-            if key in seen:
-                continue
-            seen.add(key)
-            events.append({"date": d, "title": title_line, "time": t})
+            if date_str is None:
+                m = date_re.match(ptxt)
+                if m:
+                    mon = _MONTHS.get(m.group(1).lower())
+                    day = int(m.group(2))
+                    yr = int(m.group(3)) if m.group(3) else year
+                    if mon:
+                        d = _safe_date(yr, mon, day)
+                        if d:
+                            # Year inference — if the parsed month is more than
+                            # 6 months behind today, assume it rolled into next year.
+                            today = date.today()
+                            parsed = date.fromisoformat(d)
+                            if not m.group(3) and (parsed - today).days < -180:
+                                d = _safe_date(yr + 1, mon, day) or d
+                            date_str = d
+                    continue
+            if time_str is None:
+                tm = time_re.search(ptxt)
+                if tm:
+                    time_str = _normalize_time(tm.group(0))
+            if date_str and time_str:
+                break
+
+        if not date_str:
+            continue
+        key = (date_str, title.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append({"date": date_str, "title": title, "time": time_str})
 
     return events
 

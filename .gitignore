@@ -52,3 +52,9 @@ web/screenshots/
 # prod; rotate every few weeks by re-exporting.
 yt-cookies.txt
 yt-cookies-*.txt
+
+# SSM command output dumps and Secrets Manager exports often contain
+# credentials in plaintext (DB URLs, API keys). Never commit.
+ssm_*.json
+sm.json
+

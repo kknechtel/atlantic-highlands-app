@@ -67,6 +67,17 @@ JWT_SECRET = _get("JWT_SECRET", SECRET_KEY)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = int(_get("JWT_EXPIRATION_HOURS", "24"))
 
+# Refuse to start with a placeholder/weak JWT_SECRET. "change-me-in-production"
+# is the literal default committed in this repo and in .env.example — running
+# with it lets anyone forge a JWT for any user, including admins. If you hit
+# this in local dev:
+#   export JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
+if JWT_SECRET in ("", "change-me-in-production") or len(JWT_SECRET) < 32:
+    raise RuntimeError(
+        "JWT_SECRET is unset, too short, or using the placeholder default. "
+        "Set JWT_SECRET to a value of at least 32 characters."
+    )
+
 # Email — digests, alerts. SES is the only sender; if FROM is blank, sends are
 # silently dropped (useful for local dev where no SES identity is verified).
 DIGEST_FROM_EMAIL = _get("DIGEST_FROM_EMAIL", "")

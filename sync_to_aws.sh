@@ -13,8 +13,8 @@ RDS_USER="ahAdmin"
 RDS_DB="atlantic_highlands"
 S3_BUCKET="atlantic-highlands-documents-738265942536"
 EC2_INSTANCE="i-06424a799368c7d6d"
-SECRET_ID="${AH_RDS_SECRET_ID:-bank-processor-api-secrets}"
-SECRET_KEY="${AH_RDS_SECRET_KEY:-AH_RDS_PASSWORD}"
+SECRET_ID="${AH_RDS_SECRET_ID:-atlantic-highlands/production}"
+SECRET_KEY="${AH_RDS_SECRET_KEY:-RDS_PASSWORD}"
 
 if [ -z "${RDS_PASS:-}" ]; then
   RDS_PASS=$(aws secretsmanager get-secret-value \

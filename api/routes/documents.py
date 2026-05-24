@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.document import Document, Project
 from models.user import User
-from auth import get_current_user
+from auth import get_current_user, get_admin_user
 from services.s3_service import S3Service, LOCAL_STORAGE_DIR
 
 logger = logging.getLogger(__name__)
@@ -434,18 +434,29 @@ async def upload_multiple_documents(
 
 
 @router.get("/serve/{key:path}")
-def serve_local_file(key: str):
-    """Serve a locally stored file (used when S3 is not configured)."""
-    ref_path = os.path.join(LOCAL_STORAGE_DIR, key + ".ref")
-    if os.path.exists(ref_path):
-        with open(ref_path, "r") as f:
-            real_path = f.read().strip()
-        if os.path.exists(real_path):
-            return FileResponse(real_path)
+def serve_local_file(
+    key: str,
+    user: User = Depends(get_current_user),
+):
+    """Serve a locally stored file (used when S3 is not configured).
 
-    filepath = os.path.join(LOCAL_STORAGE_DIR, key)
-    if os.path.exists(filepath):
-        return FileResponse(filepath)
+    Auth required. Key must resolve to a path inside LOCAL_STORAGE_DIR.
+    The .ref indirection used by /bulk-import is NOT followed here — those
+    pointers reference paths outside the storage dir, which would be an LFI
+    sink. Legitimate per-document access goes through GET /{id}/file, which
+    resolves the s3_key via the Document row (and uses s3.download_file
+    server-side, never accepting a raw key from the client).
+    """
+    if not key or key.startswith("/") or ".." in key.split("/"):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    storage_root = os.path.realpath(LOCAL_STORAGE_DIR)
+    candidate = os.path.realpath(os.path.join(storage_root, key))
+    if candidate != storage_root and not candidate.startswith(storage_root + os.sep):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if os.path.isfile(candidate):
+        return FileResponse(candidate)
 
     raise HTTPException(status_code=404, detail="File not found")
 
@@ -459,9 +470,16 @@ class BulkImportRequest(BaseModel):
 def bulk_import(
     req: BulkImportRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_admin_user),
 ):
-    """Import all files from a local directory into the document library."""
+    """Import all files from a local directory into the document library.
+
+    Admin-only: this endpoint walks an arbitrary server filesystem path and
+    registers .ref pointers to every file it finds. A non-admin user could
+    use it to enumerate and (via download_file) read anything the API
+    process can read. In practice this is a dev-only convenience for
+    ingesting a local Box folder; production should not call it.
+    """
     directory = req.directory
     if not os.path.isdir(directory):
         raise HTTPException(status_code=400, detail=f"Directory not found: {directory}")

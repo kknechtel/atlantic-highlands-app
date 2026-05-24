@@ -41,6 +41,15 @@ VENUES = [
         {"url": "https://www.seafarernj.com/",
          "parser": html_parse.parse_seafarer},
     ),
+    (
+        "The Sandbox at Seastreak", "Highlands",
+        html_parse.fetch_events,
+        # Home page only — no /events page. Each daily scrape pulls the
+        # current week (~4 acts). Future weeks load via client-side
+        # calendar widget which a plain HTTP GET can't trigger.
+        {"url": "https://sandbox.seastreak.com/",
+         "parser": html_parse.parse_sandbox},
+    ),
     # ── Atlantic Highlands ────────────────────────────────────────
     (
         "On the Deck", "Atlantic Highlands",
@@ -48,7 +57,6 @@ VENUES = [
         {"collection_url": "https://www.onthedeckrestaurant.com/live-music"},
     ),
     # ── Deferred ──────────────────────────────────────────────────
-    # Off the Hook            (Squarespace events collection is empty)
-    # The Sandbox at Seastreak (WordPress home page only, no event CPT)
-    # Donovan's Reef          (BeatGig client-side embed, needs Playwright)
+    # Off the Hook   (Squarespace events collection is empty)
+    # Donovan's Reef (BeatGig client-side embed, needs Playwright)
 ]

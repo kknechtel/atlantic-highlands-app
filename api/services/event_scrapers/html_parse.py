@@ -233,6 +233,120 @@ def parse_chubby_pickle(json_body: str, year: int) -> list[dict]:
     return events
 
 
+def parse_sandbox(html: str, year: int) -> list[dict]:
+    """The Sandbox at Seastreak homepage at https://sandbox.seastreak.com/.
+
+    Layout (current week only — no separate /events page):
+        <div class="event">
+          <div class="date">
+            <div class="day">23</div>
+            <div class="weekday-month">
+              <div class="weekday">Saturday</div>
+              <div class="month">May</div>
+            </div>
+          </div>
+          <div class="info">
+            <div class="music">
+              <h3>Music</h3>
+              <div class="acts">
+                <div class="act type-free|type-cover|type-ticketed">
+                  <div class="photo">…</div>
+                  <h4>Band Name</h4>
+                  <p>6-9pm</p>
+                </div>
+                ...
+              </div>
+            </div>
+          </div>
+        </div>
+
+    The class `type-free|type-cover|type-ticketed` carries the cover
+    status. We only emit acts whose title doesn't look like a placeholder
+    ("Sandbox Closed Due to Weather" etc).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    # Photo SVGs are decorative — strip them so .get_text() is clean.
+    for s in soup.find_all(["svg", "style", "script"]):
+        s.decompose()
+
+    events: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    today = date.today()
+
+    for ev_div in soup.select("div.event"):
+        date_box = ev_div.select_one("div.date")
+        if not date_box:
+            continue
+        day_el = date_box.select_one(".day")
+        month_el = date_box.select_one(".month")
+        if not (day_el and month_el):
+            continue
+        try:
+            day = int(day_el.get_text(strip=True))
+        except ValueError:
+            continue
+        mon = _MONTHS.get(month_el.get_text(strip=True).lower())
+        if not mon:
+            continue
+        date_str = _safe_date(year, mon, day)
+        if not date_str:
+            continue
+        # Year rollover for past months
+        parsed = date.fromisoformat(date_str)
+        if (parsed - today).days < -180:
+            date_str = _safe_date(year + 1, mon, day) or date_str
+
+        # Acts live under .music .acts (Food trucks go under .food, ignored)
+        for act in ev_div.select("div.music div.act"):
+            text = act.get_text(" | ", strip=True)
+            if not text:
+                continue
+            parts = [p.strip() for p in text.split("|") if p.strip()]
+            if not parts:
+                continue
+            # First non-time part is the title; a part with am/pm is the time.
+            time_str: Optional[str] = None
+            title_parts: list[str] = []
+            time_re = re.compile(r"^\s*\d{1,2}(?::\d{2})?\s*[-–—]?\s*\d{0,2}(?::\d{2})?\s*[APap][Mm]?", re.I)
+            for p in parts:
+                if time_re.search(p) and any(c.isdigit() for c in p):
+                    time_str = _normalize_time(p)
+                else:
+                    title_parts.append(p)
+            title = " ".join(title_parts).strip(" -·|")
+            if not title or len(title) < 2:
+                continue
+            # Skip closure placeholders and other non-music notices
+            low = title.lower()
+            if any(k in low for k in ("closed due to", "no music", "tbd", "tba",
+                                       "no show", "no event", "weather")):
+                continue
+
+            # Event type from the .act class
+            act_classes = " ".join(act.get("class") or [])
+            etype = "live_music"  # all music acts are live_music for our schema
+            cover_note = None
+            if "type-cover" in act_classes:
+                cover_note = "Cover charge at door"
+            elif "type-ticketed" in act_classes:
+                cover_note = "Ticketed"
+            elif "type-free" in act_classes:
+                cover_note = "Free"
+
+            key = (date_str, title.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append({
+                "date": date_str,
+                "title": title,
+                "time": time_str,
+                "description": cover_note,
+            })
+
+    return events
+
+
 def parse_seafarer(html: str, year: int) -> list[dict]:
     """Free-text schedule block on the Seafarer homepage. Lines look like:
         "Friday, May 22 — Charles Krause at 6PM"

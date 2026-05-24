@@ -1,10 +1,13 @@
-"""Authentication routes - login, register, magic link invites."""
+"""Authentication routes - login, register, magic link invites, Google."""
 import logging
+import re
+import secrets
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from config import GOOGLE_OAUTH_CLIENT_ID
 from database import get_db
 from models.user import User, InviteToken
 from auth import (
@@ -14,6 +17,7 @@ from auth import (
     get_current_user,
     get_current_user_allow_pending,
 )
+from services.google_oauth import verify_id_token as verify_google_id_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,7 +88,9 @@ def _validate_invite(db: Session, token_str: str) -> InviteToken:
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     """Standard email/password login."""
     user = db.query(User).filter(User.email == req.email).first()
-    if not user or not verify_password(req.password, user.hashed_password):
+    # hashed_password is now nullable (Google-only users have it None) — reject
+    # password login on those accounts cleanly instead of crashing on bcrypt.
+    if not user or not user.hashed_password or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.is_active:
@@ -93,6 +99,90 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token)
+
+
+# ── Google Sign-In ──────────────────────────────────────────────────────────
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+
+
+def _slugify_username(email: str, db: Session) -> str:
+    """Generate a unique username from an email's local part. Falls back to
+    appending a random suffix if the base slug is taken."""
+    base = re.sub(r"[^a-z0-9_]+", "_", email.split("@", 1)[0].lower())[:24] or "user"
+    candidate = base
+    for _ in range(5):
+        if not db.query(User).filter(User.username == candidate).first():
+            return candidate
+        candidate = f"{base}_{secrets.token_hex(2)}"
+    return f"user_{secrets.token_hex(6)}"
+
+
+@router.post("/google", response_model=TokenResponse)
+def login_google(req: GoogleLoginRequest, db: Session = Depends(get_db)):
+    """Verify a Google ID token (issued by GIS in the browser) and exchange
+    it for our JWT.
+
+    Account reconciliation (mirrors the Edgewater pattern):
+      1. Match by google_id  → existing OAuth user, refresh picture + last_login
+      2. Else match by email → link Google to an existing password account
+      3. Else create a new user (active=True; Google-verified email is
+         enough trust for events.ahnj.info — civic-app gates are unchanged)
+    """
+    if not GOOGLE_OAUTH_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Sign-In not configured on this server",
+        )
+
+    identity = verify_google_id_token(req.id_token, GOOGLE_OAUTH_CLIENT_ID)
+    if not identity or not identity.get("email") or not identity.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid Google ID token")
+
+    email = identity["email"]
+    sub = identity["sub"]
+
+    # 1) Existing OAuth user
+    user = db.query(User).filter(User.google_id == sub).first()
+    if user is None:
+        # 2) Existing password user with the same email — link Google to them
+        user = db.query(User).filter(User.email == email).first()
+        if user is not None:
+            user.google_id = sub
+            logger.info("Linked Google account %s to existing user %s", sub, email)
+
+    # 3) Brand-new user
+    if user is None:
+        user = User(
+            email=email,
+            username=_slugify_username(email, db),
+            hashed_password=None,
+            full_name=identity.get("name"),
+            google_id=sub,
+            picture_url=identity.get("picture"),
+            display_name=identity.get("given_name") or identity.get("name"),
+            is_active=True,   # Google-verified email; auto-active for community app
+            is_admin=False,
+        )
+        db.add(user)
+        logger.info("Created Google user %s (sub=%s)", email, sub)
+
+    # Always refresh picture + display_name + last_login on every Google login
+    if identity.get("picture"):
+        user.picture_url = identity["picture"]
+    if not user.display_name:
+        user.display_name = identity.get("given_name") or identity.get("name") or None
+    user.last_login_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(
+        access_token=token,
+        pending_approval=(not user.is_active),
+    )
 
 
 @router.get("/invite/{token}", response_model=InviteCheckResponse)

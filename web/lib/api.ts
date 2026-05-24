@@ -59,6 +59,17 @@ export async function login(email: string, password: string) {
   return data;
 }
 
+/** Exchange a Google ID token (from Google Identity Services in the browser)
+ *  for our JWT. The backend verifies the token server-side via the
+ *  GOOGLE_OAUTH_CLIENT_ID env var. */
+export async function loginWithGoogle(idToken: string) {
+  const data = await request<{ access_token: string; pending_approval?: boolean }>("/api/auth/google", {
+    method: "POST", body: JSON.stringify({ id_token: idToken }),
+  });
+  localStorage.setItem("ah_token", data.access_token);
+  return data;
+}
+
 export async function getMe(): Promise<User> { return request<User>("/api/auth/me"); }
 export function logout() { localStorage.removeItem("ah_token"); }
 

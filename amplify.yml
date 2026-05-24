@@ -13,6 +13,10 @@ applications:
             # currently at the EIP cap, so amplify.yml must be edited each
             # time the instance restarts).
             - echo "NEXT_PUBLIC_API_URL=http://107.20.14.246" > .env.local
+            # Google Sign-In client ID. Stored in Amplify env vars (Console →
+            # App settings → Environment variables) so it can rotate without
+            # a code change. Empty string disables the Google button cleanly.
+            - echo "NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}" >> .env.local
             - npm run build
       artifacts:
         baseDirectory: .next

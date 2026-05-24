@@ -299,6 +299,36 @@ def _migrate():
             except Exception as e:
                 logger.warning(f"Index {name} skipped: {e}")
 
+        # 4a. Google Sign-In columns on users table. Idempotent (IF NOT EXISTS).
+        # hashed_password also needs to become nullable so Google-only users
+        # can exist; the ALTER is a no-op on Postgres when already nullable.
+        if _table_exists("users"):
+            user_cols = [
+                ("google_id", "TEXT UNIQUE"),
+                ("picture_url", "TEXT"),
+                ("display_name", "TEXT"),
+                ("last_login_at", "TIMESTAMP"),
+            ]
+            for col, ctype in user_cols:
+                exists = conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'users' AND column_name = :c"
+                ), {"c": col}).fetchone()
+                if not exists:
+                    try:
+                        conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {ctype}"))
+                        logger.info(f"Added column users.{col}")
+                    except Exception as e:
+                        logger.warning(f"users.{col} add skipped: {e}")
+            try:
+                conn.execute(text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL"))
+            except Exception:
+                pass  # already nullable
+            try:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_google_id ON users(google_id)"))
+            except Exception as e:
+                logger.warning(f"users.google_id index skipped: {e}")
+
         # 4b. Backfill calendar_events.event_type for rows still tagged
         # 'general' (pre-classification). Keyword list mirrors
         # scripts.scrape_events._GOVT_KEYWORDS so both sides agree on what

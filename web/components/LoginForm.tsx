@@ -2,8 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 const brandColor = "#385854";
+
+// Detect events-app subdomain to swap branding + Google-first emphasis.
+// Window check is safe — LoginForm is "use client".
+function isEventsApp(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.hostname.startsWith("events.");
+}
 
 export default function LoginForm() {
   const { login, magicLinkLogin, inviteToken } = useAuth();
@@ -55,6 +63,12 @@ export default function LoginForm() {
   };
 
   const isInviteFlow = inviteToken && inviteValid;
+  const eventsApp = isEventsApp();
+  const headerBg = eventsApp ? "#1d7a6c" : brandColor;
+  const headerTitle = eventsApp ? "Around Town" : "Atlantic Highlands";
+  const headerSub = eventsApp
+    ? "Events · check-ins · chat"
+    : "Document Intelligence Platform";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -64,17 +78,30 @@ export default function LoginForm() {
           <div className="flex items-center justify-center mb-1">
             <div
               className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: brandColor }}
+              style={{ backgroundColor: headerBg }}
             >
               <span className="text-white font-bold text-lg">AH</span>
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 text-center mt-3">
-            Atlantic Highlands
+            {headerTitle}
           </h1>
           <p className="text-sm text-gray-500 text-center mt-1 mb-6">
-            Document Intelligence Platform
+            {headerSub}
           </p>
+
+          {/* Google Sign-In — primary on events-app, secondary on civic.
+              Renders null when NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID is unset. */}
+          <div className="mb-4 flex justify-center">
+            <GoogleSignInButton onError={setError} />
+          </div>
+          {!inviteToken && (
+            <div className="flex items-center gap-2 mb-4 text-[10px] uppercase tracking-wider text-gray-400">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span>or email</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+          )}
 
           {/* Invite checking */}
           {inviteToken && inviteChecking && (

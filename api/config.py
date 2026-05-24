@@ -72,3 +72,9 @@ JWT_EXPIRATION_HOURS = int(_get("JWT_EXPIRATION_HOURS", "24"))
 DIGEST_FROM_EMAIL = _get("DIGEST_FROM_EMAIL", "")
 DIGEST_REPLY_TO = _get("DIGEST_REPLY_TO", "")
 PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", "https://ahnj.info")
+
+# Google Sign-In. Client ID from Google Cloud Console > APIs & Services >
+# Credentials > OAuth 2.0 Client ID (Web application type). When blank,
+# /api/auth/google returns 503 — local dev without GSI configured can
+# still use password login.
+GOOGLE_OAUTH_CLIENT_ID = _get("GOOGLE_OAUTH_CLIENT_ID", "")

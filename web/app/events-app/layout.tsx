@@ -74,7 +74,9 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    // min-h-[100dvh] (dynamic viewport) instead of min-h-screen so the
+    // layout doesn't jump on iOS when Safari's URL bar shows/hides.
+    <div className="min-h-[100dvh] flex bg-gray-50">
       {/* DESKTOP SIDEBAR (md+) ─────────────────────────────────────── */}
       <aside className="hidden md:flex md:flex-col w-56 lg:w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
         {/* Brand */}
@@ -215,10 +217,19 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 max-w-5xl w-full mx-auto pb-24 md:pb-8 md:py-2">{children}</main>
       </div>
 
-      {/* MOBILE BOTTOM TAB NAV (md:hidden) ──────────────────────────── */}
+      {/* MOBILE BOTTOM TAB NAV (md:hidden) ──────────────────────────────
+          Pinned to the viewport bottom and isolated into its own stacking
+          context so no parent transform/filter can detach it. iOS
+          shadow gives a clear "floating bar" affordance. z-40 lets modals
+          (z-50) cover it; bump only if a higher layer needs to too. */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] isolate"
+        style={{
+          paddingBottom: "env(safe-area-inset-bottom)",
+          // Belt-and-suspenders: pin via inline style too, in case Tailwind
+          // is purged from a parent that creates a containing block.
+          position: "fixed",
+        }}
       >
         <div className="max-w-3xl mx-auto flex">
           {visibleTabs.map((tab) => {
@@ -228,11 +239,11 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
               <Link
                 key={tab.href}
                 href={tab.href}
-                className="flex-1 flex flex-col items-center justify-center py-2.5 text-[10px]"
+                className="flex-1 flex flex-col items-center justify-center py-2 text-[10px] min-w-0"
                 style={{ color: active ? eventsBrand : "#6b7280" }}
               >
-                <Icon className="w-5 h-5 mb-0.5" />
-                <span>{tab.label}</span>
+                <Icon className="w-5 h-5 mb-0.5 flex-shrink-0" />
+                <span className="truncate w-full text-center">{tab.label}</span>
               </Link>
             );
           })}

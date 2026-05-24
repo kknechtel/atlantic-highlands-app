@@ -52,7 +52,9 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8">
+    // pb-28 reserves room for the mobile bottom nav so the form card
+    // doesn't sit underneath it when the screen is short.
+    <div className="min-h-[calc(100dvh-80px)] flex items-center justify-center bg-gray-50 px-4 py-8 pb-28 md:pb-8">
       <div className="max-w-md w-full">
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="flex items-center justify-center mb-1">

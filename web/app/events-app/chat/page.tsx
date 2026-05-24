@@ -154,7 +154,7 @@ export default function ChatPage() {
   const orderedFeed = useMemo(() => [...(messages || [])].reverse(), [messages]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] md:h-[calc(100vh-80px)]">
+    <div className="flex flex-col h-[calc(100dvh-140px)] md:h-[calc(100dvh-80px)]">
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
         <h1 className="text-base font-semibold text-gray-900 flex items-center gap-2">
           <ChatBubbleLeftRightIcon className="w-4 h-4" style={{ color: eventsBrand }} />

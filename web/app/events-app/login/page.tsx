@@ -23,9 +23,11 @@ export default function LoginPage() {
   }, [user, loading, router]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    // Reserve bottom space for the mobile nav so guest-browse links
+    // and the form's bottom action area aren't covered.
+    <div className="min-h-[calc(100dvh-80px)] flex flex-col pb-28 md:pb-8">
       <LoginForm />
-      <div className="px-4 pb-8 text-center">
+      <div className="px-4 pb-2 text-center">
         <p className="text-xs text-gray-500">
           Don&apos;t have an account?{" "}
           <Link href="/signup" className="font-medium hover:underline" style={{ color: eventsBrand }}>

@@ -73,6 +73,13 @@ def main() -> int:
     months = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec"
     matches = re.findall(rf"\b(?:{months})[a-z]*\.?\s+\d{{1,2}}(?:st|nd|rd|th)?", body, re.I)
     print(f"\ndate-shaped matches: {len(matches)} -- first 8: {matches[:8]}")
+
+    # CLI flag: --dump <selector> prints inner text of first 3 elements
+    if "--dump" in sys.argv:
+        sel = sys.argv[sys.argv.index("--dump") + 1]
+        print(f"\n--- inner text of first 3 `{sel}` ---")
+        for i, el in enumerate(soup.select(sel)[:3]):
+            print(f"\n[{i}]\n{el.prettify()[:1200]}")
     return 0
 
 

@@ -11,14 +11,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftIcon, CalendarDaysIcon, ClockIcon, MapPinIcon,
   MusicalNoteIcon, TicketIcon, UserGroupIcon, XMarkIcon,
-  CheckIcon,
+  CheckIcon, ArrowDownTrayIcon, ShareIcon, ChatBubbleLeftRightIcon,
+  EnvelopeIcon, DevicePhoneMobileIcon, LinkIcon,
 } from "@heroicons/react/24/outline";
+import { googleCalendarUrl, outlookCalendarUrl, downloadIcs } from "@/lib/calendarLinks";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import { StarIcon } from "@heroicons/react/24/outline";
 
 import {
   getCalendarEvent, listCheckinsAtVenue, createCheckin,
   getEventRsvp, rsvpToEvent, unrsvpFromEvent,
+  postCommunityMessage,
 } from "@/lib/api";
 import { findBandInGuide, socialMediaUrl, CATEGORY_LABELS } from "@/lib/bandGuide";
 import { useAuth } from "@/app/contexts/AuthContext";
@@ -105,6 +108,22 @@ export default function EventDetailPage({
 
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState("");
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const shareToChat = useMutation({
+    mutationFn: () => postCommunityMessage({
+      body: shareMessage.trim() || `Going to ${ev?.title || "this event"}!`,
+      ref_type: "event",
+      ref_id: id,
+    }),
+    onSuccess: () => {
+      setShowShareModal(false);
+      setShareMessage("");
+      qc.invalidateQueries({ queryKey: ["community-messages"] });
+    },
+  });
 
   const create = useMutation({
     mutationFn: () => createCheckin({
@@ -138,6 +157,26 @@ export default function EventDetailPage({
   }
 
   const isMusic = ev.event_type === "live_music";
+
+  // Public URL used by Share buttons. SSR-safe (window only on client).
+  const eventUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/calendar/${id}`
+    : `https://events.ahnj.info/calendar/${id}`;
+  const shareSubject = `${ev.title} — ${fmtLongDate(ev.date)}${venueName ? ` @ ${venueName}` : ""}`;
+  const shareBody = `${ev.title}\n${fmtLongDate(ev.date)}${ev.time ? ` · ${ev.time}` : ""}${venueName ? `\n${venueName}` : ""}\n\n${eventUrl}`;
+  const mailtoUrl = `mailto:?subject=${encodeURIComponent(shareSubject)}&body=${encodeURIComponent(shareBody)}`;
+  const smsUrl = `sms:?&body=${encodeURIComponent(shareBody)}`;
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(eventUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      // older browsers — fall back to prompt
+      window.prompt("Copy this link:", eventUrl);
+    }
+  };
 
   return (
     <div className="p-4 space-y-5">
@@ -206,6 +245,96 @@ export default function EventDetailPage({
           <p className="text-sm text-gray-800 whitespace-pre-wrap">{ev.description}</p>
         </section>
       )}
+
+      {/* Add to calendar — Google, Outlook, Apple/ICS */}
+      <section className="bg-white border border-gray-200 rounded-lg p-3">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          Add to your calendar
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={googleCalendarUrl({
+              title: ev.title, date: ev.date, time: ev.time, end_time: ev.end_time,
+              venue: ev.venue, city: ev.city, description: ev.description, ticket_url: ev.ticket_url,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+          >
+            <CalendarDaysIcon className="w-3.5 h-3.5" /> Google ↗
+          </a>
+          <a
+            href={outlookCalendarUrl({
+              title: ev.title, date: ev.date, time: ev.time, end_time: ev.end_time,
+              venue: ev.venue, city: ev.city, description: ev.description, ticket_url: ev.ticket_url,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+          >
+            <CalendarDaysIcon className="w-3.5 h-3.5" /> Outlook ↗
+          </a>
+          <button
+            onClick={() => downloadIcs({
+              title: ev.title, date: ev.date, time: ev.time, end_time: ev.end_time,
+              venue: ev.venue, city: ev.city, description: ev.description, ticket_url: ev.ticket_url,
+            })}
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+            title="Apple Calendar / Fantastical / Outlook desktop"
+          >
+            <ArrowDownTrayIcon className="w-3.5 h-3.5" /> .ics
+          </button>
+        </div>
+      </section>
+
+      {/* Share — to community chat, email, SMS, or copy link */}
+      <section className="bg-white border border-gray-200 rounded-lg p-3">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <ShareIcon className="w-3.5 h-3.5" /> Share this event
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {user && (
+            <button
+              onClick={() => {
+                setShareMessage(`Going to ${ev.title}!`);
+                setShowShareModal(true);
+              }}
+              className="px-3 py-1.5 text-xs rounded-md text-white inline-flex items-center gap-1.5"
+              style={{ backgroundColor: eventsBrand }}
+            >
+              <ChatBubbleLeftRightIcon className="w-3.5 h-3.5" /> Post to chat
+            </button>
+          )}
+          <a
+            href={mailtoUrl}
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+          >
+            <EnvelopeIcon className="w-3.5 h-3.5" /> Email
+          </a>
+          <a
+            href={smsUrl}
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+          >
+            <DevicePhoneMobileIcon className="w-3.5 h-3.5" /> Text
+          </a>
+          <button
+            onClick={copyLink}
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 inline-flex items-center gap-1.5"
+          >
+            {linkCopied
+              ? <><CheckIcon className="w-3.5 h-3.5 text-green-600" /> Copied</>
+              : <><LinkIcon className="w-3.5 h-3.5" /> Copy link</>}
+          </button>
+        </div>
+        {!user && (
+          <div className="text-[11px] text-gray-400 mt-2">
+            <Link href="/login" className="hover:underline" style={{ color: eventsBrand }}>
+              Sign in
+            </Link>{" "}
+            to share to the community chat.
+          </div>
+        )}
+      </section>
 
       {/* Band guide enrichment (music events only) */}
       {guide && (
@@ -383,6 +512,56 @@ export default function EventDetailPage({
                 style={{ backgroundColor: eventsBrand }}
               >
                 {create.isPending ? "Checking in…" : "Check in"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share-to-chat modal — composes a community message with the event
+          attached as a ref so other users see a rich preview card. */}
+      {showShareModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4"
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-sm p-4 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-base font-semibold text-gray-900">Post to community chat</div>
+              <button onClick={() => setShowShareModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                <XMarkIcon className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="text-xs text-gray-500 mb-3">
+              Your message links back to <span className="text-gray-700">{ev.title}</span>.
+            </div>
+            <textarea
+              value={shareMessage}
+              onChange={e => setShareMessage(e.target.value.slice(0, 280))}
+              placeholder="Say something about this event…"
+              rows={3}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+            />
+            <div className="text-[10px] text-gray-400 mt-1 text-right">
+              {shareMessage.length}/280
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="px-3 py-1.5 text-sm rounded-md text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => shareToChat.mutate()}
+                disabled={shareToChat.isPending}
+                className="px-3 py-1.5 text-sm rounded-md text-white disabled:opacity-50"
+                style={{ backgroundColor: eventsBrand }}
+              >
+                {shareToChat.isPending ? "Posting…" : "Post"}
               </button>
             </div>
           </div>

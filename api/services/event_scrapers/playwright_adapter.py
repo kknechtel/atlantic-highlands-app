@@ -173,16 +173,26 @@ def parse_chubby_pickle_dom(html: str, year: int) -> list[dict]:
             parts = [p.strip() for p in text.split("|") if p.strip()]
             if not parts:
                 continue
-            # Title is the first part that isn't a time
+            # Bug fix 2026-05-24: the earlier version only excluded the
+            # FIRST time-shaped part, so "Ray Tigre | 8:30 PM | - 11:59 PM"
+            # produced title="Ray Tigre - 11:59 PM" with the end-time
+            # smushed in. Strip every time-shaped or leading-dash-time
+            # part from title; use the first one as start_time, second as
+            # end_time.
+            time_part_re = re.compile(
+                r"^\s*[-–—]?\s*\d{1,2}(?::\d{2})?\s*[APap][Mm]\s*$"
+            )
             title_parts = []
-            time_str = None
+            times: list[str] = []
             for p in parts:
-                if time_str is None and re.match(r"^\s*-?\s*\d{1,2}(?::\d{2})?\s*[APap][Mm]", p):
+                if time_part_re.match(p):
                     tm = time_re.search(p)
                     if tm:
-                        time_str = _normalize_time(tm.group(0))
+                        times.append(_normalize_time(tm.group(0)))
                     continue
                 title_parts.append(p)
+            time_str = times[0] if times else None
+            end_time_str = times[1] if len(times) > 1 else None
             title = " ".join(title_parts).strip()
             if not title or len(title) < 2:
                 continue
@@ -190,7 +200,10 @@ def parse_chubby_pickle_dom(html: str, year: int) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
-            events.append({"date": d, "title": title, "time": time_str})
+            events.append({
+                "date": d, "title": title, "time": time_str,
+                "end_time": end_time_str,
+            })
     return events
 
 

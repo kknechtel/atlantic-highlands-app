@@ -919,6 +919,57 @@ export async function unrsvpFromEvent(eventId: string): Promise<RsvpSummary> {
   });
 }
 
+// ── Admin: ingest a venue's calendar image (Claude Vision) ────────────
+
+export interface ParsedIngestEvent {
+  date: string;             // YYYY-MM-DD
+  title: string;
+  time?: string | null;
+  end_time?: string | null;
+}
+
+export interface IngestParseResponse {
+  events: ParsedIngestEvent[];
+  notes: string;
+  dropped: number;
+  model: string;
+}
+
+export interface IngestCommitResponse {
+  inserted: number;
+  skipped: number;
+  events_in: number;
+}
+
+export async function parseCalendarImage(payload: {
+  file: File;
+  venue: string;
+  city?: string;
+  hint_month?: string;
+}): Promise<IngestParseResponse> {
+  const fd = new FormData();
+  fd.append("image", payload.file);
+  fd.append("venue", payload.venue);
+  if (payload.city) fd.append("city", payload.city);
+  if (payload.hint_month) fd.append("hint_month", payload.hint_month);
+  return request<IngestParseResponse>("/api/event-ingest/parse", {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export async function commitIngestedEvents(payload: {
+  venue: string;
+  city?: string;
+  events: ParsedIngestEvent[];
+  source?: string;
+}): Promise<IngestCommitResponse> {
+  return request<IngestCommitResponse>("/api/event-ingest/commit", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── My calendar ────────────────────────────────────────────────────────
 
 export interface SavedEvent {

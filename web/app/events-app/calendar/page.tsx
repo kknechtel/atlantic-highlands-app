@@ -420,6 +420,34 @@ export default function EventsPage() {
         </div>
       )}
 
+      {/* Bottom month nav (mobile only) — desktop already has the top
+          control + a sticky sidebar. On mobile the events list can be
+          long enough that scrolling to the top to change month is
+          annoying, so we mirror the control at the bottom. */}
+      <div className="md:hidden mt-6 flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-3">
+        <button
+          onClick={prevMonth}
+          className="flex items-center gap-1 text-sm text-gray-700 hover:text-gray-900 px-2 py-1 -mx-2 rounded"
+          aria-label="Previous month"
+        >
+          <ChevronLeftIcon className="w-5 h-5 text-gray-600" />
+          <span>
+            {new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "short" })}
+          </span>
+        </button>
+        <h2 className="text-base font-semibold text-gray-900">{monthName}</h2>
+        <button
+          onClick={nextMonth}
+          className="flex items-center gap-1 text-sm text-gray-700 hover:text-gray-900 px-2 py-1 -mx-2 rounded"
+          aria-label="Next month"
+        >
+          <span>
+            {new Date(year, month + 1, 1).toLocaleDateString("en-US", { month: "short" })}
+          </span>
+          <ChevronRightIcon className="w-5 h-5 text-gray-600" />
+        </button>
+      </div>
+
       {/* Venue links */}
       <div className="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Venues & Entertainment</h3>

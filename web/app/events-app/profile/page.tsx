@@ -117,6 +117,24 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      {/* Admin tools — only rendered for admin accounts. */}
+      {user.is_admin && (
+        <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin tools</div>
+          <Link
+            href="/admin/event-ingest"
+            className="block text-sm hover:underline"
+            style={{ color: eventsBrand }}
+          >
+            Ingest calendar image → events ↗
+          </Link>
+          <p className="text-[11px] text-gray-500">
+            Drop a venue&apos;s monthly calendar image (Sandbox, Gaslight, etc.)
+            and Claude Vision will extract the schedule.
+          </p>
+        </section>
+      )}
+
       <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Account</div>
         <div className="text-xs text-gray-600">

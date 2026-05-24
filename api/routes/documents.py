@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.document import Document, Project
 from models.user import User
-from auth import get_current_user, get_admin_user
+from auth import (
+    get_current_user,
+    get_admin_user,
+    require_view,
+    require_edit,
+    require_owner_or_admin,
+    shared_resource_ids,
+)
 from services.s3_service import S3Service, LOCAL_STORAGE_DIR
 
 logger = logging.getLogger(__name__)
@@ -80,9 +87,15 @@ def list_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """List documents (slim — no notes). Use GET /{id} for full details with notes."""
+    """List documents (slim — no notes). Use GET /{id} for full details with notes.
+    Scoped to projects the user can view (admins see all)."""
     query = db.query(Document)
+    accessible = _accessible_project_ids(db, user)
+    if accessible is not None:
+        query = query.filter(Document.project_id.in_(accessible)) if accessible else query.filter(False)
     if project_id:
+        # If the user asked for a specific project they can't see, the
+        # accessible filter already collapses the result set — fine.
         query = query.filter(Document.project_id == project_id)
     if category:
         query = query.filter(Document.category == category)
@@ -116,8 +129,11 @@ def count_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Total document count for pagination."""
+    """Total document count for pagination. Scoped to projects the user can view."""
     query = db.query(Document)
+    accessible = _accessible_project_ids(db, user)
+    if accessible is not None:
+        query = query.filter(Document.project_id.in_(accessible)) if accessible else query.filter(False)
     if project_id:
         query = query.filter(Document.project_id == project_id)
     if category:
@@ -156,18 +172,31 @@ class ConfirmUploadRequest(BaseModel):
     fiscal_year: str | None = None
 
 
-def _resolve_project(db: Session, project_id: str, user: User) -> Project:
-    """Get project by id, or auto-create a default 'User Uploads' project."""
+def _resolve_project(db: Session, project_id: str | None, user: User) -> Project:
+    """Resolve a project the user can WRITE to. If project_id is missing or
+    'default', returns (or creates) the user's personal uploads project.
+    Raises 404 if the specified project doesn't exist or the user lacks edit
+    access — same response in both cases to avoid leaking existence."""
     if project_id and project_id != "default":
         project = db.query(Project).filter(Project.id == project_id).first()
-        if project:
-            return project
-    # Use or create the default 'User Uploads' project
-    project = db.query(Project).filter(Project.name == "User Uploads").first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            require_edit(db, "projects", project.created_by, project.id, user)
+        except HTTPException:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return project
+    # Per-user default project. The old behavior used a single shared
+    # "User Uploads" project — that meant any user could dump docs into a
+    # bucket that anyone else with project access could read.
+    personal_name = f"{user.email}'s Uploads"
+    project = db.query(Project).filter(
+        Project.created_by == user.id, Project.name == personal_name
+    ).first()
     if not project:
         project = Project(
-            name="User Uploads",
-            description="Documents uploaded by users",
+            name=personal_name,
+            description="Personal uploads",
             entity_type="general",
             created_by=user.id,
         )
@@ -175,6 +204,48 @@ def _resolve_project(db: Session, project_id: str, user: User) -> Project:
         db.commit()
         db.refresh(project)
     return project
+
+
+def _accessible_project_ids(db: Session, user: User) -> Optional[list[str]]:
+    """List of project ids this user can view (owned + shared). Returns None
+    for admins — interpret as 'no filter'. Used by list/count endpoints to
+    scope results."""
+    if user.is_admin:
+        return None
+    owned = [str(p.id) for p in db.query(Project.id).filter(Project.created_by == user.id).all()]
+    shared = shared_resource_ids(db, "projects", user.id)
+    return list({*owned, *shared})
+
+
+def _gate_doc(db: Session, document_id: str, user: User, mode: str = "view") -> Document:
+    """Look up a document and enforce project-scoped access. Always raises 404
+    on missing-or-unauthorized so attackers can't probe for existence.
+
+    mode:
+      "view"   — owner / share / admin (read access)
+      "edit"   — owner / editor share / admin (write access)
+      "delete" — owner / admin only (destructive)
+    """
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    project = db.query(Project).filter(Project.id == doc.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        if mode == "view":
+            require_view(db, "projects", project.created_by, project.id, user)
+        elif mode == "edit":
+            require_edit(db, "projects", project.created_by, project.id, user)
+        elif mode == "delete":
+            require_owner_or_admin(project.created_by, user)
+        else:
+            raise ValueError(f"unknown mode: {mode}")
+    except HTTPException as e:
+        if e.status_code in (403, 404):
+            raise HTTPException(status_code=404, detail="Document not found")
+        raise
+    return doc
 
 
 @router.post("/presigned-upload", response_model=PresignedUploadResponse)
@@ -224,6 +295,14 @@ def confirm_upload(
 ):
     """Register a document in the DB after the browser has uploaded directly to S3."""
     project = _resolve_project(db, req.project_id, user)
+
+    # The s3_key MUST match the prefix we issued in /presigned-upload. Without
+    # this check, an attacker can submit any existing s3_key — including one
+    # belonging to another user's document — and then delete it via DELETE
+    # /{id} (which removes the underlying S3 object).
+    expected_prefix = f"uploads/{project.id}/{req.document_id}/"
+    if not req.s3_key.startswith(expected_prefix):
+        raise HTTPException(status_code=400, detail="s3_key does not match issued prefix")
 
     # Verify file actually exists in S3
     try:
@@ -277,9 +356,7 @@ def get_document(
     user: User = Depends(get_current_user),
 ):
     """Get full document details including notes/AI summary."""
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _gate_doc(db, document_id, user, mode="view")
     return DocumentResponse(
         id=str(doc.id),
         project_id=str(doc.project_id),
@@ -310,10 +387,8 @@ async def upload_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    # Verify project exists AND user can write to it
+    project = _resolve_project(db, project_id, user)
 
     # Read file content
     content = await file.read()
@@ -403,9 +478,7 @@ async def upload_multiple_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = _resolve_project(db, project_id, user)
 
     results = []
     for file in files:
@@ -761,9 +834,7 @@ def get_view_url(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _gate_doc(db, document_id, user, mode="view")
     # If using S3, return a presigned URL (works in iframes — no auth header needed)
     if not s3.use_local:
         try:
@@ -783,9 +854,7 @@ def serve_document_file(
 ):
     """Stream the actual file content — works in iframes without CORS issues."""
     from fastapi.responses import Response
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _gate_doc(db, document_id, user, mode="view")
 
     try:
         content = s3.download_file(doc.s3_key)
@@ -809,9 +878,7 @@ def update_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _gate_doc(db, document_id, user, mode="edit")
 
     for field, value in update.model_dump(exclude_unset=True).items():
         setattr(doc, field, value)
@@ -844,9 +911,7 @@ def delete_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = _gate_doc(db, document_id, user, mode="delete")
 
     # Delete from S3
     s3.delete_file(doc.s3_key)

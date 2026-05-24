@@ -48,12 +48,19 @@ class UserResponse(BaseModel):
     email: str
     username: str
     full_name: str | None
+    display_name: str | None = None
+    picture_url: str | None = None
     is_admin: bool
     is_active: bool
     must_change_password: bool = False
 
     class Config:
         from_attributes = True
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = None
+    full_name: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -259,17 +266,42 @@ def magic_link_login(req: SetPasswordRequest, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token)
 
 
+def _user_to_response(u: User) -> UserResponse:
+    return UserResponse(
+        id=str(u.id),
+        email=u.email,
+        username=u.username,
+        full_name=u.full_name,
+        display_name=getattr(u, "display_name", None),
+        picture_url=getattr(u, "picture_url", None),
+        is_admin=u.is_admin,
+        is_active=u.is_active,
+        must_change_password=u.must_change_password,
+    )
+
+
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user_allow_pending)):
-    return UserResponse(
-        id=str(current_user.id),
-        email=current_user.email,
-        username=current_user.username,
-        full_name=current_user.full_name,
-        is_admin=current_user.is_admin,
-        is_active=current_user.is_active,
-        must_change_password=current_user.must_change_password,
-    )
+    return _user_to_response(current_user)
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(
+    payload: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user_allow_pending),
+    db: Session = Depends(get_db),
+):
+    """Update editable profile fields. Caps and trims server-side so a
+    rogue client can't post a 10KB display name."""
+    if payload.display_name is not None:
+        v = payload.display_name.strip()[:60]
+        current_user.display_name = v or None
+    if payload.full_name is not None:
+        v = payload.full_name.strip()[:120]
+        current_user.full_name = v or None
+    db.commit()
+    db.refresh(current_user)
+    return _user_to_response(current_user)
 
 
 @router.post("/change-password")

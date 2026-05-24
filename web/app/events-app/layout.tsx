@@ -14,8 +14,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   HomeIcon, CalendarDaysIcon, BuildingStorefrontIcon,
-  MapPinIcon, ChatBubbleLeftRightIcon,
+  MapPinIcon, ChatBubbleLeftRightIcon, UserCircleIcon,
 } from "@heroicons/react/24/outline";
+import { useAuth } from "@/app/contexts/AuthContext";
 import {
   HomeIcon as HomeSolid, CalendarDaysIcon as CalendarSolid,
   BuildingStorefrontIcon as StoreSolid,
@@ -54,6 +55,8 @@ const TABS: Tab[] = [
 export default function EventsAppLayout({ children }: { children: React.ReactNode }) {
   const raw = usePathname();
   const current = stripPrefix(raw);
+  const { user } = useAuth();
+  const profileInitial = (user?.display_name || user?.email || "?").trim().charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -98,6 +101,27 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
               );
             })}
           </nav>
+          {/* Profile avatar / link — visible on every viewport in the header.
+              Renders nothing if AuthContext hasn't hydrated the user yet. */}
+          {user && (
+            <Link
+              href="/profile"
+              className="flex-shrink-0 flex items-center gap-1.5 hover:opacity-80"
+              title="Profile"
+            >
+              {user.picture_url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={user.picture_url} alt="" className="w-7 h-7 rounded-full object-cover" />
+              ) : (
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                  style={{ backgroundColor: eventsBrand }}
+                >
+                  {profileInitial}
+                </div>
+              )}
+            </Link>
+          )}
         </div>
       </header>
 

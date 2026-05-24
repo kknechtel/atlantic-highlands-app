@@ -40,9 +40,21 @@ export interface User {
   email: string;
   username: string;
   full_name: string | null;
+  display_name?: string | null;
+  picture_url?: string | null;
   is_admin: boolean;
   is_active: boolean;
   must_change_password?: boolean;
+}
+
+export async function updateProfile(payload: {
+  display_name?: string;
+  full_name?: string;
+}): Promise<User> {
+  return request<User>("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function changePassword(newPassword: string) {

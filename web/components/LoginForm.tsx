@@ -76,24 +76,14 @@ export default function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full">
         <div className="bg-white rounded-xl shadow-lg p-8">
-          {/* Header — events-app uses the circular badge logo, civic
-              keeps the colored "AH" tile so its branding stays consistent. */}
+          {/* Header — shared badge logo across both apps. */}
           <div className="flex items-center justify-center mb-1">
-            {eventsApp ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src="/events-logo.png"
-                alt="ahnj.info"
-                className="w-16 h-16 object-contain"
-              />
-            ) : (
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: headerBg }}
-              >
-                <span className="text-white font-bold text-lg">AH</span>
-              </div>
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/events-logo.png"
+              alt="ahnj.info"
+              className="w-16 h-16 object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 text-center mt-3">
             {headerTitle}

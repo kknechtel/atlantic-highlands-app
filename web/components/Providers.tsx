@@ -13,31 +13,13 @@ import { changePassword, getMe } from "@/lib/api";
 
 const brandColor = "#385854";
 
-// True when this client is rendering the events.ahnj.info subdomain.
-// Used by the change-password / pending-approval screens so events
-// users see the circular badge logo instead of the civic "AH" tile.
-function useIsEventsApp(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.location.hostname.startsWith("events.");
-}
-
+// Shared badge logo for the change-password / pending-approval screens.
+// Same logo across both civic and events apps.
 function BrandLogo({ size = 12 }: { size?: 12 | 14 }) {
-  const eventsApp = useIsEventsApp();
   const sizeCls = size === 14 ? "w-16 h-16" : "w-14 h-14";
-  if (eventsApp) {
-    return (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img src="/events-logo.png" alt="ahnj.info" className={`${sizeCls} object-contain`} />
-    );
-  }
-  const tileCls = size === 14 ? "w-14 h-14 rounded-xl" : "w-12 h-12 rounded-xl";
   return (
-    <div
-      className={`${tileCls} flex items-center justify-center`}
-      style={{ backgroundColor: brandColor }}
-    >
-      <span className="text-white font-bold text-lg">AH</span>
-    </div>
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img src="/events-logo.png" alt="ahnj.info" className={`${sizeCls} object-contain`} />
   );
 }
 

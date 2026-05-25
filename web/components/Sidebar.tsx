@@ -52,12 +52,12 @@ export default function Sidebar() {
         <div className="flex items-center justify-between">
           {!collapsed && (
             <div className="flex items-center gap-2.5">
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: brandColor }}
-              >
-                <span className="text-white font-bold text-sm">AH</span>
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/events-logo.png"
+                alt="ahnj.info"
+                className="w-10 h-10 object-contain flex-shrink-0"
+              />
               <div>
                 <h1 className="text-sm font-semibold text-gray-900 leading-tight">Atlantic Highlands</h1>
                 <p className="text-[10px] text-gray-500">Document Intelligence</p>

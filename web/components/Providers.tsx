@@ -13,6 +13,34 @@ import { changePassword, getMe } from "@/lib/api";
 
 const brandColor = "#385854";
 
+// True when this client is rendering the events.ahnj.info subdomain.
+// Used by the change-password / pending-approval screens so events
+// users see the circular badge logo instead of the civic "AH" tile.
+function useIsEventsApp(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.hostname.startsWith("events.");
+}
+
+function BrandLogo({ size = 12 }: { size?: 12 | 14 }) {
+  const eventsApp = useIsEventsApp();
+  const sizeCls = size === 14 ? "w-16 h-16" : "w-14 h-14";
+  if (eventsApp) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img src="/events-logo.png" alt="ahnj.info" className={`${sizeCls} object-contain`} />
+    );
+  }
+  const tileCls = size === 14 ? "w-14 h-14 rounded-xl" : "w-12 h-12 rounded-xl";
+  return (
+    <div
+      className={`${tileCls} flex items-center justify-center`}
+      style={{ backgroundColor: brandColor }}
+    >
+      <span className="text-white font-bold text-lg">AH</span>
+    </div>
+  );
+}
+
 function ChangePasswordScreen() {
   const { user, setUser } = useAuth();
   const [newPassword, setNewPassword] = useState("");
@@ -47,12 +75,7 @@ function ChangePasswordScreen() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
         <div className="flex items-center justify-center mb-1">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: brandColor }}
-          >
-            <span className="text-white font-bold text-lg">AH</span>
-          </div>
+          <BrandLogo size={12} />
         </div>
         <h1 className="text-xl font-bold text-gray-900 text-center mt-3 mb-1">
           Change Your Password
@@ -113,11 +136,8 @@ function PendingApproval() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center">
-        <div
-          className="w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4"
-          style={{ backgroundColor: brandColor }}
-        >
-          <span className="text-white font-bold text-lg">AH</span>
+        <div className="mx-auto mb-4 inline-flex">
+          <BrandLogo size={14} />
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Account Pending Approval</h1>
         <p className="text-sm text-gray-600 mb-1">

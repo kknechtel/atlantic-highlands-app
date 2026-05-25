@@ -58,12 +58,12 @@ export default function SignupPage() {
       <div className="max-w-md w-full">
         <div className="bg-white rounded-xl shadow-lg p-8">
           <div className="flex items-center justify-center mb-1">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: eventsBrand }}
-            >
-              <span className="text-white font-bold text-lg">AH</span>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/events-logo.png"
+              alt="ahnj.info"
+              className="w-16 h-16 object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 text-center mt-3">
             Join Around Town

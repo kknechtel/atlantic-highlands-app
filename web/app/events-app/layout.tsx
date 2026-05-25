@@ -81,12 +81,12 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
       <aside className="hidden md:flex md:flex-col w-56 lg:w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 p-4 border-b border-gray-200">
-          <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-            style={{ backgroundColor: eventsBrand }}
-          >
-            AH
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/events-logo.png"
+            alt="ahnj.info"
+            className="w-10 h-10 object-contain flex-shrink-0"
+          />
           <div className="leading-tight min-w-0">
             <div className="text-sm font-semibold text-gray-900 truncate">Around Town</div>
             <div className="text-[10px] text-gray-500 truncate">
@@ -170,12 +170,12 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
         <header className="md:hidden sticky top-0 z-30 bg-white border-b border-gray-200">
           <div className="px-4 py-3 flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-                style={{ backgroundColor: eventsBrand }}
-              >
-                AH
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/events-logo.png"
+                alt="ahnj.info"
+                className="w-9 h-9 object-contain"
+              />
               <div className="leading-tight">
                 <div className="text-sm font-semibold text-gray-900">Around Town</div>
                 <div className="hidden sm:block text-[10px] text-gray-500">

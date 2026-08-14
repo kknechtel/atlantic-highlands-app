@@ -256,6 +256,66 @@ def page_is_about_act(text: str, name: str) -> bool:
     return False
 
 
+# Discovery: acts with no curated link get nothing, and that's most of
+# them. Local acts overwhelmingly sit on {name}.com / {name}band.com /
+# {name}music.com, so those are worth trying — brotherpeteband.com is
+# exactly that shape.
+#
+# The catch is that guessing a domain FROM a name makes the usual name
+# check circular: the domain appears in the page title, so it "verifies"
+# itself. Guessing alone matched a Venice Beach skateboard company for
+# Rocketfish and Anthony Skincare For Men for Anthony². So a guessed
+# domain must also read like a local musician's page — music vocabulary
+# AND a New Jersey reference — before we'll believe it. That drops 31
+# candidates to 8, which is the right trade when the cost of a false
+# positive is publishing a stranger's website under a working musician's
+# name.
+_MUSIC_CTX = re.compile(
+    r"\b(band|live music|gig|setlist|tour dates|album|singer|guitarist|"
+    r"drummer|vocalist|booking|shows?|music|acoustic|rock|blues|country)\b", re.I)
+_LOCAL_CTX = re.compile(
+    r"\b(new jersey|nj\b|jersey shore|monmouth|asbury|highlands|sea bright|"
+    r"red bank|belmar|point pleasant|shore)\b", re.I)
+
+# Event titles that name an activity, not an act. A band page for these
+# would be meaningless and the domains ARE real businesses (karaoke.com).
+GENERIC_TITLES = {
+    "karaoke", "open mic night", "open mic", "trivia", "dj", "live music",
+    "tba", "tbd", "dueling pianos", "bingo", "happy hour",
+}
+
+
+def domain_candidates(name: str) -> list[str]:
+    squashed = re.sub(r"[^a-z0-9]+", "", name.lower())
+    if len(squashed) < 5:
+        return []                      # too short to guess safely
+    base = re.sub(r"^the", "", squashed)
+    out: list[str] = []
+    for stem in dict.fromkeys([squashed, base]):
+        out += [f"{stem}.com", f"{stem}band.com", f"{stem}music.com"]
+    return list(dict.fromkeys(out))[:6]
+
+
+def discover_website(name: str) -> Optional[str]:
+    """Guess an act's website, returning it only if the page corroborates."""
+    if name.strip().lower() in GENERIC_TITLES:
+        return None
+    for host in domain_candidates(name):
+        url = f"https://www.{host}"
+        text, raw_html, err = harvest_text(url)
+        if err or not text:
+            continue
+        if not page_is_about_act(text, name):
+            continue
+        soup = BeautifulSoup(raw_html or "", "html.parser")
+        for tag in soup.find_all(["script", "style"]):
+            tag.decompose()
+        corpus = f"{text} {soup.get_text(' ', strip=True)[:8000]}"
+        if _MUSIC_CTX.search(corpus) and _LOCAL_CTX.search(corpus):
+            return url
+    return None
+
+
 _YT_RE = re.compile(
     r"(?:https?:)?//(?:www\.)?(?:youtube(?:-nocookie)?\.com/(?:embed/|watch\?v=)"
     r"|youtu\.be/)([A-Za-z0-9_-]{11})")
@@ -305,7 +365,8 @@ def rating_from_text(text: str) -> tuple[Optional[float], Optional[int]]:
     return None, None
 
 
-def enrich_one(name: str, links: dict[str, str], guide_tags: list[str]) -> dict:
+def enrich_one(name: str, links: dict[str, str], guide_tags: list[str],
+               discover: bool = False) -> dict:
     """Read every source we have for one act and merge what they state."""
     result = {
         "name": name,
@@ -319,7 +380,14 @@ def enrich_one(name: str, links: dict[str, str], guide_tags: list[str]) -> dict:
         "checked": [],
         "errors": [],
         "needs_review": False,
+        "discovered_website": None,
     }
+    if discover and not links.get("website"):
+        found_site = discover_website(name)
+        if found_site:
+            links = {**links, "website": found_site}
+            result["discovered_website"] = found_site
+
     if guide_tags:
         result["genres"] = list(guide_tags)
         result["genre_sources"].append("bandGuide.ts (curated)")
@@ -392,6 +460,9 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="write results to band_profiles")
     ap.add_argument("--limit", type=int, default=None, help="only process the first N acts")
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--discover", action="store_true",
+                    help="guess websites for acts with no curated link "
+                         "(corroborated; see discover_website)")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -418,7 +489,7 @@ def main() -> int:
         jobs.append((n, links, g.get("tags", [])))
 
     with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        results = list(pool.map(lambda a: enrich_one(*a), jobs))
+        results = list(pool.map(lambda a: enrich_one(*a, discover=args.discover), jobs))
 
     with_genre = [r for r in results if r["genres"]]
     with_rating = [r for r in results if r["rating"] is not None]
@@ -428,6 +499,13 @@ def main() -> int:
     logger.info("=== results ===")
     logger.info("acts with genre:  %d / %d", len(with_genre), len(results))
     logger.info("acts with rating: %d / %d (sourced only)", len(with_rating), len(results))
+    disc = [r for r in results if r.get("discovered_website")]
+    if disc:
+        logger.info("")
+        logger.info("discovered %d website(s) — review before trusting:", len(disc))
+        for r in disc:
+            logger.info("   %-26s %s", r["name"][:26], r["discovered_website"])
+        logger.info("")
     logger.info("acts with a video:  %d / %d", sum(1 for r in results if r.get("video_url")), len(results))
     logger.info("acts with no source to read at all: %d", len(no_source))
     mislinked = [r for r in results if r.get("needs_review")]

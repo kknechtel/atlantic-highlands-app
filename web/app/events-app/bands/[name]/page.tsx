@@ -25,6 +25,7 @@ import {
 import { findKnownBandLinks } from "@/lib/knownBandLinks";
 import { findBandInGuide } from "@/lib/bandGuide";
 import { venueHref } from "@/lib/eventLinks";
+import { youtubeEmbedUrl } from "@/lib/youtube";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
   ArrowLeftIcon, MusicalNoteIcon,
@@ -131,6 +132,15 @@ export default function BandDetailPage({
 
   const hasAbout = genreTags.length > 0 || !!guide?.description || !!guide?.vibe;
 
+  // Prefer a video an admin or the enrichment picked. Otherwise fall back
+  // to the known YouTube link, which only embeds when it's a /channel/UC…
+  // URL — @handles and /user/ names can't be resolved without the Data
+  // API, so those stay as the plain "YouTube ↗" button below.
+  const embedUrl = useMemo(() => {
+    const known = findKnownBandLinks(bandName);
+    return youtubeEmbedUrl(profile?.video_url) || youtubeEmbedUrl(known?.youtube);
+  }, [profile?.video_url, bandName]);
+
   // Admin inline edit
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Omit<BandProfile, "name">>({
@@ -138,6 +148,7 @@ export default function BandDetailPage({
     bandsintown_url: "", bio: "", photo_url: "",
     genres: "", genre_source_url: "",
     rating: null, rating_count: null, rating_source_url: "",
+    video_url: "",
   });
   useEffect(() => {
     if (profile) {
@@ -153,6 +164,7 @@ export default function BandDetailPage({
         rating: profile.rating,
         rating_count: profile.rating_count,
         rating_source_url: profile.rating_source_url || "",
+        video_url: profile.video_url || "",
       });
     }
   }, [profile]);
@@ -172,6 +184,7 @@ export default function BandDetailPage({
       rating: draft.rating_source_url?.trim() ? draft.rating : null,
       rating_count: draft.rating_source_url?.trim() ? draft.rating_count : null,
       rating_source_url: draft.rating_source_url?.trim() || null,
+      video_url: draft.video_url?.trim() || null,
     }),
     onSuccess: () => {
       setEditing(false);
@@ -238,9 +251,11 @@ export default function BandDetailPage({
             </div>
           )}
 
-          {/* A rating is only ever shown with the page it came from — we
-              don't score bands ourselves. */}
-          {profile?.rating != null && profile.rating_source_url && (
+          {/* Ratings always carry their origin. A sourced rating links to
+              the page that published it; a guide rating is labelled as
+              the guide's opinion, because it is one curator's score of a
+              working musician and shouldn't read as the borough's. */}
+          {profile?.rating != null && profile.rating_source_url ? (
             <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-700">
               <span className="font-medium">{profile.rating}/5</span>
               {profile.rating_count ? ` from ${profile.rating_count} reviews` : ""}
@@ -254,7 +269,21 @@ export default function BandDetailPage({
                 source ↗
               </a>
             </div>
-          )}
+          ) : guide?.rating ? (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-800">
+                  {guide.rating}/5
+                </span>
+                <span className="text-[11px] text-gray-500">
+                  Jersey Shore band guide rating
+                </span>
+              </div>
+              {guide.reviews && (
+                <p className="text-[11px] text-gray-500 mt-0.5">{guide.reviews}</p>
+              )}
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
             {guide?.weddingBand != null && (
@@ -271,6 +300,31 @@ export default function BandDetailPage({
                 Genre from the band&apos;s own page ↗
               </a>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* Video — only when the URL converts to an embed. A broken iframe
+          is worse than the "YouTube ↗" button we already show. */}
+      {embedUrl && (
+        <section>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            Watch
+          </div>
+          <div
+            className="relative w-full overflow-hidden rounded-lg border border-gray-200 bg-black"
+            style={{ aspectRatio: "16 / 9" }}
+          >
+            <iframe
+              src={embedUrl}
+              title={`${bandName} on YouTube`}
+              className="absolute inset-0 w-full h-full"
+              style={{ border: 0 }}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
           </div>
         </section>
       )}
@@ -365,6 +419,22 @@ export default function BandDetailPage({
                   rows={3}
                   className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
                 />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                  YouTube video URL
+                </label>
+                <input
+                  type="url"
+                  value={draft.video_url || ""}
+                  onChange={e => setDraft(d => ({ ...d, video_url: e.target.value }))}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                />
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  A video, playlist, or /channel/UC… link. @handles can&apos;t be
+                  embedded — paste one of their videos instead.
+                </p>
               </div>
               <div>
                 <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">

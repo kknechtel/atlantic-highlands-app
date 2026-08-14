@@ -268,6 +268,7 @@ def _migrate():
             ("band_profiles", "rating", "DOUBLE PRECISION"),
             ("band_profiles", "rating_count", "INTEGER"),
             ("band_profiles", "rating_source_url", "VARCHAR"),
+            ("band_profiles", "video_url", "VARCHAR"),
         ]
         for table, column, col_type in rag_columns:
             if not _table_exists(table):

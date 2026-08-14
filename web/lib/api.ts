@@ -869,6 +869,9 @@ export interface BandProfile {
   rating: number | null;
   rating_count: number | null;
   rating_source_url: string | null;
+  /** A YouTube URL for the act; the band page embeds it when the shape is
+   *  convertible (see lib/youtube.ts). */
+  video_url: string | null;
 }
 
 /** Returns null when no curated profile exists (404 → null). */

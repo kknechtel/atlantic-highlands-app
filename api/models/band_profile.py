@@ -53,5 +53,11 @@ class BandProfile(Base):
     rating_count = Column(Integer, nullable=True)
     rating_source_url = Column(String, nullable=True)
 
+    # A YouTube URL for the act, embedded on the band page. Populated by
+    # enrich_band_genres.py from a video the band embeds on its own site,
+    # or set by an admin. Stored as the original URL; the frontend derives
+    # the embed form (see youtubeEmbed in web/lib/youtube.ts).
+    video_url = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

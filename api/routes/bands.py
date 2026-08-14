@@ -39,6 +39,7 @@ class ProfilePayload(BaseModel):
     rating: float | None = Field(default=None, ge=0, le=5)
     rating_count: int | None = Field(default=None, ge=0)
     rating_source_url: str | None = Field(default=None, max_length=500)
+    video_url: str | None = Field(default=None, max_length=500)
 
 
 class ProfileOut(BaseModel):
@@ -54,6 +55,7 @@ class ProfileOut(BaseModel):
     rating: float | None
     rating_count: int | None
     rating_source_url: str | None
+    video_url: str | None
 
 
 def _to_out(p: BandProfile) -> ProfileOut:
@@ -72,6 +74,7 @@ def _to_out(p: BandProfile) -> ProfileOut:
         rating=p.rating if p.rating_source_url else None,
         rating_count=p.rating_count if p.rating_source_url else None,
         rating_source_url=p.rating_source_url,
+        video_url=p.video_url,
     )
 
 
@@ -126,6 +129,13 @@ def upsert_profile(
     p.bandsintown_url = _norm(payload.bandsintown_url)
     p.bio = _norm(payload.bio)
     p.photo_url = _norm(payload.photo_url)
+    p.genres = _norm(payload.genres)
+    p.genre_source_url = _norm(payload.genre_source_url)
+    p.rating_source_url = _norm(payload.rating_source_url)
+    # A rating we can't attribute isn't shown, so don't store one.
+    p.rating = payload.rating if p.rating_source_url else None
+    p.rating_count = payload.rating_count if p.rating_source_url else None
+    p.video_url = _norm(payload.video_url)
     db.commit()
     db.refresh(p)
     return _to_out(p)

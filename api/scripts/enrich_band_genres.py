@@ -176,8 +176,8 @@ def _name_variants(n: str) -> set[str]:
     return {x.strip() for x in out if x.strip()}
 
 
-def harvest_text(url: str) -> tuple[str, Optional[str]]:
-    """Fetch a page and return (searchable_text, error).
+def harvest_text(url: str) -> tuple[str, str, Optional[str]]:
+    """Fetch a page and return (searchable_text, raw_html, error).
 
     We concatenate only the fields a band controls and that describe the
     act: title, meta description/keywords, OG description, schema.org
@@ -188,9 +188,9 @@ def harvest_text(url: str) -> tuple[str, Optional[str]]:
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
         if r.status_code != 200:
-            return "", f"HTTP {r.status_code}"
+            return "", "", f"HTTP {r.status_code}"
     except Exception as exc:
-        return "", f"{type(exc).__name__}"
+        return "", "", f"{type(exc).__name__}"
 
     soup = BeautifulSoup(r.text, "html.parser")
     parts: list[str] = []
@@ -220,7 +220,7 @@ def harvest_text(url: str) -> tuple[str, Optional[str]]:
     for h in soup.find_all(["h1", "h2", "h3"])[:12]:
         parts.append(h.get_text(" ", strip=True))
 
-    return " \n ".join(p for p in parts if p), None
+    return " \n ".join(p for p in parts if p), r.text, None
 
 
 def page_is_about_act(text: str, name: str) -> bool:
@@ -245,6 +245,27 @@ def page_is_about_act(text: str, name: str) -> bool:
         if len(v) >= 4 and v in low:
             return True
     return False
+
+
+_YT_RE = re.compile(
+    r"(?:https?:)?//(?:www\.)?(?:youtube(?:-nocookie)?\.com/(?:embed/|watch\?v=)"
+    r"|youtu\.be/)([A-Za-z0-9_-]{11})")
+
+
+def youtube_video_on_page(html: str) -> Optional[str]:
+    """First embedded YouTube video on a band's own page.
+
+    Most of the YouTube links we hold are channel URLs (/@handle, /user/…)
+    that can't be embedded without an API lookup. Bands do, however, tend
+    to embed a video on their own site — that iframe src is a real video
+    id we can use directly.
+
+    Takes the first match: on a band site the lead video is the one at the
+    top, and picking arbitrarily among later ones would be worse than
+    letting an admin override it.
+    """
+    m = _YT_RE.search(html or "")
+    return f"https://www.youtube.com/watch?v={m.group(1)}" if m else None
 
 
 def genres_from_text(text: str) -> list[str]:
@@ -284,6 +305,8 @@ def enrich_one(name: str, links: dict[str, str], guide_tags: list[str]) -> dict:
         "rating": None,
         "rating_count": None,
         "rating_source_url": None,
+        "video_url": None,
+        "video_source_url": None,
         "checked": [],
         "errors": [],
         "needs_review": False,
@@ -303,7 +326,7 @@ def enrich_one(name: str, links: dict[str, str], guide_tags: list[str]) -> dict:
         url = links.get(field)
         if not url:
             continue
-        text, err = harvest_text(url)
+        text, raw_html, err = harvest_text(url)
         result["checked"].append(field)
         if err:
             result["errors"].append(f"{field}: {err}")
@@ -320,6 +343,12 @@ def enrich_one(name: str, links: dict[str, str], guide_tags: list[str]) -> dict:
             result["errors"].append(f"{field}: page does not mention the act ({url})")
             result["needs_review"] = True
             continue
+        if result["video_url"] is None:
+            vid = youtube_video_on_page(raw_html)
+            if vid:
+                result["video_url"] = vid
+                result["video_source_url"] = url
+
         found = genres_from_text(text)
         if found:
             for g in found:
@@ -383,6 +412,7 @@ def main() -> int:
     logger.info("=== results ===")
     logger.info("acts with genre:  %d / %d", len(with_genre), len(results))
     logger.info("acts with rating: %d / %d (sourced only)", len(with_rating), len(results))
+    logger.info("acts with a video:  %d / %d", sum(1 for r in results if r.get("video_url")), len(results))
     logger.info("acts with no source to read at all: %d", len(no_source))
     mislinked = [r for r in results if r.get("needs_review")]
     if mislinked:
@@ -418,7 +448,7 @@ def write_to_db(results: list[dict]) -> int:
     written = 0
     try:
         for r in results:
-            if not r["genres"] and r["rating"] is None:
+            if not r["genres"] and r["rating"] is None and not r.get("video_url"):
                 continue
             key = r["name"].strip().lower()
             row = db.query(BandProfile).filter(BandProfile.name_lower == key).one_or_none()
@@ -430,6 +460,8 @@ def write_to_db(results: list[dict]) -> int:
                 row.genres = ", ".join(r["genres"])
                 row.genre_source_url = next(
                     (s for s in r["genre_sources"] if s.startswith("http")), None)
+            if r.get("video_url") and not row.video_url:
+                row.video_url = r["video_url"]
             if r["rating"] is not None and row.rating is None:
                 row.rating = r["rating"]
                 row.rating_count = r["rating_count"]

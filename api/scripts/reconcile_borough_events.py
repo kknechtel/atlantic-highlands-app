@@ -28,6 +28,12 @@ import argparse
 import calendar as _calendar
 import sys
 from datetime import date
+from pathlib import Path
+
+# Run as `python scripts/reconcile_borough_events.py` from api/ — put the
+# package root on the path so `database` / `models` resolve, same as
+# scrape_events.py does.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import text
 

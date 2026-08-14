@@ -6,6 +6,11 @@ upsert key. That collides if two venues both have a "Live Music"
 generic-titled event on the same night — so the dedupe key here
 incorporates the venue name. We hand-roll the insert below to keep
 the writer simple and explicit.
+
+On a key hit we refresh time/end_time/ticket_url/description instead of
+skipping, so set-time changes and parser fixes reach rows that already
+exist. Identity (date/venue/title) is never rewritten — a changed title
+is a different event, not an edit.
 """
 from __future__ import annotations
 
@@ -26,16 +31,37 @@ def _save(events: list[dict]) -> int:
     from database import SessionLocal
 
     inserted = 0
+    updated = 0
     db = SessionLocal()
     try:
         for ev in events:
             try:
-                exists = db.execute(sql_text(
-                    "SELECT 1 FROM calendar_events "
+                row = db.execute(sql_text(
+                    "SELECT id, time, end_time, ticket_url, description "
+                    "FROM calendar_events "
                     "WHERE date = :date AND venue = :venue AND title = :title"
                 ), {"date": ev["date"], "venue": ev["venue"], "title": ev["title"]}).fetchone()
 
-                if exists:
+                if row:
+                    # Refresh the mutable details rather than skipping. Venues
+                    # move set times, and a parser fix (like the time-range
+                    # repair that turned Sandbox's "6-9pm" from a bare "6"
+                    # into 6:00 PM–9:00 PM) only reaches existing rows if we
+                    # write it here. Never blank a value we already have with
+                    # a null — a venue dropping the time from its page
+                    # shouldn't erase a good one.
+                    changes = {}
+                    for field, key in (("time", "time"), ("end_time", "end_time"),
+                                       ("ticket_url", "ticket_url"), ("description", "description")):
+                        new = ev.get(key)
+                        if new and new != getattr(row, field):
+                            changes[field] = new
+                    if changes:
+                        sets = ", ".join(f"{f} = :{f}" for f in changes)
+                        db.execute(sql_text(
+                            f"UPDATE calendar_events SET {sets} WHERE id = :id"
+                        ), {**changes, "id": row.id})
+                        updated += 1
                     continue
 
                 db.execute(sql_text("""
@@ -70,6 +96,8 @@ def _save(events: list[dict]) -> int:
     finally:
         db.close()
 
+    if updated:
+        logger.info("music scrape refreshed details on %d existing events", updated)
     return inserted
 
 

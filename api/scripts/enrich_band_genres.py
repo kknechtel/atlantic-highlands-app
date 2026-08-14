@@ -46,6 +46,10 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
+# Run as `python scripts/enrich_band_genres.py` from api/ — put the package
+# root on the path so `database` / `models` resolve in the --apply path.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 logger = logging.getLogger("enrich_bands")
 
 TIMEOUT = 20

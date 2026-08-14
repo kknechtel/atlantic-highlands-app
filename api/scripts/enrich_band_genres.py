@@ -340,18 +340,25 @@ def enrich_one(name: str, links: dict[str, str], guide_tags: list[str]) -> dict:
         if err:
             result["errors"].append(f"{field}: {err}")
             continue
-        if len(text.strip()) < MIN_READABLE_CHARS:
-            # JS-rendered or image-only page. Not a bad link — just nothing
-            # to read, so don't accuse the curated URL of being wrong.
-            result["errors"].append(f"{field}: too little readable text ({url})")
-            continue
         if not page_is_about_act(text, name):
-            # Substantive page that never names this act — the curated link
-            # points at somebody else. Flag it rather than inherit a
-            # stranger's genre.
-            result["errors"].append(f"{field}: page does not mention the act ({url})")
-            result["needs_review"] = True
+            # Can't confirm the page is this act's. Thin pages get the
+            # benefit of the doubt — a JS-rendered or image-only site has
+            # nothing to identify itself with, so calling it a mislink
+            # would be wrong. A substantive page that still never names the
+            # act is a genuinely bad curated link.
+            if len(text.strip()) < MIN_READABLE_CHARS:
+                result["errors"].append(f"{field}: too little readable text ({url})")
+            else:
+                result["errors"].append(f"{field}: page does not mention the act ({url})")
+                result["needs_review"] = True
             continue
+
+        # Confirmed this act's page — take whatever it offers, however
+        # sparse. The thin-text test used to run first and skip the whole
+        # page, which cost us videos: nedryersonlive.com identifies itself
+        # and embeds a YouTube video, but harvests only 76 characters of
+        # title/meta/heading text and so was dropped before we ever looked
+        # for the iframe. Text volume gates the genre read, not the page.
         if result["video_url"] is None:
             vid = youtube_video_on_page(raw_html)
             if vid:

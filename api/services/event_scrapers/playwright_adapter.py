@@ -44,7 +44,7 @@ from .html_parse import (
 logger = logging.getLogger(__name__)
 
 PAGE_TIMEOUT_MS = 25_000      # hard cap on page load
-SETTLE_WAIT_MS = 4_000         # extra wait after networkidle for JS-only events
+SETTLE_WAIT_MS = 4_000         # extra wait after load for JS-only events
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
@@ -70,7 +70,13 @@ def _render_page_inner(url: str, wait_for_selector: Optional[str] = None) -> Opt
                 context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 1800})
                 page = context.new_page()
                 page.set_default_timeout(PAGE_TIMEOUT_MS)
-                page.goto(url, wait_until="networkidle")
+                # domcontentloaded, not networkidle: pages with a polling
+                # widget never go idle. Drifthouse embeds OpenTable and
+                # timed out every run on prod (25s) while working locally
+                # only because the local probe used domcontentloaded. The
+                # selector wait plus SETTLE_WAIT_MS below already cover
+                # client-side rendering, which is the actual requirement.
+                page.goto(url, wait_until="domcontentloaded")
                 if wait_for_selector:
                     try:
                         page.wait_for_selector(wait_for_selector, timeout=PAGE_TIMEOUT_MS)
@@ -131,7 +137,13 @@ def _render_paginated_inner(
                 context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 1800})
                 page = context.new_page()
                 page.set_default_timeout(PAGE_TIMEOUT_MS)
-                page.goto(url, wait_until="networkidle")
+                # domcontentloaded, not networkidle: pages with a polling
+                # widget never go idle. Drifthouse embeds OpenTable and
+                # timed out every run on prod (25s) while working locally
+                # only because the local probe used domcontentloaded. The
+                # selector wait plus SETTLE_WAIT_MS below already cover
+                # client-side rendering, which is the actual requirement.
+                page.goto(url, wait_until="domcontentloaded")
                 if wait_for_selector:
                     try:
                         page.wait_for_selector(wait_for_selector, timeout=PAGE_TIMEOUT_MS)

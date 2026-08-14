@@ -23,6 +23,7 @@ import {
   type CalendarEvent, type BandProfile,
 } from "@/lib/api";
 import { findKnownBandLinks } from "@/lib/knownBandLinks";
+import { findBandInGuide } from "@/lib/bandGuide";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
   ArrowLeftIcon, MusicalNoteIcon,
@@ -101,6 +102,18 @@ export default function BandDetailPage({
 
   const links = useMemo(() => resolveLinks(bandName, profile), [bandName, profile]);
 
+  // What kind of act this is, from the ported Edgewater guide (42 entries,
+  // so most scraped acts miss and the section just doesn't render).
+  //
+  // We surface only the descriptive fields — genre tags, vibe, one-line
+  // description, wedding availability. The guide's `rating`, `reviews` and
+  // `category` are deliberately left out: they're one booker's private
+  // shortlist notes about named local musicians ("Approach with Caution",
+  // "Wrong Style for High-Energy"), which is not something a public borough
+  // app should publish about real people. Ratings were already dropped for
+  // the same reason in d83c5de.
+  const guide = useMemo(() => findBandInGuide(bandName), [bandName]);
+
   // Admin inline edit
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Omit<BandProfile, "name">>({
@@ -157,6 +170,49 @@ export default function BandDetailPage({
           </p>
         )}
       </header>
+
+      {/* What kind of act — genre/style overview from the band guide. */}
+      {guide && (
+        <section className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            What kind of act
+          </div>
+
+          {guide.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {guide.tags.map(t => (
+                <span
+                  key={t}
+                  className="px-2.5 py-1 text-xs rounded-full font-medium"
+                  style={{ backgroundColor: `${eventsBrand}15`, color: eventsBrand }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {guide.description && (
+            <p className="text-sm text-gray-800">{guide.description}</p>
+          )}
+
+          {guide.vibe && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">
+                Vibe
+              </div>
+              <p className="text-sm text-gray-700">{guide.vibe}</p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
+            {guide.weddingBand !== null && (
+              <span>{guide.weddingBand ? "Books weddings & private events" : "Bar / club act"}</span>
+            )}
+            {guide.regularVenues && <span>Regulars at {guide.regularVenues}</span>}
+          </div>
+        </section>
+      )}
 
       {/* Curated profile section. Renders when an admin has filled in
           real URLs; admin sees an edit button. */}

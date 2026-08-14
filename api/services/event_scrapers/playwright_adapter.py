@@ -391,7 +391,32 @@ def parse_donovans_dom(html: str, year: int) -> list[dict]:
         r"\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?",
     )
 
-    # Each .marker has its parent that contains the day's events
+    # The grid renders ONE month and captions it ("August 2026"), while the
+    # markers carry only a day number. Read that caption.
+    #
+    # This used to be inferred from today's date — current month unless
+    # `day < today.day - 7`, then next month. That silently relabelled the
+    # first days of the displayed month: scraped on the 14th, Aug 1-6 came
+    # out as Sep 1-6, and because the cutoff moves with the calendar the
+    # same show landed on different dates depending on the day we ran. It
+    # left prod holding two date-conflicting copies of a dozen Donovan's
+    # shows.
+    base_month, base_year = None, None
+    page_text = soup.get_text(" ", strip=True)
+    cap = re.search(
+        r"\b(January|February|March|April|May|June|July|August|September|"
+        r"October|November|December)\s+(\d{4})\b", page_text, re.I)
+    if cap:
+        base_month = _MONTHS.get(cap.group(1).lower())
+        base_year = int(cap.group(2))
+    if not base_month:
+        # No caption found (layout change?). Fall back to the current month
+        # and say so — better a logged guess than silent date drift.
+        logger.warning("[playwright:donovans] no month caption found; "
+                       "falling back to current month")
+        base_month, base_year = today.month, today.year
+
+    # Each marker has its parent that contains the day's events
     for marker in soup.select(".marker"):
         # Marker text is like "Fri | 1" — read the day number
         text = marker.get_text(" ", strip=True)
@@ -401,13 +426,7 @@ def parse_donovans_dom(html: str, year: int) -> list[dict]:
         day = int(day_match.group(1))
         if not (1 <= day <= 31):
             continue
-        # Month/year — assume current month if day >= today, else next month
-        mon, yr = today.month, today.year
-        if day < today.day - 7:
-            mon += 1
-            if mon > 12:
-                mon, yr = 1, yr + 1
-        d = _safe_date(yr, mon, day)
+        d = _safe_date(base_year, base_month, day)
         if not d:
             continue
 

@@ -15,7 +15,7 @@ This deletes rows the venue no longer lists. It does not insert — the
 nightly run_music_scrape already adds new shows and refreshes details on
 existing ones, so removing the unreachable leftovers is the only gap.
 
-Two things keep it from deleting real data:
+Three things keep it from deleting real data:
 
   * Only rows inside the date span the scrape actually returned are
     considered. Venues publish different windows (Sandbox ~3 months,
@@ -23,6 +23,11 @@ Two things keep it from deleting real data:
     not stale.
   * A venue that scrapes zero events is skipped entirely — that's a dead
     site or a transient failure, not an empty calendar.
+  * A venue where more than STALE_FRACTION_LIMIT of stored rows look
+    stale is skipped. Renames are a trickle; a flood means the scrape
+    disagrees with the database structurally and is probably the wrong
+    one. This caught the Donovan's month bug, where the first dry run
+    proposed deleting 12 real shows.
 
 Past events are never touched; they're the archive.
 
@@ -51,9 +56,13 @@ from database import SessionLocal
 from services.event_scrapers.registry import VENUES
 
 SCRAPER_SOURCE_PREFIXES = ("html:", "playwright:", "squarespace:", "tribe:")
+# Above this share of a venue's stored rows looking stale, assume the scrape
+# is wrong rather than the database. See the check in reconcile().
+STALE_FRACTION_LIMIT = 0.20
 
 
-def reconcile(venue_filter: str | None = None, apply: bool = False) -> int:
+def reconcile(venue_filter: str | None = None, apply: bool = False,
+              force: bool = False) -> int:
     db = SessionLocal()
     deleted_total = 0
     try:
@@ -63,7 +72,7 @@ def reconcile(venue_filter: str | None = None, apply: bool = False) -> int:
             try:
                 fresh = fn(venue_name=name, city=city, **kwargs)
             except Exception as exc:
-                print(f"{name}: scrape raised {type(exc).__name__}, skipping")
+                print(f"{name}: scrape raised {type(exc).__name__}: {exc}, skipping")
                 continue
             if not fresh:
                 print(f"{name}: scraped 0 events, skipping")
@@ -85,6 +94,20 @@ def reconcile(venue_filter: str | None = None, apply: bool = False) -> int:
 
             stale = [r for r in stored
                      if (r.date.isoformat(), r.title) not in fresh_keys]
+
+            # Renamed-title leftovers are a trickle. A big divergence means
+            # the scrape and the stored rows disagree structurally — a
+            # partial render, or a parser bug like the Donovan's month
+            # inference that dated the same show differently depending on
+            # when it ran. Deleting on that basis destroys real events, so
+            # bail and make a human look.
+            if stored and len(stale) / len(stored) > STALE_FRACTION_LIMIT:
+                print(f"{name}: {len(stale)} of {len(stored)} stored rows look "
+                      f"stale ({len(stale) / len(stored):.0%}) — that's too much "
+                      f"to be renames. Skipping; re-check the parser, then "
+                      f"--force if it really is right.")
+                if not force:
+                    continue
 
             for r in stale:
                 print(f"  - {r.date} {r.title!r} (time={r.time!r})")
@@ -110,5 +133,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="commit (default: dry run)")
     ap.add_argument("--venue", default=None, help="limit to one venue by display name")
+    ap.add_argument("--force", action="store_true",
+                    help="delete even when the stale share looks implausible")
     args = ap.parse_args()
-    sys.exit(reconcile(venue_filter=args.venue, apply=args.apply))
+    sys.exit(reconcile(venue_filter=args.venue, apply=args.apply, force=args.force))

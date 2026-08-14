@@ -542,7 +542,8 @@ def write_to_db(results: list[dict]) -> int:
     written = 0
     try:
         for r in results:
-            if not r["genres"] and r["rating"] is None and not r.get("video_url"):
+            if (not r["genres"] and r["rating"] is None
+                    and not r.get("video_url") and not r.get("discovered_website")):
                 continue
             key = r["name"].strip().lower()
             row = db.query(BandProfile).filter(BandProfile.name_lower == key).one_or_none()
@@ -556,6 +557,12 @@ def write_to_db(results: list[dict]) -> int:
                     (s for s in r["genre_sources"] if s.startswith("http")), None)
             if r.get("video_url") and not row.video_url:
                 row.video_url = r["video_url"]
+            # A discovered site was only used to read from; store it too, or
+            # the band page has no "Website" button for an act whose site we
+            # just proved we can find. Curated links already render from
+            # knownBandLinks, so this only fills genuine gaps.
+            if r.get("discovered_website") and not row.website_url:
+                row.website_url = r["discovered_website"]
             if r["rating"] is not None and row.rating is None:
                 row.rating = r["rating"]
                 row.rating_count = r["rating_count"]

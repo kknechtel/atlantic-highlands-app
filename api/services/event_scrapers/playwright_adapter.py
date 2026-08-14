@@ -53,6 +53,32 @@ USER_AGENT = (
 
 ParserFn = Callable[[str, int], list[dict]]
 
+_CAPTION_RE = re.compile(
+    r"\b(January|February|March|April|May|June|July|August|September|"
+    r"October|November|December)\s+(\d{4})\b", re.I)
+
+
+def _calendar_caption_month(soup, today, venue_label: str) -> tuple[int, int]:
+    """Read the month a calendar grid is displaying, as (month, year).
+
+    Month-grid widgets render one month and caption it, but the day cells
+    carry only a number. Both venues using this adapter previously guessed
+    the month from today's date instead, which silently relabelled the
+    start of the displayed month and produced different dates depending on
+    the day the scrape ran. Read the caption; guess only as a last resort,
+    and log when we do.
+    """
+    caption = soup.select_one(".jet-calendar-caption__name, [class*='caption']")
+    text = caption.get_text(" ", strip=True) if caption else soup.get_text(" ", strip=True)
+    m = _CAPTION_RE.search(text)
+    if m:
+        month = _MONTHS.get(m.group(1).lower())
+        if month:
+            return month, int(m.group(2))
+    logger.warning("[playwright:%s] no month caption found; falling back to "
+                   "the current month — dates may be wrong", venue_label)
+    return today.month, today.year
+
 
 def _render_page_inner(url: str, wait_for_selector: Optional[str] = None) -> Optional[str]:
     """The actual sync_playwright work. MUST run on a thread that has no
@@ -312,6 +338,18 @@ def parse_chubby_pickle_dom(html: str, year: int) -> list[dict]:
         r"\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?",
     )
 
+    # Same shape as Donovan's: the grid renders one month, captions it
+    # ("August 2026" in .jet-calendar-caption__name), and the day cells
+    # carry only a number.
+    #
+    # This previously guessed the month from today's date — current month
+    # unless `day < today.day - 7`, then next. That relabelled the start of
+    # the displayed month, and because the cutoff moves daily the same show
+    # landed on different dates run to run. On Donovan's, which had the
+    # identical code, it put a month of July shows into August and left a
+    # dozen conflicting rows in prod before anyone noticed.
+    base_month, base_year = _calendar_caption_month(soup, today, "chubby pickle")
+
     for wrap in soup.select(".jet-calendar-week__day-wrap"):
         day_el = wrap.select_one(".jet-calendar-week__day-date")
         if not day_el:
@@ -320,15 +358,7 @@ def parse_chubby_pickle_dom(html: str, year: int) -> list[dict]:
         if not day_text.isdigit():
             continue
         day = int(day_text)
-        # Pick month — current if day >= today, next month if day < today
-        # (visible week often spans the month boundary).
-        mon, yr = today.month, today.year
-        if day < today.day - 7:  # tolerance: only "rolled into next month"
-            mon += 1
-            if mon > 12:
-                mon = 1
-                yr += 1
-        d = _safe_date(yr, mon, day)
+        d = _safe_date(base_year, base_month, day)
         if not d:
             continue
 
@@ -413,20 +443,7 @@ def parse_donovans_dom(html: str, year: int) -> list[dict]:
     # same show landed on different dates depending on the day we ran. It
     # left prod holding two date-conflicting copies of a dozen Donovan's
     # shows.
-    base_month, base_year = None, None
-    page_text = soup.get_text(" ", strip=True)
-    cap = re.search(
-        r"\b(January|February|March|April|May|June|July|August|September|"
-        r"October|November|December)\s+(\d{4})\b", page_text, re.I)
-    if cap:
-        base_month = _MONTHS.get(cap.group(1).lower())
-        base_year = int(cap.group(2))
-    if not base_month:
-        # No caption found (layout change?). Fall back to the current month
-        # and say so — better a logged guess than silent date drift.
-        logger.warning("[playwright:donovans] no month caption found; "
-                       "falling back to current month")
-        base_month, base_year = today.month, today.year
+    base_month, base_year = _calendar_caption_month(soup, today, "donovans")
 
     # Each marker has its parent that contains the day's events
     for marker in soup.select(".marker"):

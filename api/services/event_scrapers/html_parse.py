@@ -7,7 +7,6 @@ result into our standard event dict.
 
 Per-venue parsers in this module:
   - parse_proving_ground   — Highlands, SpotApps event list
-  - parse_chubby_pickle    — Highlands, WP REST page render (calendar grid)
   - parse_seafarer         — Highlands, plain text block on homepage
 
 Parsers return a list of partial event dicts (date, title, time, optional
@@ -255,42 +254,6 @@ def parse_proving_ground(html: str, year: int) -> list[dict]:
         events.append({"date": date_str, "title": title,
                        "time": time_str, "end_time": end_time_str})
 
-    return events
-
-
-def parse_chubby_pickle(json_body: str, year: int) -> list[dict]:
-    """WP REST page response. Pass `https://thechubbypicklenj.com/wp-json/wp/v2/pages?slug=calendar`
-    — the response is a JSON array; take pages[0]['content']['rendered'],
-    parse the resulting HTML for calendar cells."""
-    import json
-    try:
-        pages = json.loads(json_body)
-    except Exception:
-        return []
-    if not isinstance(pages, list) or not pages:
-        return []
-    rendered = (pages[0].get("content") or {}).get("rendered") or ""
-    if not rendered:
-        return []
-    soup = BeautifulSoup(rendered, "html.parser")
-    events: list[dict] = []
-    # Each "event" cell in JetEngine's calendar widget renders titles inside
-    # link tags. Grab visible text and pair it with the cell's day-number.
-    for cell in soup.select(".jet-listing-grid__item, .jet-calendar-day, td"):
-        day_el = cell.select_one(".jet-calendar-day__date, .day-number, .day")
-        title_el = cell.select_one("a, .event-title, .jet-listing-dynamic-field__content")
-        if not day_el or not title_el:
-            continue
-        day_text = day_el.get_text(strip=True)
-        title_text = title_el.get_text(" ", strip=True)
-        if not day_text.isdigit() or not title_text:
-            continue
-        # The page rendering itself doesn't tell us the month — for the
-        # current view it's "this month". Fall back to today's month.
-        today = date.today()
-        d = _safe_date(year, today.month, int(day_text))
-        if d:
-            events.append({"date": d, "title": title_text})
     return events
 
 

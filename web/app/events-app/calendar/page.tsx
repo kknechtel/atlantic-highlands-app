@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getCalendarEvents, isGovtCalendarEvent, type CalendarEvent } from "@/lib/api";
+import { bandHref, venueHref, eventHref } from "@/lib/eventLinks";
+import { RowLink, InlineLink } from "@/components/events/EventRowLink";
 import Link from "next/link";
 import {
   CalendarDaysIcon,
@@ -409,9 +411,11 @@ export default function EventsPage() {
             const isFun = true;
             const venue = VENUE_LINKS[ev.source];
             return (
-              <div key={i} className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+              <div key={i} className={`relative flex items-center gap-3 p-3 rounded-lg transition-colors ${
                 isFun ? "bg-white border border-gray-200 hover:shadow-sm" : "bg-gray-50 hover:bg-gray-100"
               }`}>
+                {/* Catch-all: anywhere that isn't the act or the venue. */}
+                <RowLink href={eventHref(ev.id)} label={ev.title} />
                 <div className="w-12 text-center flex-shrink-0">
                   <div className="text-[10px] text-gray-400 uppercase">{d.toLocaleDateString("en-US", { weekday: "short" })}</div>
                   <div className="text-lg font-bold text-gray-900">{d.getDate()}</div>
@@ -421,35 +425,25 @@ export default function EventsPage() {
                   <Icon className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  {isMusic ? (
-                    <Link
-                      href={`/calendar/${ev.id}`}
-                      className="text-sm font-semibold text-gray-900 hover:underline block truncate"
-                    >
-                      {ev.title}
-                    </Link>
-                  ) : (
-                    <Link
-                      href={`/calendar/${ev.id}`}
-                      className={`text-sm hover:underline block truncate ${isFun ? "font-semibold text-gray-900" : "text-gray-600"}`}
-                    >
-                      {ev.title}
-                    </Link>
-                  )}
+                  {/* Title → the act's page for music, the event otherwise:
+                      "Planning Board Meeting" isn't a band. */}
+                  <InlineLink
+                    href={bandHref(ev) || eventHref(ev.id)}
+                    className={`text-sm block truncate ${
+                      isMusic || isFun ? "font-semibold text-gray-900" : "text-gray-600"
+                    }`}
+                  >
+                    {ev.title}
+                  </InlineLink>
                   <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
                     {ev.time && <span>{ev.time}{ev.end_time ? `–${ev.end_time}` : ""}</span>}
                     {isMusic && ev.venue ? (
-                      ev.ticket_url ? (
-                        <a href={ev.ticket_url} target="_blank" rel="noopener noreferrer"
-                          className="hover:underline" style={{ color: brandColor }}>
-                          @ {ev.venue}
-                        </a>
-                      ) : (
-                        <span style={{ color: brandColor }}>@ {ev.venue}</span>
-                      )
+                      <InlineLink href={venueHref(ev)} style={{ color: brandColor }}>
+                        @ {ev.venue}
+                      </InlineLink>
                     ) : venue && (
                       <a href={venue.url} target="_blank" rel="noopener noreferrer"
-                        className="hover:underline" style={{ color: brandColor }}>
+                        className="relative z-10 hover:underline" style={{ color: brandColor }}>
                         @ {venue.name}
                       </a>
                     )}
@@ -460,9 +454,9 @@ export default function EventsPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="relative z-10 flex items-center gap-1 flex-shrink-0">
                   <Link
-                    href={`/calendar/${ev.id}`}
+                    href={eventHref(ev.id)}
                     className="px-2 py-1 text-[11px] rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
                     title="Open event detail + check in"
                   >

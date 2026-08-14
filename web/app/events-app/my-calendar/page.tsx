@@ -17,6 +17,8 @@ import {
   CheckCircleIcon, QuestionMarkCircleIcon, BookmarkIcon,
 } from "@heroicons/react/24/outline";
 import { getMyCalendar, type SavedEvent, type RsvpStatus } from "@/lib/api";
+import { bandHref, venueHref, eventHref } from "@/lib/eventLinks";
+import { RowLink, InlineLink } from "@/components/events/EventRowLink";
 import { useAuth } from "@/app/contexts/AuthContext";
 import LoginNotice from "@/components/events/LoginNotice";
 
@@ -39,12 +41,12 @@ function Row({ ev }: { ev: SavedEvent }) {
   // the user can still remove it from /calendar/[id], even with no title.
   const missing = !ev.title;
   return (
-    <Link
-      href={`/calendar/${ev.event_id}`}
-      className={`flex items-start gap-3 p-3 rounded-lg border hover:shadow-sm transition ${
+    <div
+      className={`relative flex items-start gap-3 p-3 rounded-lg border hover:shadow-sm transition ${
         missing ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200"
       }`}
     >
+      <RowLink href={eventHref(ev.event_id)} label={ev.title || undefined} />
       <div className="w-12 text-center flex-shrink-0">
         {ev.date ? (
           <>
@@ -68,9 +70,14 @@ function Row({ ev }: { ev: SavedEvent }) {
           : <CalendarDaysIcon className="w-4 h-4" />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-gray-900 truncate">
+        {/* A dangling RSVP has no title to link from — leave it plain so
+            the row still opens the detail page, where it can be removed. */}
+        <InlineLink
+          href={bandHref(ev)}
+          className="text-sm font-semibold text-gray-900 block truncate"
+        >
           {ev.title || <span className="italic text-gray-400">Event no longer listed</span>}
-        </div>
+        </InlineLink>
         <div className="text-[11px] text-gray-500 flex items-center gap-1.5 flex-wrap">
           {ev.date && <span>{fmtDate(ev.date)}</span>}
           {ev.time && (
@@ -84,7 +91,9 @@ function Row({ ev }: { ev: SavedEvent }) {
             <>
               <span className="text-gray-300">·</span>
               <MapPinIcon className="w-3 h-3 inline -mt-0.5" />
-              <span style={{ color: eventsBrand }}>{ev.venue}</span>
+              <InlineLink href={venueHref(ev)} style={{ color: eventsBrand }}>
+                {ev.venue}
+              </InlineLink>
             </>
           )}
           {ev.city && (
@@ -92,7 +101,7 @@ function Row({ ev }: { ev: SavedEvent }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 

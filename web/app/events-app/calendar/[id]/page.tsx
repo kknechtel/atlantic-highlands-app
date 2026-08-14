@@ -15,6 +15,7 @@ import {
   EnvelopeIcon, DevicePhoneMobileIcon, LinkIcon,
 } from "@heroicons/react/24/outline";
 import { googleCalendarUrl, outlookCalendarUrl, downloadIcs } from "@/lib/calendarLinks";
+import { venueHref } from "@/lib/eventLinks";
 
 import {
   getCalendarEvent, listCheckinsAtVenue, createCheckin,
@@ -217,7 +218,13 @@ export default function EventDetailPage({
         {venueName && (
           <div className="flex items-center gap-2 text-sm text-gray-800">
             <MapPinIcon className="w-4 h-4 text-gray-500" />
-            <span>{venueName}</span>
+            {venueHref(ev) ? (
+              <Link href={venueHref(ev)!} className="hover:underline" style={{ color: eventsBrand }}>
+                {venueName}
+              </Link>
+            ) : (
+              <span>{venueName}</span>
+            )}
           </div>
         )}
         {ev.ticket_url && (

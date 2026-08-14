@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import { findKnownBandLinks } from "@/lib/knownBandLinks";
 import { findBandInGuide } from "@/lib/bandGuide";
+import { venueHref } from "@/lib/eventLinks";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
   ArrowLeftIcon, MusicalNoteIcon,
@@ -522,7 +523,13 @@ export default function BandDetailPage({
                   </div>
                   <div className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
                     <MapPinIcon className="w-3 h-3 flex-shrink-0" />
-                    {s.venue || s.location || "—"}
+                    {venueHref(s) ? (
+                      <Link href={venueHref(s)!} className="hover:underline" style={{ color: eventsBrand }}>
+                        {s.venue}
+                      </Link>
+                    ) : (
+                      <span>{s.location || "—"}</span>
+                    )}
                     {s.city && <span className="text-gray-400"> · {s.city}</span>}
                   </div>
                 </div>

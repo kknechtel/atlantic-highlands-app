@@ -22,6 +22,8 @@ import {
   ClockIcon, MapPinIcon,
 } from "@heroicons/react/24/outline";
 import { searchEvents, type CalendarEvent } from "@/lib/api";
+import { bandHref, venueHref, eventHref } from "@/lib/eventLinks";
+import { RowLink, InlineLink } from "@/components/events/EventRowLink";
 
 const eventsBrand = "#1d7a6c";
 
@@ -35,10 +37,9 @@ function fmtDate(iso: string): string {
 function EventRow({ ev }: { ev: CalendarEvent }) {
   const isMusic = ev.event_type === "live_music";
   return (
-    <Link
-      href={`/calendar/${ev.id}`}
-      className="flex items-start gap-3 p-3 rounded-lg bg-white border border-gray-200 hover:shadow-sm hover:border-gray-300 transition"
-    >
+    <div className="relative flex items-start gap-3 p-3 rounded-lg bg-white border border-gray-200 hover:shadow-sm hover:border-gray-300 transition">
+      <RowLink href={eventHref(ev.id)} label={ev.title} />
+
       <div className="w-12 text-center flex-shrink-0">
         <div className="text-[10px] text-gray-400 uppercase">
           {new Date(ev.date + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}
@@ -59,7 +60,9 @@ function EventRow({ ev }: { ev: CalendarEvent }) {
           : <CalendarDaysIcon className="w-4 h-4" />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-gray-900 truncate">{ev.title}</div>
+        <InlineLink href={bandHref(ev)} className="text-sm font-semibold text-gray-900 block truncate">
+          {ev.title}
+        </InlineLink>
         <div className="text-[11px] text-gray-500 flex items-center gap-1.5 flex-wrap mt-0.5">
           <span>{fmtDate(ev.date)}</span>
           {ev.time && (
@@ -73,7 +76,9 @@ function EventRow({ ev }: { ev: CalendarEvent }) {
             <>
               <span className="text-gray-300">·</span>
               <MapPinIcon className="w-3 h-3 inline -mt-0.5" />
-              <span style={{ color: eventsBrand }}>{ev.venue}</span>
+              <InlineLink href={venueHref(ev)} style={{ color: eventsBrand }}>
+                {ev.venue}
+              </InlineLink>
             </>
           )}
           {ev.city && (
@@ -81,7 +86,7 @@ function EventRow({ ev }: { ev: CalendarEvent }) {
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 

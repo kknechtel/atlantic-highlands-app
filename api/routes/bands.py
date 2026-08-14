@@ -32,6 +32,13 @@ class ProfilePayload(BaseModel):
     bandsintown_url: str | None = Field(default=None, max_length=500)
     bio: str | None = Field(default=None, max_length=2000)
     photo_url: str | None = Field(default=None, max_length=500)
+    # Comma-separated ("Classic Rock, Blues"). The source URL is required
+    # alongside a rating — see ProfileOut.
+    genres: str | None = Field(default=None, max_length=300)
+    genre_source_url: str | None = Field(default=None, max_length=500)
+    rating: float | None = Field(default=None, ge=0, le=5)
+    rating_count: int | None = Field(default=None, ge=0)
+    rating_source_url: str | None = Field(default=None, max_length=500)
 
 
 class ProfileOut(BaseModel):
@@ -42,6 +49,11 @@ class ProfileOut(BaseModel):
     bandsintown_url: str | None
     bio: str | None
     photo_url: str | None
+    genres: str | None
+    genre_source_url: str | None
+    rating: float | None
+    rating_count: int | None
+    rating_source_url: str | None
 
 
 def _to_out(p: BandProfile) -> ProfileOut:
@@ -53,6 +65,13 @@ def _to_out(p: BandProfile) -> ProfileOut:
         bandsintown_url=p.bandsintown_url,
         bio=p.bio,
         photo_url=p.photo_url,
+        genres=p.genres,
+        genre_source_url=p.genre_source_url,
+        # A rating with no source URL is not shown by the band page, so
+        # don't hand one out — see the rating block in bands/[name].
+        rating=p.rating if p.rating_source_url else None,
+        rating_count=p.rating_count if p.rating_source_url else None,
+        rating_source_url=p.rating_source_url,
     )
 
 

@@ -6,17 +6,23 @@ If a URL breaks (site redesign etc.) the runner logs and continues
 with the others, so a single dead venue can't take out the whole
 nightly run.
 
-v2 status (2026-05-24):
-  - Squarespace adapter rewritten for `?format=json-pretty` + `upcoming[]`
+v3 status (2026-08-14) — audited every venue against its live site:
+  - Healthy: Proving Ground, Sandbox at Seastreak, Chubby Pickle
+    (playwright), Donovan's Reef, Seafarer, Drifthouse
+  - Seafarer was silently down to ~1 event/season. It still publishes a
+    full lineup; parse_seafarer was picking the wrong homepage block.
+    Fixed by selecting on date-line density — see that parser.
+  - Drifthouse moved to the Playwright adapter: the site now 403s plain
+    requests. Same parser, browser-rendered fetch.
+  - Chubby Pickle's WP-REST entry dropped — it 403s now, and the
+    playwright entry already covers the same venue.
+  - On the Deck dropped — see Deferred below.
+
+v2 notes still in force:
+  - Squarespace adapter uses `?format=json-pretty` + `upcoming[]`
   - WordPress Tribe Events adapter is unused (no venue actually exposes it)
-  - New html_parse adapter with per-venue parsers covers Proving Ground,
-    Chubby Pickle (via WP REST page render), Seafarer
-  - Off the Hook and The Sandbox at Seastreak removed — both publish
-    nothing scrapeable. Schedules live on Facebook only. Re-add if a
-    Facebook Graph integration ships, or hand-curate via an admin form.
-  - Donovan's Reef removed — uses a BeatGig embed that only renders in
-    the browser. Needs headless (Playwright) which we don't run in prod.
-    Hand-curate or add headless infra later.
+  - Both squarespace and bandsintown are imported but currently unused by
+    VENUES; kept so venues can be re-added without hunting the adapter.
 """
 from . import squarespace, html_parse, bandsintown, playwright_adapter
 
@@ -31,13 +37,6 @@ VENUES = [
         html_parse.fetch_events,
         {"url": "https://www.theprovingground.com/events",
          "parser": html_parse.parse_proving_ground},
-    ),
-    (
-        "The Chubby Pickle", "Highlands",
-        html_parse.fetch_events,
-        # WP REST returns the calendar page as JSON with pre-rendered HTML.
-        {"url": "https://thechubbypicklenj.com/wp-json/wp/v2/pages?slug=calendar",
-         "parser": html_parse.parse_chubby_pickle},
     ),
     (
         "The Seafarer", "Highlands",
@@ -62,20 +61,18 @@ VENUES = [
             "wait_for_selector": "div.event",
         },
     ),
-    # ── Atlantic Highlands ────────────────────────────────────────
+    # ── Playwright (JS-rendered / bot-blocked venue pages) ────────
     (
-        "On the Deck", "Atlantic Highlands",
-        squarespace.fetch_events,
-        {"collection_url": "https://www.onthedeckrestaurant.com/live-music"},
-    ),
-    # ── Sea Bright ────────────────────────────────────────────────
-    (
+        # 2026-08-14: drifthousenj.com started returning 403 to plain
+        # requests regardless of User-Agent. The page itself is unchanged
+        # and parse_drifthouse still works against it, so we just render it
+        # through a real browser instead of dropping the venue.
         "Drifthouse by David Burke", "Sea Bright",
-        html_parse.fetch_events,
+        playwright_adapter.fetch_events,
         {"url": "https://drifthousenj.com/events/",
-         "parser": html_parse.parse_drifthouse},
+         "parser": html_parse.parse_drifthouse,
+         "wait_for_selector": None},
     ),
-    # ── Playwright (JS-rendered venue pages) ──────────────────────
     (
         "The Chubby Pickle", "Highlands",
         playwright_adapter.fetch_events,
@@ -93,6 +90,13 @@ VENUES = [
          "wait_for_selector": 'div[class*="bg-event"], .beatgig-event'},
     ),
     # ── Deferred (no scrape path that's realistic from EC2) ───────
+    # On the Deck (Atlantic Highlands)  2026-08-14: /live-music is a 404 and
+    #                               the site no longer publishes a schedule
+    #                               anywhere — the replacement "Happening
+    #                               @OTD" page is a single flyer image. This
+    #                               is our only AH venue, so it's the best
+    #                               candidate for the calendar-image ingest
+    #                               (services/calendar_image_extract.py).
     # Off the Hook                  Squarespace events collection empty
     # Barnacle Bill's (Rumson/SB)   Live-music page is static text, no calendar
     # Eventide Grille               Schedule on Facebook only

@@ -23,6 +23,7 @@ import {
   type CalendarEvent, type BandProfile,
 } from "@/lib/api";
 import { findKnownBandLinks } from "@/lib/knownBandLinks";
+import { findBandInGuide } from "@/lib/bandGuide";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
   ArrowLeftIcon, MusicalNoteIcon,
@@ -101,11 +102,41 @@ export default function BandDetailPage({
 
   const links = useMemo(() => resolveLinks(bandName, profile), [bandName, profile]);
 
+  // What kind of act this is, from the ported Edgewater guide (42 entries,
+  // so most scraped acts miss and the section just doesn't render).
+  //
+  // We surface only the descriptive fields — genre tags, vibe, one-line
+  // description, wedding availability. The guide's `rating`, `reviews` and
+  // `category` are deliberately left out: they're one booker's private
+  // shortlist notes about named local musicians ("Approach with Caution",
+  // "Wrong Style for High-Energy"), which is not something a public borough
+  // app should publish about real people. Ratings were already dropped for
+  // the same reason in d83c5de.
+  const guide = useMemo(() => findBandInGuide(bandName), [bandName]);
+
+  // Genre chips come from the enriched profile first (scraped from the
+  // band's own pages, with a source URL), falling back to the guide's
+  // curated tags. Deduped case-insensitively so "Rock" from both sources
+  // renders once.
+  const genreTags = useMemo(() => {
+    const fromProfile = (profile?.genres || "")
+      .split(",").map(s => s.trim()).filter(Boolean);
+    const merged = [...fromProfile];
+    for (const t of guide?.tags || []) {
+      if (!merged.some(m => m.toLowerCase() === t.toLowerCase())) merged.push(t);
+    }
+    return merged;
+  }, [profile?.genres, guide]);
+
+  const hasAbout = genreTags.length > 0 || !!guide?.description || !!guide?.vibe;
+
   // Admin inline edit
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Omit<BandProfile, "name">>({
     facebook_url: "", instagram_url: "", website_url: "",
     bandsintown_url: "", bio: "", photo_url: "",
+    genres: "", genre_source_url: "",
+    rating: null, rating_count: null, rating_source_url: "",
   });
   useEffect(() => {
     if (profile) {
@@ -116,6 +147,11 @@ export default function BandDetailPage({
         bandsintown_url: profile.bandsintown_url || "",
         bio: profile.bio || "",
         photo_url: profile.photo_url || "",
+        genres: profile.genres || "",
+        genre_source_url: profile.genre_source_url || "",
+        rating: profile.rating,
+        rating_count: profile.rating_count,
+        rating_source_url: profile.rating_source_url || "",
       });
     }
   }, [profile]);
@@ -127,6 +163,14 @@ export default function BandDetailPage({
       bandsintown_url: draft.bandsintown_url?.trim() || null,
       bio: draft.bio?.trim() || null,
       photo_url: draft.photo_url?.trim() || null,
+      genres: draft.genres?.trim() || null,
+      genre_source_url: draft.genre_source_url?.trim() || null,
+      // A rating without a source URL is dropped rather than saved — the
+      // page won't display one it can't attribute, so storing it would
+      // just be an invisible unsourced claim about a real musician.
+      rating: draft.rating_source_url?.trim() ? draft.rating : null,
+      rating_count: draft.rating_source_url?.trim() ? draft.rating_count : null,
+      rating_source_url: draft.rating_source_url?.trim() || null,
     }),
     onSuccess: () => {
       setEditing(false);
@@ -157,6 +201,78 @@ export default function BandDetailPage({
           </p>
         )}
       </header>
+
+      {/* What kind of act — genre/style overview. Sits above the dates so
+          you learn what the band is before scanning where they play. */}
+      {hasAbout && (
+        <section className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            What kind of act
+          </div>
+
+          {genreTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {genreTags.map(t => (
+                <span
+                  key={t}
+                  className="px-2.5 py-1 text-xs rounded-full font-medium"
+                  style={{ backgroundColor: `${eventsBrand}15`, color: eventsBrand }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {guide?.description && (
+            <p className="text-sm text-gray-800">{guide.description}</p>
+          )}
+
+          {guide?.vibe && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-[11px] uppercase tracking-wider text-gray-400 mb-0.5">
+                Vibe
+              </div>
+              <p className="text-sm text-gray-700">{guide.vibe}</p>
+            </div>
+          )}
+
+          {/* A rating is only ever shown with the page it came from — we
+              don't score bands ourselves. */}
+          {profile?.rating != null && profile.rating_source_url && (
+            <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-700">
+              <span className="font-medium">{profile.rating}/5</span>
+              {profile.rating_count ? ` from ${profile.rating_count} reviews` : ""}
+              {" · "}
+              <a
+                href={profile.rating_source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] underline text-gray-500 hover:text-gray-800"
+              >
+                source ↗
+              </a>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
+            {guide?.weddingBand != null && (
+              <span>{guide.weddingBand ? "Books weddings & private events" : "Bar / club act"}</span>
+            )}
+            {guide?.regularVenues && <span>Regulars at {guide.regularVenues}</span>}
+            {profile?.genre_source_url && (
+              <a
+                href={profile.genre_source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-gray-800"
+              >
+                Genre from the band&apos;s own page ↗
+              </a>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Curated profile section. Renders when an admin has filled in
           real URLs; admin sees an edit button. */}
@@ -248,6 +364,74 @@ export default function BandDetailPage({
                   rows={3}
                   className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
                 />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                  Genres <span className="text-gray-400 normal-case">(comma separated)</span>
+                </label>
+                <input
+                  type="text"
+                  value={draft.genres || ""}
+                  onChange={e => setDraft(d => ({ ...d, genres: e.target.value }))}
+                  placeholder="Classic Rock, Blues"
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                  Genre source URL
+                </label>
+                <input
+                  type="url"
+                  value={draft.genre_source_url || ""}
+                  onChange={e => setDraft(d => ({ ...d, genre_source_url: e.target.value }))}
+                  placeholder="https://… (the band's own page)"
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                    Rating (0-5)
+                  </label>
+                  <input
+                    type="number" min={0} max={5} step={0.1}
+                    value={draft.rating ?? ""}
+                    onChange={e => setDraft(d => ({
+                      ...d, rating: e.target.value === "" ? null : Number(e.target.value),
+                    }))}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                    Review count
+                  </label>
+                  <input
+                    type="number" min={0} step={1}
+                    value={draft.rating_count ?? ""}
+                    onChange={e => setDraft(d => ({
+                      ...d, rating_count: e.target.value === "" ? null : Number(e.target.value),
+                    }))}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                  Rating source URL
+                </label>
+                <input
+                  type="url"
+                  value={draft.rating_source_url || ""}
+                  onChange={e => setDraft(d => ({ ...d, rating_source_url: e.target.value }))}
+                  placeholder="https://… (page that publishes the rating)"
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400"
+                />
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  Ratings without a source are discarded — we only show a score
+                  we can point at. Don&apos;t enter your own opinion here.
+                </p>
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button

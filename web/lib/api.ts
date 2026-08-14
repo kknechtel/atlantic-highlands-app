@@ -860,6 +860,15 @@ export interface BandProfile {
   bandsintown_url: string | null;
   bio: string | null;
   photo_url: string | null;
+  /** Comma-separated ("Classic Rock, Blues"). Only ever set from a page
+   *  that states it — see scripts/enrich_band_genres.py. */
+  genres: string | null;
+  genre_source_url: string | null;
+  /** As published by the source, never computed by us. The API withholds
+   *  the rating entirely when there's no source URL to attribute it to. */
+  rating: number | null;
+  rating_count: number | null;
+  rating_source_url: string | null;
 }
 
 /** Returns null when no curated profile exists (404 → null). */

@@ -102,20 +102,80 @@ def _safe_date(year: int, month: int, day: int) -> Optional[str]:
         return None
 
 
-def _normalize_time(t: str) -> Optional[str]:
-    """'7PM', '7:00 PM', '7pm-10pm' → '7:00 PM' (start only)."""
-    if not t:
-        return None
-    t = t.strip().rstrip(".")
-    # Strip end-time half of a range
-    t = re.split(r"\s*[-–—]\s*", t, 1)[0].strip()
-    m = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*([APap][Mm])$", t.replace(".", ""))
+_CLOCK_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*([APap]\.?[Mm]\.?|noon|midnight)?$", re.I)
+
+
+def _parse_clock(t: str) -> Optional[tuple[int, int, Optional[str]]]:
+    """'7', '7:30', '7PM', '12 noon' → (hour, minute, 'AM'|'PM'|None)."""
+    m = _CLOCK_RE.match(t.strip().rstrip("."))
     if not m:
-        return t  # return as-is; caller can still render it
-    hh = int(m.group(1))
-    mm = int(m.group(2) or 0)
-    ampm = m.group(3).upper()
+        return None
+    hh, mm, suffix = int(m.group(1)), int(m.group(2) or 0), m.group(3)
+    if hh > 12 or mm > 59:
+        return None
+    ampm = None
+    if suffix:
+        s = suffix.lower().replace(".", "")
+        ampm = "PM" if s in ("pm", "noon") else "AM"
+    return hh, mm, ampm
+
+
+def _fmt_clock(hh: int, mm: int, ampm: str) -> str:
     return f"{hh}:{mm:02d} {ampm}"
+
+
+def normalize_time_range(t: str) -> tuple[Optional[str], Optional[str]]:
+    """Split a scraped time string into (start, end), both '7:00 PM' style.
+
+    Venues write ranges every which way:
+
+        '7pm'              → ('7:00 PM', None)
+        '7:00 PM - 10:00 PM' → ('7:00 PM', '10:00 PM')
+        '6-9pm'            → ('6:00 PM', '9:00 PM')   compact, one meridiem
+        '11-2pm'           → ('11:00 AM', '2:00 PM')  meridiem flips
+        '10:00pm - 2:00am' → ('10:00 PM', '2:00 AM')
+        '12:00 Noon'       → ('12:00 PM', None)
+
+    The compact form is why Sandbox at Seastreak times looked missing: the
+    old normalizer cut the range at the dash before reading the meridiem,
+    so '6-9pm' collapsed to a bare '6'. When only one half carries a
+    meridiem the other inherits it, flipping AM→PM if that's the only way
+    to keep start before end ('11-2pm' is 11am to 2pm, not 11pm to 2pm).
+    """
+    if not t:
+        return None, None
+    raw = t.strip().rstrip(".")
+    halves = re.split(r"\s*(?:[-–—]|\bto\b)\s*", raw, maxsplit=1)
+
+    start = _parse_clock(halves[0])
+    end = _parse_clock(halves[1]) if len(halves) > 1 else None
+    if not start:
+        # Unrecognized shape — hand it back as-is so the UI still shows
+        # whatever the venue wrote rather than nothing.
+        return raw, None
+
+    s_h, s_m, s_ap = start
+    if not end:
+        return _fmt_clock(s_h, s_m, s_ap or "PM"), None
+
+    e_h, e_m, e_ap = end
+    if s_ap and not e_ap:
+        e_ap = s_ap
+        if (e_h % 12) < (s_h % 12):   # crossed noon/midnight, e.g. '10pm-2'
+            e_ap = "AM" if s_ap == "PM" else "PM"
+    elif e_ap and not s_ap:
+        s_ap = e_ap
+        if (s_h % 12) > (e_h % 12):   # '11-2pm' → start is the morning
+            s_ap = "AM" if e_ap == "PM" else "PM"
+    elif not s_ap and not e_ap:
+        s_ap = e_ap = "PM"            # evening shows are the overwhelming default
+
+    return _fmt_clock(s_h, s_m, s_ap), _fmt_clock(e_h, e_m, e_ap)
+
+
+def _normalize_time(t: str) -> Optional[str]:
+    """Start time only. Kept for parsers that don't track an end time."""
+    return normalize_time_range(t)[0]
 
 
 # ── Per-venue parsers ──────────────────────────────────────────────────
@@ -186,13 +246,14 @@ def parse_proving_ground(html: str, year: int) -> list[dict]:
             date_str = _safe_date(yr + 1, mon, day) or date_str
 
         time_m = time_re.search(block)
-        time_str = _normalize_time(time_m.group(0)) if time_m else None
+        time_str, end_time_str = normalize_time_range(time_m.group(0)) if time_m else (None, None)
 
         key = (date_str, title.lower())
         if key in seen:
             continue
         seen.add(key)
-        events.append({"date": date_str, "title": title, "time": time_str})
+        events.append({"date": date_str, "title": title,
+                       "time": time_str, "end_time": end_time_str})
 
     return events
 
@@ -359,11 +420,12 @@ def parse_sandbox(html: str, year: int) -> list[dict]:
                 continue
             # First non-time part is the title; a part with am/pm is the time.
             time_str: Optional[str] = None
+            end_time_str: Optional[str] = None
             title_parts: list[str] = []
             time_re = re.compile(r"^\s*\d{1,2}(?::\d{2})?\s*[-–—]?\s*\d{0,2}(?::\d{2})?\s*[APap][Mm]?", re.I)
             for p in parts:
                 if time_re.search(p) and any(c.isdigit() for c in p):
-                    time_str = _normalize_time(p)
+                    time_str, end_time_str = normalize_time_range(p)
                 else:
                     title_parts.append(p)
             title = " ".join(title_parts).strip(" -·|")
@@ -394,6 +456,7 @@ def parse_sandbox(html: str, year: int) -> list[dict]:
                 "date": date_str,
                 "title": title,
                 "time": time_str,
+                "end_time": end_time_str,
                 "description": cover_note,
             })
 
@@ -403,13 +466,11 @@ def parse_sandbox(html: str, year: int) -> list[dict]:
 def parse_seafarer(html: str, year: int) -> list[dict]:
     """The Seafarer homepage at https://www.seafarernj.com/.
 
-    The schedule lives in a single .sqs-html-content block whose text
-    looks like:
+    The schedule lives in one .sqs-html-content block among several. We
+    identify it by date-line density rather than by heading text — see the
+    block-selection comment below. Its text looks like:
 
-        WE HAVE GUARENTEED FREE LIVE MUSIC
-        EVERY THURSDAY, FRIDAY, SATURDAY, SUNDAY
-        ALL SUMMER LONG! Weather Permitting!
-        LIVE MUSIC LINEUP
+        LIVE Entertainment + FUN EVENTS SCHEDULE!
         Friday May 22
         Charles Krause 6PM
         Saturday May 23
@@ -424,29 +485,6 @@ def parse_seafarer(html: str, year: int) -> list[dict]:
     line); we carry the last seen month forward.
     """
     soup = BeautifulSoup(html, "html.parser")
-
-    # Find the music-schedule block — the one that mentions "LIVE MUSIC LINEUP"
-    # or "WE HAVE GUARENTEED FREE LIVE MUSIC". Falls back to body text if not
-    # found so a future restyle doesn't silently break us.
-    block_text: Optional[str] = None
-    for block in soup.select(".sqs-html-content"):
-        t = block.get_text("\n", strip=True)
-        if "LIVE MUSIC LINEUP" in t.upper() or "LIVE MUSIC" in t.upper():
-            block_text = t
-            break
-    if not block_text:
-        block_text = soup.get_text("\n", strip=True)
-
-    # Slice from the "LIVE MUSIC LINEUP" marker forward, if present
-    upper = block_text.upper()
-    marker = upper.find("LIVE MUSIC LINEUP")
-    if marker >= 0:
-        block_text = block_text[marker:]
-
-    lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
-    events: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-    today = date.today()
 
     # Date-line patterns:
     #   "Friday May 22"            full
@@ -467,6 +505,34 @@ def parse_seafarer(html: str, year: int) -> list[dict]:
     time_re = re.compile(
         r"(\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?)",
     )
+
+    def date_line_count(text: str) -> int:
+        return sum(
+            1 for ln in text.split("\n")
+            if date_full.match(ln.strip()) or date_month_elided.match(ln.strip())
+        )
+
+    # Pick the schedule block by counting date lines, not by matching a
+    # heading. The homepage carries several music-mentioning blocks — a
+    # welcome blurb that names only tonight's act, an hours/specials block —
+    # and the real lineup is simply whichever holds the most date lines.
+    # Heading text has already changed twice ("LIVE MUSIC LINEUP" →
+    # "LIVE Entertainment + FUN EVENTS SCHEDULE!"), so keying off it is what
+    # left us serving one stale show per season.
+    blocks = [b.get_text("\n", strip=True) for b in soup.select(".sqs-html-content")]
+    block_text = max(blocks, key=date_line_count, default="")
+    if date_line_count(block_text) == 0:
+        # No block parsed as a schedule — fall back to whole-page text so a
+        # structural restyle degrades instead of returning nothing.
+        block_text = soup.get_text("\n", strip=True)
+        marker = block_text.upper().find("LIVE MUSIC LINEUP")
+        if marker >= 0:
+            block_text = block_text[marker:]
+
+    lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
+    events: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    today = date.today()
 
     last_month: Optional[int] = None
     pending_date: Optional[str] = None
@@ -498,7 +564,7 @@ def parse_seafarer(html: str, year: int) -> list[dict]:
         elif pending_date:
             # Band line — title + optional time
             tm = time_re.search(line)
-            time_str = _normalize_time(tm.group(1)) if tm else None
+            time_str, end_time_str = normalize_time_range(tm.group(1)) if tm else (None, None)
             title = (line[:tm.start()] + line[tm.end():]) if tm else line
             title = title.strip(" -–—·,")
             if not title or len(title) < 2:
@@ -509,7 +575,8 @@ def parse_seafarer(html: str, year: int) -> list[dict]:
                 pending_date = None
                 continue
             seen.add(key)
-            events.append({"date": pending_date, "title": title, "time": time_str})
+            events.append({"date": pending_date, "title": title,
+                           "time": time_str, "end_time": end_time_str})
             pending_date = None  # consume — one band per date line
 
     return events

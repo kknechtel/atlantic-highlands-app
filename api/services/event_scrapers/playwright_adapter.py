@@ -38,7 +38,7 @@ from typing import Callable, Optional
 from bs4 import BeautifulSoup
 
 from .html_parse import (
-    _MONTHS, _safe_date, _normalize_time,
+    _MONTHS, _safe_date, _normalize_time, normalize_time_range,
 )
 
 logger = logging.getLogger(__name__)
@@ -438,14 +438,16 @@ def parse_donovans_dom(html: str, year: int) -> list[dict]:
             if not title or len(title) < 2:
                 continue
             time_str: Optional[str] = None
+            end_time_str: Optional[str] = None
             if idx < len(times):
                 tm = time_re.search(times[idx].get_text(" ", strip=True))
                 if tm:
-                    time_str = _normalize_time(tm.group(0))
+                    time_str, end_time_str = normalize_time_range(tm.group(0))
             key = (d, title.lower())
             if key in seen:
                 continue
             seen.add(key)
-            events.append({"date": d, "title": title, "time": time_str})
+            events.append({"date": d, "title": title,
+                           "time": time_str, "end_time": end_time_str})
 
     return events

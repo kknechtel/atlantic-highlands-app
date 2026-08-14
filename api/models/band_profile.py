@@ -16,7 +16,7 @@ Name is canonical-case (user-friendly) but matched case-insensitively.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Index
+from sqlalchemy import Column, String, DateTime, Float, Integer, Text, Index
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 
@@ -40,6 +40,18 @@ class BandProfile(Base):
     bandsintown_url = Column(String, nullable=True)
     bio = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)
+
+    # Genre + rating, populated by scripts/enrich_band_genres.py or by an
+    # admin. Both carry a source URL because everything here describes a
+    # real working musician: we only store a genre a band states in its own
+    # copy, and only a rating a page actually publishes. Nothing is
+    # inferred from the act's name, and ratings are never computed by us —
+    # the UI attributes them to the source.
+    genres = Column(String, nullable=True)              # "Classic Rock, Blues"
+    genre_source_url = Column(String, nullable=True)
+    rating = Column(Float, nullable=True)               # 0-5, as published
+    rating_count = Column(Integer, nullable=True)
+    rating_source_url = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

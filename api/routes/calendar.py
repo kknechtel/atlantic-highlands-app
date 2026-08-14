@@ -1,5 +1,6 @@
 """Calendar events API - serves scraped borough events and document-derived dates."""
 import logging
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,6 +16,31 @@ from auth import get_current_user, get_current_user_optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# `time` is free text ("7:00 PM", "7:00 pm", "12:00 Noon"), so ordering on
+# it in SQL sorts lexically — "10:00 PM" lands before "6:00 PM" and an
+# evening lineup comes out shuffled. Parse to minutes-since-midnight and
+# order in Python instead.
+_CLOCK = re.compile(r"^\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?|^\s*(\d{1,2})(?::(\d{2}))?\s*(noon|midnight)", re.I)
+_SORT_LAST = 24 * 60 + 1        # untimed / unparseable events sort after timed ones
+
+
+def _minutes(t: str | None) -> int:
+    """'7:00 PM' → 1140. Anything unparseable sorts last."""
+    if not t:
+        return _SORT_LAST
+    m = _CLOCK.match(t)
+    if not m:
+        return _SORT_LAST
+    if m.group(1) is not None:
+        hh, mm, ampm = int(m.group(1)), int(m.group(2) or 0), m.group(3).lower()
+    else:
+        hh, mm = int(m.group(4)), int(m.group(5) or 0)
+        ampm = "p" if m.group(6).lower() == "noon" else "a"
+    if hh > 12 or mm > 59:
+        return _SORT_LAST
+    hh = hh % 12 + (12 if ampm == "p" else 0)
+    return hh * 60 + mm
 
 
 @router.get("/events")
@@ -75,16 +101,19 @@ def get_calendar_events(
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY date ASC, time ASC NULLS LAST"
-    if limit:
-        query += f" LIMIT {int(limit)}"
+    query += " ORDER BY date ASC"
 
     try:
         rows = db.execute(sql_text(query), params).fetchall()
-        return [_row_to_dict(r) for r in rows]
     except Exception as e:
         logger.warning(f"Calendar events query failed (table may not exist): {e}")
         return []
+
+    events = [_row_to_dict(r) for r in rows]
+    # Sort here rather than in SQL — see _minutes. LIMIT is applied after
+    # sorting so a capped result isn't truncated mid-day in the wrong order.
+    events.sort(key=lambda e: (e["date"], _minutes(e["time"]), e["title"] or ""))
+    return events[:limit] if limit else events
 
 
 def _row_to_dict(r) -> dict:

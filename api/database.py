@@ -260,6 +260,14 @@ def _migrate():
             ("calendar_events", "event_type", "TEXT DEFAULT 'general'"),
             ("calendar_events", "end_time", "TEXT"),
             ("calendar_events", "ticket_url", "TEXT"),
+            # Band genre/rating enrichment (scripts/enrich_band_genres.py).
+            # Source URLs are stored alongside so the band page can
+            # attribute every claim it makes about a real musician.
+            ("band_profiles", "genres", "VARCHAR"),
+            ("band_profiles", "genre_source_url", "VARCHAR"),
+            ("band_profiles", "rating", "DOUBLE PRECISION"),
+            ("band_profiles", "rating_count", "INTEGER"),
+            ("band_profiles", "rating_source_url", "VARCHAR"),
         ]
         for table, column, col_type in rag_columns:
             if not _table_exists(table):

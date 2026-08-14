@@ -403,13 +403,11 @@ def parse_sandbox(html: str, year: int) -> list[dict]:
 def parse_seafarer(html: str, year: int) -> list[dict]:
     """The Seafarer homepage at https://www.seafarernj.com/.
 
-    The schedule lives in a single .sqs-html-content block whose text
-    looks like:
+    The schedule lives in one .sqs-html-content block among several. We
+    identify it by date-line density rather than by heading text — see the
+    block-selection comment below. Its text looks like:
 
-        WE HAVE GUARENTEED FREE LIVE MUSIC
-        EVERY THURSDAY, FRIDAY, SATURDAY, SUNDAY
-        ALL SUMMER LONG! Weather Permitting!
-        LIVE MUSIC LINEUP
+        LIVE Entertainment + FUN EVENTS SCHEDULE!
         Friday May 22
         Charles Krause 6PM
         Saturday May 23
@@ -424,29 +422,6 @@ def parse_seafarer(html: str, year: int) -> list[dict]:
     line); we carry the last seen month forward.
     """
     soup = BeautifulSoup(html, "html.parser")
-
-    # Find the music-schedule block — the one that mentions "LIVE MUSIC LINEUP"
-    # or "WE HAVE GUARENTEED FREE LIVE MUSIC". Falls back to body text if not
-    # found so a future restyle doesn't silently break us.
-    block_text: Optional[str] = None
-    for block in soup.select(".sqs-html-content"):
-        t = block.get_text("\n", strip=True)
-        if "LIVE MUSIC LINEUP" in t.upper() or "LIVE MUSIC" in t.upper():
-            block_text = t
-            break
-    if not block_text:
-        block_text = soup.get_text("\n", strip=True)
-
-    # Slice from the "LIVE MUSIC LINEUP" marker forward, if present
-    upper = block_text.upper()
-    marker = upper.find("LIVE MUSIC LINEUP")
-    if marker >= 0:
-        block_text = block_text[marker:]
-
-    lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
-    events: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-    today = date.today()
 
     # Date-line patterns:
     #   "Friday May 22"            full
@@ -467,6 +442,34 @@ def parse_seafarer(html: str, year: int) -> list[dict]:
     time_re = re.compile(
         r"(\d{1,2}(?::\d{2})?\s*[APap][Mm](?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*[APap][Mm])?)",
     )
+
+    def date_line_count(text: str) -> int:
+        return sum(
+            1 for ln in text.split("\n")
+            if date_full.match(ln.strip()) or date_month_elided.match(ln.strip())
+        )
+
+    # Pick the schedule block by counting date lines, not by matching a
+    # heading. The homepage carries several music-mentioning blocks — a
+    # welcome blurb that names only tonight's act, an hours/specials block —
+    # and the real lineup is simply whichever holds the most date lines.
+    # Heading text has already changed twice ("LIVE MUSIC LINEUP" →
+    # "LIVE Entertainment + FUN EVENTS SCHEDULE!"), so keying off it is what
+    # left us serving one stale show per season.
+    blocks = [b.get_text("\n", strip=True) for b in soup.select(".sqs-html-content")]
+    block_text = max(blocks, key=date_line_count, default="")
+    if date_line_count(block_text) == 0:
+        # No block parsed as a schedule — fall back to whole-page text so a
+        # structural restyle degrades instead of returning nothing.
+        block_text = soup.get_text("\n", strip=True)
+        marker = block_text.upper().find("LIVE MUSIC LINEUP")
+        if marker >= 0:
+            block_text = block_text[marker:]
+
+    lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
+    events: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    today = date.today()
 
     last_month: Optional[int] = None
     pending_date: Optional[str] = None

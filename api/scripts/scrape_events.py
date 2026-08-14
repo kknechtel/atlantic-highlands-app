@@ -28,8 +28,60 @@ HEADERS = {
 }
 
 
+# Trailing time on an event line: "7:00 pm", "12:00 Noon",
+# "10:00pm - 2:00am". Anchored so it can't chew into the title.
+_TIME_TRAILING = re.compile(
+    r"(\d{1,2}(?::\d{2})?\s*(?:am|pm|noon)"
+    r"(?:\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|noon))?)\s*$",
+    re.I,
+)
+_TIME_ANYWHERE = re.compile(
+    r"(\d{1,2}:\d{2}\s*(?:am|pm|noon)?)",
+    re.I,
+)
+
+
+def _split_title_time(text: str) -> tuple[str, str | None]:
+    """Peel a trailing time (or time range) off an event line.
+
+    Returns (title, time). Falls back to an unanchored match so a line
+    that puts the time mid-string still yields a time rather than
+    burying it in the title.
+    """
+    m = _TIME_TRAILING.search(text)
+    if m:
+        return text[: m.start()].strip(" -–—·,"), m.group(1).strip()
+
+    m = _TIME_ANYWHERE.search(text)
+    if m:
+        title = (text[: m.start()] + " " + text[m.end():]).strip(" -–—·,")
+        return re.sub(r"\s{2,}", " ", title), m.group(1).strip()
+
+    return text.strip(" -–—·,"), None
+
+
 def scrape_month(year: int, month: int) -> list[dict]:
-    """Scrape events for a specific month from the borough calendar."""
+    """Scrape events for a specific month from the borough calendar.
+
+    The calendar is a table of day cells. Each leaf cell holds the day
+    number in a <b><a>, then one <font color="#000000"> per event inside
+    a <font size="-2"> wrapper:
+
+        <td class="cal">
+          <b><a ...><font>19</font></a><br/></b>
+          <font size="-2">
+            <img/><font color="#000000">Mayor &amp; Council Meeting 7:00 pm</font><br/>
+            <img/><font color="#000000">Hydrant Flushing 10:00pm - 2:00am</font><br/>
+          </font>
+        </td>
+
+    We take one event per inner <font>. The previous approach flattened
+    the cell to text and re-split it on event keywords (Festival,
+    Concert, Parade, "Offices closed", …), which cut titles in half
+    whenever a keyword landed mid-name — "Music and Food Truck Festival"
+    became two events, and "Borough Offices Closed" left a bare
+    "Borough" behind. The markup already delimits events; use it.
+    """
     url = MONTH_URL.format(month=month, year=year)
     logger.info(f"Scraping {year}-{month:02d}: {url}")
 
@@ -43,81 +95,41 @@ def scrape_month(year: int, month: int) -> list[dict]:
     soup = BeautifulSoup(resp.text, "html.parser")
     events = []
 
-    # Find calendar table cells - use separator to preserve structure
     for cell in soup.find_all("td"):
-        # Get text with newlines preserved between elements
-        raw = cell.get_text(separator="\n", strip=True)
-        if not raw:
+        if cell.find("td"):
+            continue  # layout wrapper, not a day cell
+
+        # Day number lives in the bolded link at the top of the cell.
+        header = cell.find("b")
+        if not header:
+            continue
+        day_match = re.search(r'\b(\d{1,2})\b', header.get_text(strip=True))
+        if not day_match:
+            continue
+        day = int(day_match.group(1))
+        if day < 1 or day > 31:
             continue
 
-        # First line should be the day number
-        lines = [l.strip() for l in raw.split("\n") if l.strip()]
-        if not lines:
-            continue
+        date_str = f"{year}-{month:02d}-{day:02d}"
 
-        # Check if first token is a day number
-        first_match = re.match(r'^(\d{1,2})$', lines[0])
-        if not first_match:
-            # Try embedded: "2Mayor & Council..."
-            first_match = re.match(r'^(\d{1,2})(\D.+)', lines[0])
-            if first_match:
-                day = int(first_match.group(1))
-                if day < 1 or day > 31:
+        for wrapper in cell.find_all("font", attrs={"size": "-2"}):
+            for entry in wrapper.find_all("font"):
+                raw = entry.get_text(" ", strip=True)
+                raw = re.sub(r'[▶►]\s*', '', raw).strip()
+                if not raw or "Printed Calendar" in raw:
                     continue
-                remaining = [first_match.group(2).strip()] + lines[1:]
-            else:
-                continue
-        else:
-            day = int(first_match.group(1))
-            if day < 1 or day > 31:
-                continue
-            remaining = lines[1:]
 
-        if not remaining:
-            continue
+                event_title, event_time = _split_title_time(raw)
+                if not event_title or len(event_title) < 3:
+                    continue
 
-        # Join all remaining text into one event string, then split by known event markers
-        full_text = " ".join(remaining)
-
-        # Skip noise
-        if "Printed Calendar" in full_text:
-            continue
-
-        # Split into individual events by known event keywords
-        event_markers = r'(?=(?:Mayor\s*&\s*Council|Planning\s*Board|Harbor\s*Commission|Recreation|Environmental\s*Commission|Shade\s*Tree|Board\s*of\s*Education|BOE|Easter|July\s*4|Independence|Memorial\s*Day|Labor\s*Day|Veterans|Christmas|Thanksgiving|Holiday|Parade|Festival|Concert|Farmers?\s*Market|Clean\s*Up|Borough\s*(?:and\s*)?Harbor|Offices?\s*(?:are\s*)?closed))'
-        event_parts = re.split(event_markers, full_text, flags=re.I)
-
-        for part in event_parts:
-            part = part.strip()
-            if not part or len(part) < 4:
-                continue
-
-            # Extract time if present
-            time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:am|pm|AM|PM|Noon))', part)
-            if not time_match:
-                time_match = re.search(r'(\d{1,2}:\d{2})\s', part)
-            event_time = time_match.group(1) if time_match else None
-
-            # Clean title
-            event_title = part.strip()
-            # Remove trailing time if already captured
-            if event_time:
-                event_title = event_title.replace(event_time, "").strip()
-            # Remove trailing punctuation artifacts
-            event_title = re.sub(r'[\u25b6\u25ba►▶]\s*', '', event_title).strip()
-
-            if not event_title or len(event_title) < 3:
-                continue
-
-            date_str = f"{year}-{month:02d}-{day:02d}"
-
-            events.append({
-                "date": date_str,
-                "title": event_title,
-                "time": event_time,
-                "source": "ahnj_calendar",
-                "url": url,
-            })
+                events.append({
+                    "date": date_str,
+                    "title": event_title,
+                    "time": event_time,
+                    "source": "ahnj_calendar",
+                    "url": url,
+                })
 
     logger.info(f"  Found {len(events)} events for {year}-{month:02d}")
     time.sleep(1)  # Be polite

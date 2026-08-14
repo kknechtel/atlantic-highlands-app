@@ -239,10 +239,19 @@ def page_is_about_act(text: str, name: str) -> bool:
     """
     low = re.sub(r"[^a-z0-9 ]+", " ", text.lower())
     low = re.sub(r"\s+", " ", low)
+    # Also compare with everything but letters and digits removed, so a
+    # page whose only self-identification is its domain still counts:
+    # quincymumford.com never contains "quincy mumford" with the space,
+    # and the spaced check alone flagged the artist's own site as a
+    # mislink. Require 6 characters there so a short squashed name can't
+    # collide with the middle of an unrelated word.
+    squashed = re.sub(r"[^a-z0-9]+", "", text.lower())
     for v in _name_variants(name):
-        v = re.sub(r"[^a-z0-9 ]+", " ", v)
-        v = re.sub(r"\s+", " ", v).strip()
-        if len(v) >= 4 and v in low:
+        spaced = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", v)).strip()
+        if len(spaced) >= 4 and spaced in low:
+            return True
+        tight = re.sub(r"[^a-z0-9]+", "", v)
+        if len(tight) >= 6 and tight in squashed:
             return True
     return False
 

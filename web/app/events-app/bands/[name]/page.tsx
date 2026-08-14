@@ -251,11 +251,19 @@ export default function BandDetailPage({
             </div>
           )}
 
-          {/* Ratings always carry their origin. A sourced rating links to
-              the page that published it; a guide rating is labelled as
-              the guide's opinion, because it is one curator's score of a
-              working musician and shouldn't read as the borough's. */}
-          {profile?.rating != null && profile.rating_source_url ? (
+          {/* Only a rating that names its source is shown, and it links
+              to the page that published it.
+
+              The band guide's own 1-5 score is deliberately NOT rendered.
+              It scores fit for a beach-club wedding booking, not quality:
+              of the five guide acts that actually play here, three sit at
+              1/5 under "avoid-wrong-style" — Moroccan Sheepherders scores
+              1/5 for being a jam band, not for being bad at it. Published
+              bare on a borough page it reads as a verdict on a working
+              local musician, which is not a claim this app has any basis
+              to make. The guide's descriptive fields (tags, vibe,
+              description) are shown above; its scores stay out. */}
+          {profile?.rating != null && profile.rating_source_url && (
             <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-700">
               <span className="font-medium">{profile.rating}/5</span>
               {profile.rating_count ? ` from ${profile.rating_count} reviews` : ""}
@@ -269,21 +277,7 @@ export default function BandDetailPage({
                 source ↗
               </a>
             </div>
-          ) : guide?.rating ? (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-800">
-                  {guide.rating}/5
-                </span>
-                <span className="text-[11px] text-gray-500">
-                  Jersey Shore band guide rating
-                </span>
-              </div>
-              {guide.reviews && (
-                <p className="text-[11px] text-gray-500 mt-0.5">{guide.reviews}</p>
-              )}
-            </div>
-          ) : null}
+          )}
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
             {guide?.weddingBand != null && (

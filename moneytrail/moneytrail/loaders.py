@@ -95,6 +95,35 @@ SPECS = {
         "required": ["public_body"],
         "dates": [], "amounts": ["base_pay", "overtime", "total_pay"], "ints": ["pay_year"],
     },
+    "public_bodies": {
+        "fields": {
+            "name": ["name", "public_body", "entity"],
+            "body_type": ["body_type", "type"],
+            "fy_start_month": ["fy_start_month", "fiscal_year_start_month"],
+            "body_group": ["body_group", "group"],
+            "successor": ["successor", "successor_body"],
+            "aliases": ["aliases", "alias", "aka"],
+            "note": ["note", "notes"],
+        },
+        "required": ["name"],
+        "dates": [], "amounts": [], "ints": ["fy_start_month"],
+    },
+    "disclosures": {
+        "fields": {
+            "public_body": ["public_body", "board", "entity", "agency"],
+            "official_name": ["official_name", "official", "name", "filer"],
+            "role": ["role", "position", "title", "office"],
+            "street": ["street", "address", "home_address"], "city": ["city"], "state": ["state"],
+            "zip": ["zip", "zipcode", "zip_code"],
+            "business_name": ["business_name", "business", "disclosed_business", "income_source", "entity_name"],
+            "business_street": ["business_street", "business_address"],
+            "business_zip": ["business_zip"],
+            "relationship": ["relationship", "relation", "whose_interest"],
+            "filing_year": ["filing_year", "year"],
+        },
+        "required": ["public_body", "official_name"],
+        "dates": [], "amounts": [], "ints": ["filing_year"],
+    },
     "recipient_map": {
         "fields": {
             "recipient": ["recipient", "committee", "recipient_name"],
@@ -189,6 +218,8 @@ def load_csv(con, source_type, path, note=None):
             rec["award_type"] = re.sub(r"[^a-z]+", "_", rec["award_type"].lower()).strip("_")
         if source_type == "recipient_map":
             rec["recipient_norm"] = N.norm_org(rec["recipient"])
+        if source_type == "public_bodies" and rec.get("body_type"):
+            rec["body_type"] = rec["body_type"].lower()
         rec["_line"] = i
         rec["_raw"] = json.dumps(row)
         records.append(rec)
@@ -200,7 +231,7 @@ def load_csv(con, source_type, path, note=None):
         "INSERT INTO source_files (source_type, path, sha256, row_count, note) VALUES (?, ?, ?, ?, ?) RETURNING file_id",
         [source_type, str(path), digest, len(records), note],
     ).fetchone()[0]
-    if source_type == "recipient_map":
+    if source_type in ("recipient_map", "public_bodies"):
         cols, vals = table_cols, [[r[c] for c in table_cols] for r in records]
     else:
         cols = ["file_id", "source_row", "raw"] + table_cols

@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from moneytrail import config as C
 from moneytrail import normalize as N
+from moneytrail.bodies import Bodies
 from moneytrail.schema import bulk_insert
 
 REC_ENTITY_VIEW = """
@@ -159,46 +160,60 @@ def missing_be_disclosure(con, names):
 # ─── 3. Aggregate spend over bid threshold with no competitive award ────────
 
 def aggregate_over_threshold(con, names):
-    rows = con.execute(f"""
-        WITH pay AS (
-            SELECT p.public_body, year(p.payment_date) AS yr, re.entity_id, sum(p.amount) AS total, list(p.id) AS ids
-            FROM payments p JOIN rec_entity re ON re.src_table='payments' AND re.src_id=p.id AND re.role='vendor'
-            GROUP BY ALL
-        )
-        SELECT pay.* FROM pay
-        WHERE pay.total > ?
-          AND pay.public_body IN (SELECT DISTINCT public_body FROM awards)   -- only where award coverage exists
-          AND NOT EXISTS (
-            SELECT 1 FROM awards a JOIN rec_entity re ON re.src_table='awards' AND re.src_id=a.id
-            WHERE re.entity_id = pay.entity_id AND a.public_body = pay.public_body
-              AND a.award_type IN ({','.join(repr(t) for t in C.COMPETITIVE_TYPES + C.BID_EXEMPT_TYPES)}))
-    """, [C.BID_THRESHOLD]).fetchall()
-    return [_flag(
-        "aggregate_over_bid_threshold",
-        [(f"paid > ${C.BID_THRESHOLD:,} in {yr} with no bid/exempt award on file", 30)],
-        body, eid, names,
-        f"{names.get(eid)}: ${total:,.0f} paid by {body} in {yr}, no competitive or exempt award found",
-        payments=_cite(con, "payments", ids),
-        caveat="Calendar-year aggregation; N.J.S.A. 40A:11-2 aggregates by commodity over the contract year. "
-               "State-contract/co-op purchases may be missing from the awards data.",
-    ) for body, yr, eid, total, ids in rows]
+    """Fiscal-year spend per body+vendor over the bid threshold with no bid or
+    exempt award on file. Schools aggregate July-June."""
+    B = Bodies(con)
+    covered = {r[0] for r in con.execute("SELECT DISTINCT public_body FROM awards").fetchall()}
+    procured = {(r[0], r[1]) for r in con.execute(f"""
+        SELECT a.public_body, re.entity_id FROM awards a
+        JOIN rec_entity re ON re.src_table='awards' AND re.src_id=a.id AND re.role='vendor'
+        WHERE a.award_type IN ({','.join(repr(t) for t in C.COMPETITIVE_TYPES + C.BID_EXEMPT_TYPES)})
+    """).fetchall()}
+    agg = defaultdict(lambda: [0.0, []])
+    for body, eid, pid, d, amt in con.execute("""
+        SELECT p.public_body, re.entity_id, p.id, p.payment_date, p.amount
+        FROM payments p JOIN rec_entity re ON re.src_table='payments' AND re.src_id=p.id AND re.role='vendor'
+    """).fetchall():
+        a = agg[(body, eid, B.fiscal_year(body, d))]
+        a[0] += amt or 0
+        a[1].append(pid)
+    flags = []
+    for (body, eid, fy), (total, ids) in agg.items():
+        # Only where award coverage exists for the body; otherwise absence means nothing.
+        if total <= C.BID_THRESHOLD or body not in covered or (body, eid) in procured:
+            continue
+        fyl = B.fy_label(body, fy)
+        flags.append(_flag(
+            "aggregate_over_bid_threshold",
+            [(f"paid > ${C.BID_THRESHOLD:,} in {fyl} with no bid/exempt award on file ({B.bid_law(body)})", 30)],
+            body, eid, names,
+            f"{names.get(eid)}: ${total:,.0f} paid by {body} in {fyl}, no competitive or exempt award found",
+            payments=_cite(con, "payments", ids), body_type=B.type(body),
+            caveat="Statutory aggregation is by commodity/service over the contract year; this aggregates all "
+                   "payments to the vendor. State-contract/co-op purchases may be missing from the awards data.",
+        ))
+    return flags
 
 
 # ─── 4. Awards clustered just under the bid threshold ───────────────────────
 
 def split_awards(con, names):
+    """Just-under-threshold awards to one vendor, grouped by body_group so a
+    split across related bodies (shared services, a consolidated district's
+    predecessors) shows up too."""
+    B = Bodies(con)
     lo = C.BID_THRESHOLD * C.SPLIT_BAND_LOW
     rows = con.execute("""
         SELECT a.public_body, re.entity_id, a.id, a.award_date, a.amount
         FROM awards a JOIN rec_entity re ON re.src_table='awards' AND re.src_id=a.id AND re.role='vendor'
         WHERE a.amount >= ? AND a.amount < ? AND coalesce(a.award_type,'') <> 'change_order'
-        ORDER BY 1, 2, 4
+        ORDER BY 4
     """, [lo, C.BID_THRESHOLD]).fetchall()
     groups = defaultdict(list)
     for body, eid, aid, d, amt in rows:
-        groups[(body, eid)].append((aid, d, amt))
+        groups[(B.group(body), eid)].append((aid, d, amt, body))
     flags, window = [], timedelta(days=C.SPLIT_WINDOW_DAYS)
-    for (body, eid), aws in groups.items():
+    for (grp, eid), aws in groups.items():
         best = []
         for i in range(len(aws)):
             run = [a for a in aws[i:] if a[1] - aws[i][1] <= window]
@@ -206,12 +221,15 @@ def split_awards(con, names):
                 best = run
         if len(best) >= 2:
             total = sum(a[2] for a in best)
+            bodies = sorted({a[3] for a in best})
             parts = [(f"{len(best)} awards each ${lo:,.0f}-${C.BID_THRESHOLD:,} within {C.SPLIT_WINDOW_DAYS} days", 25)]
             if total > C.BID_THRESHOLD:
-                parts.append(("combined value exceeds bid threshold", 15))
-            flags.append(_flag("split_awards", parts, body, eid, names,
-                               f"{names.get(eid)}: {len(best)} just-under-threshold awards from {body} "
-                               f"totaling ${total:,.0f}",
+                parts.append((f"combined value exceeds bid threshold ({B.bid_law(bodies[0])})", 15))
+            if len(bodies) > 1:
+                parts.append((f"split across related bodies in group '{grp}'", 10))
+            flags.append(_flag("split_awards", parts, bodies[0] if len(bodies) == 1 else grp, eid, names,
+                               f"{names.get(eid)}: {len(best)} just-under-threshold awards from "
+                               f"{', '.join(bodies)} totaling ${total:,.0f}",
                                awards=_cite(con, "awards", [a[0] for a in best])))
     return flags
 
@@ -219,6 +237,7 @@ def split_awards(con, names):
 # ─── 5. Change-order growth ──────────────────────────────────────────────────
 
 def change_order_growth(con, names):
+    B = Bodies(con)
     rows = con.execute("""
         SELECT o.id, o.public_body, o.contract_ref, o.amount, re.entity_id,
                sum(co.amount) AS co_total, list(co.id) AS co_ids
@@ -234,7 +253,7 @@ def change_order_growth(con, names):
         pct = co_total / orig
         if pct <= C.CHANGE_ORDER_PCT:
             continue
-        parts = [(f"cumulative change orders {pct:.0%} of original (> {C.CHANGE_ORDER_PCT:.0%}, N.J.A.C. 5:30-11)", 25)]
+        parts = [(f"cumulative change orders {pct:.0%} of original (> {C.CHANGE_ORDER_PCT:.0%}, {B.change_order_rule(body)})", 25)]
         if pct > 0.5:
             parts.append(("change orders exceed 50% of original", 15))
         if orig < C.BID_THRESHOLD <= orig + co_total:
@@ -248,22 +267,26 @@ def change_order_growth(con, names):
 # ─── 6. Repeat sole-source / emergency ───────────────────────────────────────
 
 def repeat_noncompetitive(con, names):
+    B = Bodies(con)
     rows = con.execute(f"""
         SELECT a.public_body, re.entity_id, a.id, a.award_date, a.award_type, a.amount
         FROM awards a JOIN rec_entity re ON re.src_table='awards' AND re.src_id=a.id AND re.role='vendor'
         WHERE a.award_type IN ({','.join(repr(t) for t in C.NONCOMPETITIVE_TYPES)})
-        ORDER BY 1, 2, 4
+        ORDER BY 4
     """).fetchall()
     groups = defaultdict(list)
     for body, eid, aid, d, t, amt in rows:
-        groups[(body, eid)].append((aid, d, t, amt))
+        groups[(B.group(body), eid)].append((aid, d, t, amt, body))
     flags, window = [], timedelta(days=C.REPEAT_NONCOMPETITIVE_DAYS)
-    for (body, eid), aws in groups.items():
+    for (grp, eid), aws in groups.items():
         best = max(([a for a in aws[i:] if a[1] - aws[i][1] <= window] for i in range(len(aws))), key=len)
         if len(best) >= C.REPEAT_NONCOMPETITIVE_MIN:
+            bodies = sorted({a[4] for a in best})
             parts = [(f"{len(best)} sole-source/emergency awards within {C.REPEAT_NONCOMPETITIVE_DAYS} days", 20 + 5 * (len(best) - 2))]
-            flags.append(_flag("repeat_noncompetitive", parts, body, eid, names,
-                               f"{names.get(eid)}: {len(best)} non-competitive awards from {body}, "
+            if len(bodies) > 1:
+                parts.append((f"across related bodies in group '{grp}'", 5))
+            flags.append(_flag("repeat_noncompetitive", parts, bodies[0] if len(bodies) == 1 else grp, eid, names,
+                               f"{names.get(eid)}: {len(best)} non-competitive awards from {', '.join(bodies)}, "
                                f"${sum(a[3] or 0 for a in best):,.0f}",
                                awards=_cite(con, "awards", [a[0] for a in best])))
     return flags
@@ -271,9 +294,8 @@ def repeat_noncompetitive(con, names):
 
 # ─── 7. Vendor ↔ public employee overlap ─────────────────────────────────────
 
-def employee_vendor_link(con, names):
-    from rapidfuzz import fuzz
-    vendors = con.execute("""
+def _vendor_records(con):
+    return con.execute("""
         SELECT DISTINCT re.entity_id, re.norm_addr, re.src_table, re.src_id, t.public_body, t.vendor_name
         FROM rec_entity re
         JOIN (SELECT 'awards' AS tbl, id, public_body, vendor_name FROM awards
@@ -281,39 +303,93 @@ def employee_vendor_link(con, names):
           ON t.tbl = re.src_table AND t.id = re.src_id
         WHERE re.role='vendor'
     """).fetchall()
-    emps = con.execute("""
-        SELECT e.id, e.public_body, e.name, e.title, re.norm_addr, re.norm_name, re.entity_id
-        FROM employees e JOIN rec_entity re ON re.src_table='employees' AND re.src_id=e.id
-    """).fetchall()
-    emp_by_addr = defaultdict(list)
-    for e in emps:
-        if e[4] and not N.is_po_box(e[4]):
-            emp_by_addr[e[4]].append(e)
+
+
+def _person_vendor_links(con, names, rule, people, who, body_part):
+    """people: rows (id, table, public_body, name, title, norm_addr, norm_name).
+    Flags vendors sharing a street address with, or (for sole-prop vendors)
+    the name of, a person on a public body."""
+    from rapidfuzz import fuzz
+    by_addr = defaultdict(list)
+    for p in people:
+        if p[5] and not N.is_po_box(p[5]):
+            by_addr[p[5]].append(p)
     hits = {}
-    for veid, vaddr, vtbl, vid, vbody, vname in vendors:
-        matches = [(e, "same street address") for e in emp_by_addr.get(vaddr, [])] if vaddr else []
+    for veid, vaddr, vtbl, vid, vbody, vname in _vendor_records(con):
+        matches = [(p, "same street address") for p in by_addr.get(vaddr, [])] if vaddr else []
         if not N.looks_like_org(vname):
             pn = N.norm_person(vname)
-            matches += [(e, "vendor name matches employee name") for e in emps
-                        if pn and fuzz.token_sort_ratio(pn, e[5]) >= C.ER_NAME_ALONE]
-        for e, why in matches:
-            key = (veid, e[0], why)
-            h = hits.setdefault(key, {"vbodies": set(), "vrecs": [], "emp": e, "why": why})
+            matches += [(p, f"vendor name matches {who} name") for p in people
+                        if pn and fuzz.token_sort_ratio(pn, p[6]) >= C.ER_NAME_ALONE]
+        for p, why in matches:
+            h = hits.setdefault((veid, p[1], p[0], why), {"vbodies": set(), "vrecs": [], "p": p, "why": why})
             h["vbodies"].add(vbody)
             h["vrecs"].append((vtbl, vid))
     flags = []
-    for (veid, _, why), h in hits.items():
-        e = h["emp"]
-        same_body = e[1] in h["vbodies"]
-        parts = [(f"{why}", 30)]
+    for (veid, _, _, why), h in hits.items():
+        p = h["p"]
+        same_body = p[2] in h["vbodies"]
+        parts = [(why, 30)]
         if same_body:
-            parts.append(("employee works for the paying/awarding body", 25))
+            parts.append((body_part, 25))
         recs = []
         for tbl in ("awards", "payments"):
             recs += _cite(con, tbl, sorted({i for t, i in h["vrecs"] if t == tbl}))
-        flags.append(_flag("employee_vendor_link", parts, e[1] if same_body else None, veid, names,
-                           f"{names.get(veid)} ↔ employee {e[2]} ({e[3] or 'n/a'}, {e[1]}): {why}",
-                           employee=_cite(con, "employees", [e[0]]), vendor_records=recs))
+        flags.append(_flag(rule, parts, p[2] if same_body else None, veid, names,
+                           f"{names.get(veid)} ↔ {who} {p[3]} ({p[4] or 'n/a'}, {p[2]}): {why}",
+                           person=_cite(con, p[1], [p[0]]), vendor_records=recs))
+    return flags
+
+
+def employee_vendor_link(con, names):
+    people = con.execute("""
+        SELECT e.id, 'employees', e.public_body, e.name, e.title, re.norm_addr, re.norm_name
+        FROM employees e JOIN rec_entity re ON re.src_table='employees' AND re.src_id=e.id
+    """).fetchall()
+    return _person_vendor_links(con, names, "employee_vendor_link", people, "employee",
+                                "employee works for the paying/awarding body")
+
+
+def official_vendor_link(con, names):
+    """Board members / officials. Two paths:
+    1. a business the official disclosed (self or relative) is a vendor;
+    2. the official's home address or name matches a vendor."""
+    B = Bodies(con)
+    flags = []
+    rows = con.execute("""
+        SELECT d.id, d.public_body, d.official_name, d.role, d.relationship, d.filing_year, rb.entity_id
+        FROM disclosures d
+        JOIN rec_entity rb ON rb.src_table='disclosures' AND rb.src_id=d.id AND rb.role='disclosed_business'
+    """).fetchall()
+    vend = defaultdict(list)
+    for veid, _, tbl, vid, vbody, _ in _vendor_records(con):
+        vend[veid].append((tbl, vid, vbody))
+    for did, body, oname, role, rel, fy, beid in rows:
+        vrecs = vend.get(beid)
+        if not vrecs:
+            continue
+        same_body = any(v[2] == body for v in vrecs)
+        parts = [(f"business disclosed by official ({rel or 'relationship n/a'}) is a public vendor", 35)]
+        if same_body:
+            parts.append((f"paid/awarded by the body the official serves ({C.ETHICS_LAW.get(B.type(body), C.ETHICS_LAW['default'])})", 30))
+        recs = []
+        for tbl in ("awards", "payments"):
+            recs += _cite(con, tbl, sorted({v[1] for v in vrecs if v[0] == tbl and (v[2] == body or not same_body)}))
+        flags.append(_flag("official_disclosed_business_vendor", parts, body if same_body else None, beid, names,
+                           f"{names.get(beid)}: disclosed by {oname} ({role or 'official'}, {body}, {fy or 'n/a'}; "
+                           f"{rel or 'relationship n/a'}); vendor to "
+                           f"{', '.join(sorted({v[2] for v in vrecs}))}",
+                           disclosure=_cite(con, "disclosures", [did]), vendor_records=recs,
+                           caveat="Disclosure means it was reported; check abstention on the votes and whether "
+                                  "the interest is covered by an exception."))
+    people = con.execute("""
+        SELECT DISTINCT ON (d.official_name, d.public_body)
+               d.id, 'disclosures', d.public_body, d.official_name, d.role, re.norm_addr, re.norm_name
+        FROM disclosures d JOIN rec_entity re ON re.src_table='disclosures' AND re.src_id=d.id AND re.role='official'
+        ORDER BY d.official_name, d.public_body, d.filing_year DESC NULLS LAST
+    """).fetchall()
+    flags += _person_vendor_links(con, names, "official_vendor_link", people, "official",
+                                  "official serves the paying/awarding body")
     return flags
 
 
@@ -362,7 +438,8 @@ def payroll_anomalies(con, names):
 
 
 RULES = [donation_near_award, missing_be_disclosure, aggregate_over_threshold, split_awards,
-         change_order_growth, repeat_noncompetitive, employee_vendor_link, shared_address, payroll_anomalies]
+         change_order_growth, repeat_noncompetitive, employee_vendor_link, official_vendor_link,
+         shared_address, payroll_anomalies]
 
 
 def run_all(con, only=None):

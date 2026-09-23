@@ -1,0 +1,5 @@
+public_body,vendor,address,zip,award_amount,resolution_date,procurement_method,resolution,description
+Example Regional BOE,Apex Bus Co,1 Depot Rd,07716,300000,2024-07-15,Bid,2024-50,Student transportation
+Sample Borough BOE,Bright Roofing LLC,9 Shingle Way,07732,40000,2024-03-01,Sole Source,24-11,Roof repair gym
+Other Borough School District,Bright Roofing,9 Shingle Way,07732,42000,2024-04-01,Sole Source,24-19,Roof repair annex
+Borough of Example,Apex Bus Co,1 Depot Rd,07716,50000,2024-02-01,Bid,24-05,Senior shuttle

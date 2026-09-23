@@ -1,0 +1,8 @@
+public_body,payee,address,zip,check_amount,check_date,check_number,description
+Example Regional Board of Education,Chalk Supply Co,5 Slate St,07748,30000,2024-05-15,5001,Classroom supplies
+Example Regional Board of Education,Chalk Supply Co,5 Slate St,07748,30000,2024-08-15,5101,Classroom supplies
+Example Regional Board of Education,Chalk Supply Co,5 Slate St,07748,20000,2025-03-01,5301,Classroom supplies
+Borough of Example,Chalk Supply Co,5 Slate St,07748,30000,2024-05-15,9001,Office supplies
+Borough of Example,Chalk Supply Co,5 Slate St,07748,30000,2024-08-15,9101,Office supplies
+Example Regional School District,Trustee Family Landscaping,22 Hedge Ln,07716,18000,2024-10-01,5200,Grounds
+Example Regional School District,Maple Consulting,31 Maple Ave,07716,9000,2024-11-01,5250,Grant writing

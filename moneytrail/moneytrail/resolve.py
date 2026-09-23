@@ -27,6 +27,8 @@ MENTION_SOURCES = [
     ("awards", "vendor_name", "vendor", "org", True),
     ("payments", "vendor_name", "vendor", "org", True),
     ("employees", "name", "employee", "person", True),
+    ("disclosures", "official_name", "official", "person", True),
+    ("disclosures", "business_name", "disclosed_business", "org", "business"),
 ]
 
 # Employer strings that carry no entity information.
@@ -56,7 +58,7 @@ def build_mentions(con):
     rows, mid = [], 0
     for table, col, role, kind, has_addr in MENTION_SOURCES:
         kind_expr = "contributor_kind" if kind is None else f"'{kind}'"
-        addr_expr = "street, zip" if has_addr else "NULL, NULL"
+        addr_expr = {True: "street, zip", False: "NULL, NULL", "business": "business_street, business_zip"}[has_addr]
         for src_id, name, k, street, z in con.execute(
             f"SELECT id, {col}, {kind_expr}, {addr_expr} FROM {table} WHERE {col} IS NOT NULL"
         ).fetchall():
@@ -87,6 +89,8 @@ def _match(a, b):
 
 
 def resolve(con):
+    from moneytrail import bodies
+    bodies.canonicalize(con)
     n = build_mentions(con)
     con.execute("DELETE FROM er_edges; DELETE FROM mention_entity; DELETE FROM entities;")
     ms = con.execute("SELECT mention_id, kind, raw_name, norm_name, norm_addr, zip5 FROM mentions").fetchall()

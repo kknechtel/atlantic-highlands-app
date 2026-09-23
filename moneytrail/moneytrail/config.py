@@ -41,3 +41,20 @@ ER_NAME_WITH_ADDR = 75    # needs same normalized street address
 NONCOMPETITIVE_TYPES = ("sole_source", "emergency")
 COMPETITIVE_TYPES = ("bid", "state_contract", "coop", "competitive_contracting")
 BID_EXEMPT_TYPES = ("professional_services", "extraordinary_unspecifiable", "shared_services")
+
+# Statute cited per body type. Thresholds are the same number under both
+# laws; the citation matters when a flag is written up.
+BID_LAW = {
+    "school": "N.J.S.A. 18A:18A-3 (Public School Contracts Law)",
+    "default": "N.J.S.A. 40A:11-3 (Local Public Contracts Law)",
+}
+CHANGE_ORDER_RULE = {
+    # N.J.A.C. 5:30-11 is the local-unit rule. Confirm the equivalent that
+    # governs boards of education before citing it in a school write-up.
+    "school": "N.J.A.C. 5:30-11 local-unit standard; verify BOE rule",
+    "default": "N.J.A.C. 5:30-11",
+}
+ETHICS_LAW = {
+    "school": "School Ethics Act, N.J.S.A. 18A:12-24",
+    "default": "Local Government Ethics Law, N.J.S.A. 40A:9-22.5",
+}

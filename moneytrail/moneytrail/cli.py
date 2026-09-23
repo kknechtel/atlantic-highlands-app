@@ -2,7 +2,8 @@
 
   init                         create the DuckDB schema
   load <type> <csv> [--note]   load a CSV (types: contributions, be_disclosures,
-                               awards, payments, employees, recipient_map)
+                               awards, payments, employees, recipient_map,
+                               public_bodies, disclosures)
   resolve                      run entity resolution
   flag [--only rule ...]       run red-flag rules
   report [--csv F] [--md F] [--min-score N] [--rule R]
@@ -92,7 +93,8 @@ def main(argv=None):
         if not ents:
             print("no match")
     elif a.cmd == "stats":
-        for t in ("source_files", "contributions", "be_disclosures", "awards", "payments", "employees",
+        for t in ("source_files", "public_bodies", "contributions", "be_disclosures", "awards", "payments",
+                  "employees", "disclosures",
                   "recipient_map", "mentions", "entities", "flags"):
             print(f"{t:16s} {con.execute(f'SELECT count(*) FROM {t}').fetchone()[0]}")
     con.close()

@@ -1,0 +1,5 @@
+name,body_type,fy_start_month,body_group,successor,aliases,note
+Example Regional School District,school,7,,,Example Regional BOE;Example Regional Board of Education,formed 7/1/2024 from the two borough districts
+Sample Borough School District,school,7,,Example Regional School District,Sample Borough BOE,predecessor
+Other Borough School District,school,7,,Example Regional School District,,predecessor
+Borough of Example,municipal,1,,,,

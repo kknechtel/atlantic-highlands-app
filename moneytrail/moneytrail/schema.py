@@ -72,6 +72,27 @@ CREATE TABLE IF NOT EXISTS recipient_map (
     recipient VARCHAR, recipient_norm VARCHAR, public_body VARCHAR, note VARCHAR
 );
 
+-- Public bodies: type drives which statute is cited and the fiscal year
+-- (schools run July-June). body_group ties related bodies (shared-services
+-- partners, a consolidated district's predecessors) so splitting across
+-- them is visible. aliases: ';'-separated spellings seen in source files.
+CREATE TABLE IF NOT EXISTS public_bodies (
+    name VARCHAR, body_type VARCHAR, fy_start_month INTEGER,
+    body_group VARCHAR, successor VARCHAR, aliases VARCHAR, note VARCHAR
+);
+
+-- Official disclosure statements: School Ethics Act personal/relative and
+-- financial disclosures (N.J.S.A. 18A:12-25, -26) and Local Government
+-- Ethics Law FDS (N.J.S.A. 40A:9-22.6). One row per disclosed business.
+CREATE TABLE IF NOT EXISTS disclosures (
+    id BIGINT PRIMARY KEY DEFAULT nextval('rec_seq'),
+    file_id INTEGER, source_row INTEGER, raw JSON,
+    public_body VARCHAR, official_name VARCHAR, role VARCHAR,
+    street VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR,
+    business_name VARCHAR, business_street VARCHAR, business_zip VARCHAR,
+    relationship VARCHAR, filing_year INTEGER
+);
+
 -- Entity resolution output.
 CREATE TABLE IF NOT EXISTS mentions (
     mention_id BIGINT, src_table VARCHAR, src_id BIGINT, role VARCHAR, kind VARCHAR,

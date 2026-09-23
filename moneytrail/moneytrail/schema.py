@@ -93,7 +93,10 @@ CREATE TABLE IF NOT EXISTS disclosures (
     public_body VARCHAR, official_name VARCHAR, role VARCHAR,
     street VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR,
     business_name VARCHAR, business_street VARCHAR, business_zip VARCHAR,
-    relationship VARCHAR, filing_year INTEGER
+    relationship VARCHAR, filing_year INTEGER,
+    -- item: income_source | business_interest | contract_business | fee | gift |
+    --       relative_employed | relative_contract | answer:<question>
+    item VARCHAR, related_person VARCHAR, detail VARCHAR
 );
 
 -- Entity resolution output.
@@ -119,8 +122,21 @@ CREATE TABLE IF NOT EXISTS flags (
 """
 
 
+# Columns added after a table first shipped. CREATE IF NOT EXISTS won't add
+# them to an existing database file.
+MIGRATIONS = [
+    ("public_bodies", "has_qpa", "BOOLEAN"),
+    ("recipient_map", "committee_type", "VARCHAR"),
+    ("disclosures", "item", "VARCHAR"),
+    ("disclosures", "related_person", "VARCHAR"),
+    ("disclosures", "detail", "VARCHAR"),
+]
+
+
 def init(con):
     con.execute(DDL)
+    for table, col, typ in MIGRATIONS:
+        con.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {typ}")
 
 
 def bulk_insert(con, table, cols, rows):

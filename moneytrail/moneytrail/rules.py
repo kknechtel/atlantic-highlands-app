@@ -383,21 +383,30 @@ def official_vendor_link(con, names):
     B = Bodies(con)
     flags = []
     rows = con.execute("""
-        SELECT d.id, d.public_body, d.official_name, d.role, d.relationship, d.filing_year, rb.entity_id
+        SELECT d.id, d.public_body, d.official_name, d.role, d.relationship, d.filing_year, rb.entity_id,
+               d.item,
+               (SELECT any_value(a.detail) FROM disclosures a
+                 WHERE a.file_id = d.file_id AND a.official_name = d.official_name
+                   AND a.filing_year IS NOT DISTINCT FROM d.filing_year
+                   AND a.item = 'answer:contract_business') AS q_contract
         FROM disclosures d
         JOIN rec_entity rb ON rb.src_table='disclosures' AND rb.src_id=d.id AND rb.role='disclosed_business'
     """).fetchall()
     vend = defaultdict(list)
     for veid, _, tbl, vid, vbody, _ in _vendor_records(con):
         vend[veid].append((tbl, vid, vbody))
-    for did, body, oname, role, rel, fy, beid in rows:
+    for did, body, oname, role, rel, fy, beid, item, q_contract in rows:
         vrecs = vend.get(beid)
         if not vrecs:
             continue
         same_body = any(v[2] == body for v in vrecs)
-        parts = [(f"business disclosed by official ({rel or 'relationship n/a'}) is a public vendor", 35)]
+        parts = [(f"business disclosed by official ({item or 'disclosure'}; {rel or 'relationship n/a'}) "
+                  f"is a public vendor", 35)]
         if same_body:
             parts.append((f"paid/awarded by the body the official serves ({C.ETHICS_LAW.get(B.type(body), C.ETHICS_LAW['default'])})", 30))
+            if q_contract == "NO" and item != "contract_business":
+                parts.append(("statement answered NO to 'business that is a party to a contract with the "
+                              "district' (possible omission; N.J.S.A. 18A:12-25, -29)", 15))
         recs = []
         for tbl in ("awards", "payments"):
             recs += _cite(con, tbl, sorted({v[1] for v in vrecs if v[0] == tbl and (v[2] == body or not same_body)}))

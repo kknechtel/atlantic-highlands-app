@@ -13,6 +13,9 @@
                                download linked documents from sources.py
   text                         extract PDF text for fetched documents
   docs [--class C]             inventory of fetched documents
+  ethics --district CODE --body NAME [--years Y ...]
+                               pull + parse School Ethics Commission disclosure
+                               statements (Henry Hudson Regional = 1456)
 """
 import argparse
 import sys
@@ -60,6 +63,10 @@ def main(argv=None):
     sub.add_parser("text")
     p = sub.add_parser("docs")
     p.add_argument("--class", dest="doc_class")
+    p = sub.add_parser("ethics")
+    p.add_argument("--district", required=True)
+    p.add_argument("--body", required=True)
+    p.add_argument("--years", nargs="*", type=int)
     ap.add_argument("--raw", default=DEFAULT_RAW)
     a = ap.parse_args(argv)
 
@@ -126,6 +133,12 @@ def main(argv=None):
             q += " GROUP BY ALL ORDER BY 1, 2"
         for r in con.execute(q, args).fetchall():
             print("  ".join(str(x) for x in r))
+    elif a.cmd == "ethics":
+        from moneytrail import ethics
+        r = ethics.ingest(con, a.raw, a.district, a.body, a.years)
+        print(f"{r['filings']} filings, {r['rows_loaded']} rows loaded")
+        for x in r["needs_review"]:
+            print("  needs manual review:", x)
     elif a.cmd == "stats":
         for t in ("source_files", "public_bodies", "contributions", "be_disclosures", "awards", "payments",
                   "employees", "disclosures",

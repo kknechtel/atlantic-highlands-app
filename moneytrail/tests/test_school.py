@@ -83,7 +83,8 @@ def test_split_across_predecessor_districts(con):
 
 def test_official_disclosed_business_is_vendor(con):
     [f] = flags(con, "official_disclosed_business_vendor")
-    assert f["score"] == 65 and "Chris Trustee" in f["summary"] and "spouse" in f["summary"]
+    assert f["score"] == 80 and "Chris Trustee" in f["summary"] and "spouse" in f["summary"]
+    assert "answered NO" in f["evidence"]
     assert "18A:12-24" in f["evidence"]
 
 

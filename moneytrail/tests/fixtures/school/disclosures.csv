@@ -1,3 +1,4 @@
-board,official,position,home_address,zip,business,business_address,business_zip,relationship,year
-Example Regional School District,Chris Trustee,Board Member,40 Shore Dr,07716,Trustee Family Landscaping LLC,22 Hedge Lane,07716,spouse,2024
-Example Regional School District,Robin Member,Board Vice President,31 Maple Avenue,07716,,,,,2024
+board,official,position,home_address,zip,business,business_address,business_zip,relationship,year,item,detail
+Example Regional School District,Chris Trustee,Board Member,40 Shore Dr,07716,Trustee Family Landscaping LLC,22 Hedge Lane,07716,spouse,2024,income_source,
+Example Regional School District,Robin Member,Board Vice President,31 Maple Avenue,07716,,,,,2024,,
+Example Regional School District,Chris Trustee,Board Member,40 Shore Dr,07716,,,,,2024,answer:contract_business,NO

@@ -1,0 +1,10 @@
+public_body,vendor,address,city,state,zip,award_amount,resolution_date,procurement_method,resolution,contract_no,original_contract,description
+Monmouth County,Acme Paving LLC,12 Main St,Freehold,NJ,07728,"250,000",2024-06-15,Bid,R-24-301,C-24-01,,Road resurfacing
+Borough of Example,Shoreline Engineering Associates,200 Ocean Avenue,Long Branch,NJ,07740,40000,2024-02-01,Sole Source,24-15,,,Drainage study
+Borough of Example,Shoreline Engineering Associates,200 Ocean Avenue,Long Branch,NJ,07740,42500,2024-05-10,Sole Source,24-44,,,Drainage study phase 2
+Monmouth County,Bayview Construction Co,5 Bay Rd,Keansburg,NJ,07734,100000,2023-04-01,Bid,R-23-100,C-100,,Pier repair
+Monmouth County,Bayview Construction Co,5 Bay Rd,Keansburg,NJ,07734,15000,2023-07-01,Change Order,R-23-190,,C-100,CO 1
+Monmouth County,Bayview Construction Company,5 Bay Road,Keansburg,NJ,07734,20000,2023-10-01,Change Order,R-23-260,,C-100,CO 2
+Borough of Example,Rapid Response Tree Service,8 Birch St,Middletown,NJ,07748,9000,2024-01-10,Emergency,24-02,,,Storm cleanup
+Borough of Example,Rapid Response Tree Svc,8 Birch Street,Middletown,NJ,07748,11000,2024-03-12,Emergency,24-30,,,Storm cleanup
+Borough of Example,Rapid Response Tree Service LLC,8 Birch St,Middletown,NJ,07748,7500,2024-09-01,Emergency,24-88,,,Storm cleanup

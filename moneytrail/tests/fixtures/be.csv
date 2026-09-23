@@ -1,0 +1,3 @@
+business_name,address,city,state,zip,filing_year,record_kind,counterparty,amount,date
+Acme Paving LLC,12 Main St,Freehold,NJ,07728,2024,contract,Monmouth County,250000,
+Acme Paving LLC,12 Main St,Freehold,NJ,07728,2024,contribution,Friends of Commissioner Example,2600,2024-03-01

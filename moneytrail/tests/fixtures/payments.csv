@@ -1,0 +1,7 @@
+public_body,payee,address,city,state,zip,check_amount,check_date,check_number,description
+Borough of Example,Coastal Supply Corp,100 Corporate Blvd Suite 200,Wall,NJ,07719,30000,2024-02-15,1001,Supplies
+Borough of Example,COASTAL SUPPLY CORPORATION,100 Corporate Blvd Suite 200,Wall,NJ,07719,"25,000.00",2024-08-15,1450,Supplies
+Borough of Example,Harborview Consulting,45 Harbor Rd,Atlantic Highlands,NJ,07716,12000,2024-04-01,1200,Consulting
+Borough of Example,Beacon Office Services,100 Corporate Boulevard Ste 5,Wall,NJ,07719,5000,2024-03-01,1100,Copier lease
+Borough of Example,Lighthouse Data LLC,100 Corporate Blvd.,Wall,NJ,07719,4000,2024-03-02,1101,IT
+Borough of Example,Shoreline Engineering Associates,200 Ocean Ave,Long Branch,NJ,07740,40000,2024-03-01,1150,Drainage study

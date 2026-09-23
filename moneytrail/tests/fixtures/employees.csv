@@ -1,0 +1,5 @@
+public_body,name,title,address,city,state,zip,year,salary,overtime,gross_pay
+Borough of Example,"Roe, Jane",Deputy Clerk,45 Harbor Road,Atlantic Highlands,NJ,07716,2024,70000,0,70000
+Borough of Example,Tom Example,Police Officer,3 Main St,Highlands,NJ,07732,2024,60000,50000,110000
+Borough of Example,Mary Sample,Part-time Inspector,4 Elm St,Atlantic Highlands,NJ,07716,2024,20000,0,20000
+Monmouth County,"SAMPLE, MARY",Inspector,4 Elm Street,Atlantic Highlands,NJ,07716,2024,65000,1000,66000

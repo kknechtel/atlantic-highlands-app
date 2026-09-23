@@ -1,0 +1,6 @@
+ContributorType,FirstName,LastName,NonIndName,Street1,City,State,Zip,EmpName,OccupationName,Recipient,ContributionAmount,ContributionDate,ElectionYear
+Business,,,"ACME PAVING, L.L.C.",12 Main Street,Freehold,NJ,07728-1234,,,Friends of Commissioner Example,"$2,600.00",03/01/2024,2024
+Individual,John Q,Builder,,9 Oak Ln,Colts Neck,NJ,07722,Acme Paving Inc,Estimator,Friends of Commissioner Example,500,05/01/2024,2024
+Business,,,Acme Plumbing,77 Elm Ave,Neptune,NJ,07753,,,Friends of Commissioner Example,1000,04/01/2024,2024
+Individual,Pat,Nobody,,1 Pine St,Red Bank,NJ,07701,Retired,,Friends of Commissioner Example,250,04/01/2024,2024
+Business,,,Shoreline Engineering Assoc.,200 Ocean Ave,Long Branch,NJ,07740,,,State Senate Victory Fund,5000,01/15/2024,2024

@@ -58,3 +58,8 @@ yt-cookies-*.txt
 ssm_*.json
 sm.json
 
+
+# moneytrail local databases and exports
+moneytrail/data/
+*.duckdb
+*.duckdb.wal

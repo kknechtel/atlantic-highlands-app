@@ -1,0 +1,5 @@
+duckdb>=1.1
+rapidfuzz>=3.9
+numpy>=1.26
+pandas>=2.0
+pytest>=8

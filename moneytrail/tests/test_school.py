@@ -17,7 +17,8 @@ def con():
     c = duckdb.connect(":memory:")
     schema.init(c)
     for t, f in [("public_bodies", "public_bodies.csv"), ("awards", "awards.csv"),
-                 ("payments", "payments.csv"), ("disclosures", "disclosures.csv")]:
+                 ("payments", "payments.csv"), ("disclosures", "disclosures.csv"),
+                 ("contributions", "contributions.csv"), ("recipient_map", "recipient_map.csv")]:
         loaders.load_csv(c, t, FX / f)
     resolve.resolve(c)
     rules.run_all(c)
@@ -93,3 +94,21 @@ def test_official_home_address_matches_vendor(con):
 
 def test_blank_disclosed_business_ignored(con):
     assert con.execute("SELECT count(*) FROM mentions WHERE role='disclosed_business'").fetchone()[0] == 1
+
+
+def test_school_award_gets_2026_disclosure_not_p2p_bar(con):
+    [f] = flags(con, "donation_near_award")
+    parts = json.loads(f["evidence"])["score_parts"]
+    assert any("19:44A-20.26" in p for p, _ in parts)
+    assert not any("19:44A-20.4" in p or "19:44A-20.5" in p for p, _ in parts)
+
+
+def test_bid_threshold_effective_dated(con):
+    B = bodies.Bodies(con)
+    assert B.bid_threshold("Example Regional School District", date(2025, 6, 30)) == 44_000
+    assert B.bid_threshold("Example Regional School District", date(2025, 7, 1)) == 53_000
+    con.execute("UPDATE public_bodies SET has_qpa = false WHERE name = 'Example Regional School District'")
+    con.execute("UPDATE public_bodies SET has_qpa = false WHERE name = 'Borough of Example'")
+    B = bodies.Bodies(con)
+    assert B.bid_threshold("Example Regional School District", date(2025, 7, 1)) == 39_000
+    assert B.bid_threshold("Borough of Example", date(2025, 7, 1)) == 17_500

@@ -66,8 +66,8 @@ def test_parse_amount_and_date():
 def test_load_is_idempotent_by_hash(con):
     _, n1 = loaders.load_csv(con, "awards", FX / "awards.csv")
     _, n2 = loaders.load_csv(con, "awards", FX / "awards.csv")
-    assert n1 == 9 and n2 is None
-    assert con.execute("SELECT count(*) FROM awards").fetchone()[0] == 9
+    assert n1 == 11 and n2 is None
+    assert con.execute("SELECT count(*) FROM awards").fetchone()[0] == 11
 
 
 def test_bad_rows_abort_whole_file(con):
@@ -99,6 +99,7 @@ def _entity_of(con, table, name_like):
 
 def test_er_merges_variants(loaded):
     assert _entity_of(loaded, "awards", "Rapid Response%") == _entity_of(loaded, "awards", "Rapid Response Tree Service")
+    assert _entity_of(loaded, "awards", "Gull%") != _entity_of(loaded, "awards", "Tern%")
     assert len(_entity_of(loaded, "awards", "Rapid Response%")) == 1
     assert len(_entity_of(loaded, "awards", "Bayview%")) == 1
 
@@ -119,16 +120,36 @@ def test_er_noise_employers_dropped(loaded):
 
 # ─── rules ───────────────────────────────────────────────────────────────────
 
+def _donation(loaded, name):
+    [f] = [f for f in flags(loaded, "donation_near_award") if f["entity_name"] == name]
+    return f, json.loads(f["evidence"])
+
+
 def test_donation_near_award(loaded):
-    [f] = flags(loaded, "donation_near_award")
-    ev = json.loads(f["evidence"])
-    assert f["entity_name"] == "Acme Paving LLC" and f["score"] == 70
+    f, ev = _donation(loaded, "Acme Paving LLC")
+    # Publicly bid -> fair and open under P.L.2023 c.30: noted, no statutory points.
+    assert f["score"] == 45
+    assert any("fair-and-open" in p and v == 0 for p, v in ev["score_parts"])
     links = sorted(c["link"] for c in ev["contributions"])
     # ELEC + employer link; the BE copy of the same $2,600 is de-duplicated
     assert links == ["contributor", "employer"]
     assert "5,700" not in f["summary"] and "3,100" in f["summary"]
     # Acme Plumbing gave to the same committee but is a different firm
     assert all("Plumbing" not in json.dumps(c) for c in ev["contributions"])
+
+
+def test_p2p_bar_post_eta_reportable_threshold(loaded):
+    # $250 > $200 reportable floor after 4/3/2023 (would not have counted at $300), candidate
+    # committee of the awarding county, professional-services award > $17,500.
+    f, ev = _donation(loaded, "Gull Engineering LLC")
+    assert f["score"] == 75
+    assert any("19:44A-20.4" in p for p, _ in ev["score_parts"])
+
+
+def test_party_committee_no_longer_disqualifying(loaded):
+    f, ev = _donation(loaded, "Tern Services LLC")
+    assert any("party-committee" in p and v == -10 for p, v in ev["score_parts"])
+    assert not any("19:44A-20.4" in p and v > 0 for p, v in ev["score_parts"])
 
 
 def test_mapped_to_other_body_suppressed(loaded):
@@ -138,7 +159,8 @@ def test_mapped_to_other_body_suppressed(loaded):
 
 def test_missing_be(loaded):
     names = {f["entity_name"] for f in flags(loaded, "missing_be_disclosure")}
-    assert names == {"Bayview Construction Co", "Coastal Supply Corp", "Shoreline Engineering Associates"}
+    assert names == {"Bayview Construction Co", "Coastal Supply Corp", "Shoreline Engineering Associates",
+                     "Gull Engineering LLC"}
 
 
 def test_missing_be_silent_without_be_coverage(con):

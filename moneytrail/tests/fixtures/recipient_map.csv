@@ -1,3 +1,4 @@
-recipient,public_body,note
-Friends of Commissioner Example,Monmouth County,candidate committee of a sitting commissioner
-State Senate Victory Fund,State of New Jersey,legislative committee
+recipient,public_body,committee_type,note
+Friends of Commissioner Example,Monmouth County,candidate,candidate committee of a sitting commissioner
+State Senate Victory Fund,State of New Jersey,candidate,legislative committee
+Example County Party Committee,Monmouth County,party,county party committee

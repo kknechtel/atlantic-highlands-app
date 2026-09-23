@@ -69,7 +69,9 @@ CREATE TABLE IF NOT EXISTS employees (
 -- committee or a commissioner's candidate committee -> the County). Analyst
 -- maintained; nothing in the public data gives this mapping cleanly.
 CREATE TABLE IF NOT EXISTS recipient_map (
-    recipient VARCHAR, recipient_norm VARCHAR, public_body VARCHAR, note VARCHAR
+    recipient VARCHAR, recipient_norm VARCHAR, public_body VARCHAR,
+    committee_type VARCHAR,   -- candidate | party | pac | other
+    note VARCHAR
 );
 
 -- Public bodies: type drives which statute is cited and the fiscal year
@@ -78,7 +80,8 @@ CREATE TABLE IF NOT EXISTS recipient_map (
 -- them is visible. aliases: ';'-separated spellings seen in source files.
 CREATE TABLE IF NOT EXISTS public_bodies (
     name VARCHAR, body_type VARCHAR, fy_start_month INTEGER,
-    body_group VARCHAR, successor VARCHAR, aliases VARCHAR, note VARCHAR
+    body_group VARCHAR, successor VARCHAR, aliases VARCHAR,
+    has_qpa BOOLEAN, note VARCHAR
 );
 
 -- Official disclosure statements: School Ethics Act personal/relative and

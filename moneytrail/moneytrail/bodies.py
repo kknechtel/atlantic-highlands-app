@@ -61,7 +61,7 @@ def canonicalize(con):
 class Bodies:
     def __init__(self, con):
         self.rows = {r[0]: r for r in con.execute(
-            "SELECT name, body_type, fy_start_month, body_group, successor FROM public_bodies").fetchall()}
+            "SELECT name, body_type, fy_start_month, body_group, successor, has_qpa FROM public_bodies").fetchall()}
 
     def type(self, body):
         r = self.rows.get(body)
@@ -89,6 +89,19 @@ class Bodies:
         if r:
             return r[3] or r[4] or body
         return body
+
+    def has_qpa(self, body):
+        r = self.rows.get(body)
+        return C.DEFAULT_HAS_QPA if not r or r[5] is None else r[5]
+
+    def bid_threshold(self, body, on):
+        law = "PSCL" if self.type(body) == "school" else "LPCL"
+        return C.bid_threshold(law, self.has_qpa(body), on)
+
+    def threshold_note(self, body, on):
+        qpa = self.has_qpa(body)
+        src = "" if self.rows.get(body) and self.rows[body][5] is not None else ", QPA assumed"
+        return f"${self.bid_threshold(body, on):,} on {on} ({'with' if qpa else 'no'} QPA{src}; {self.bid_law(body)})"
 
     def bid_law(self, body):
         return C.BID_LAW.get(self.type(body), C.BID_LAW["default"])

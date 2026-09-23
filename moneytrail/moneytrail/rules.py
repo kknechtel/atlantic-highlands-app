@@ -79,7 +79,7 @@ def donation_near_award(con, names):
         SELECT aw.id, aw.public_body, aw.amount, aw.award_date, aw.award_type, aw.entity_id,
                ct.tbl, ct.id, ct.recipient, ct.amount, ct.d, ct.link,
                date_diff('day', ct.d, aw.award_date) AS days_before,
-               rm.public_body AS mapped_body
+               rm.public_body AS mapped_body, rm.committee_type
         FROM aw JOIN ct ON ct.entity_id = aw.entity_id
          AND ct.d BETWEEN aw.award_date - INTERVAL {C.P2P_LOOKBACK_DAYS} DAY
                       AND aw.award_date + INTERVAL {C.P2P_LOOKAHEAD_DAYS} DAY
@@ -87,6 +87,7 @@ def donation_near_award(con, names):
         ORDER BY aw.id, ct.d
     """).fetchall()
 
+    B = Bodies(con)
     by_award = defaultdict(list)
     for r in rows:
         by_award[r[:6]].append(r[6:])
@@ -97,14 +98,30 @@ def donation_near_award(con, names):
             cts = [c for c in cts if c[7] is None or c[7] == body]
             if not cts:
                 continue
+        btype = B.type(body)
         direct = [c for c in cts if c[5] != "employer"]
-        before = [c for c in direct if c[6] >= 0 and (c[3] or 0) > C.P2P_CONTRIBUTION_MIN]
+        not_bid = atype not in ("fair_and_open", "bid", "competitive_contracting")
         parts = [("vendor-linked contribution within window", 30)]
-        if (amt or 0) > C.P2P_CONTRACT_MIN and before:
-            parts.append((f"award > ${C.P2P_CONTRACT_MIN:,} with contribution > ${C.P2P_CONTRIBUTION_MIN} "
-                          f"in prior {C.P2P_LOOKBACK_DAYS} days (N.J.S.A. 19:44A-20.5 pattern)", 25))
-        if atype == "fair_and_open":
-            parts.append(("award recorded as fair-and-open (pay-to-play limits don't apply)", -20))
+        if btype in C.P2P_BODY_TYPES:
+            law = C.P2P_BODY_TYPES[btype]
+            # Reportable contribution to a candidate committee of this body's
+            # officials, in the year before award or during the term.
+            hits = [c for c in direct if c[7] == body and c[8] == "candidate"
+                    and (c[3] or 0) > C.p2p_reportable_min(c[4])]
+            if (amt or 0) > C.P2P_CONTRACT_MIN and not_bid and hits:
+                parts.append((f"award > ${C.P2P_CONTRACT_MIN:,}, not fair-and-open, with reportable contribution to a "
+                              f"candidate committee of this body within 1 yr before / during term ({law})", 30))
+            elif (amt or 0) > C.P2P_CONTRACT_MIN and hits:
+                parts.append((f"candidate-committee contribution, but award recorded as {atype} "
+                              f"(fair-and-open process; {law} bar not triggered)", 0))
+            party = [c for c in direct if c[7] == body and c[8] == "party"]
+            if party and all(c[4] >= C.ETA_DATE for c in party) and not hits:
+                parts.append(("party-committee contribution only; no longer disqualifying after P.L.2023 c.30", -10))
+        else:
+            if (amt or 0) > C.P2P_CONTRACT_MIN and not_bid:
+                parts.append((f"{btype} contract > ${C.P2P_CONTRACT_MIN:,} not publicly bid: vendor's contribution "
+                              f"disclosure due >= 10 days before award ({C.DISCLOSURE_2026}); check it was filed "
+                              f"and lists these", 15))
         if any(c[7] == body for c in cts):
             parts.append(("recipient committee mapped to awarding body", 15))
         if not direct:
@@ -169,7 +186,7 @@ def aggregate_over_threshold(con, names):
         JOIN rec_entity re ON re.src_table='awards' AND re.src_id=a.id AND re.role='vendor'
         WHERE a.award_type IN ({','.join(repr(t) for t in C.COMPETITIVE_TYPES + C.BID_EXEMPT_TYPES)})
     """).fetchall()}
-    agg = defaultdict(lambda: [0.0, []])
+    agg = defaultdict(lambda: [0.0, [], None])
     for body, eid, pid, d, amt in con.execute("""
         SELECT p.public_body, re.entity_id, p.id, p.payment_date, p.amount
         FROM payments p JOIN rec_entity re ON re.src_table='payments' AND re.src_id=p.id AND re.role='vendor'
@@ -177,20 +194,24 @@ def aggregate_over_threshold(con, names):
         a = agg[(body, eid, B.fiscal_year(body, d))]
         a[0] += amt or 0
         a[1].append(pid)
+        a[2] = max(a[2] or d, d)
     flags = []
-    for (body, eid, fy), (total, ids) in agg.items():
+    for (body, eid, fy), (total, ids, last) in agg.items():
         # Only where award coverage exists for the body; otherwise absence means nothing.
-        if total <= C.BID_THRESHOLD or body not in covered or (body, eid) in procured:
+        thr = B.bid_threshold(body, last)
+        if total <= thr or body not in covered or (body, eid) in procured:
             continue
         fyl = B.fy_label(body, fy)
         flags.append(_flag(
             "aggregate_over_bid_threshold",
-            [(f"paid > ${C.BID_THRESHOLD:,} in {fyl} with no bid/exempt award on file ({B.bid_law(body)})", 30)],
+            [(f"paid ${total:,.0f} in {fyl}, over bid threshold {B.threshold_note(body, last)}, "
+              f"with no bid/exempt award on file", 30)],
             body, eid, names,
             f"{names.get(eid)}: ${total:,.0f} paid by {body} in {fyl}, no competitive or exempt award found",
             payments=_cite(con, "payments", ids), body_type=B.type(body),
-            caveat="Statutory aggregation is by commodity/service over the contract year; this aggregates all "
-                   "payments to the vendor. State-contract/co-op purchases may be missing from the awards data.",
+            caveat="N.J.S.A. 40A:11-2(19) / 18A:18A-2 aggregate payments for the same immediate purpose or similar "
+                   "goods/services over the contract year (12 months from award); this sums all payments to the "
+                   "vendor by fiscal year. State-contract/co-op purchases may be missing from the awards data.",
         ))
     return flags
 
@@ -202,13 +223,16 @@ def split_awards(con, names):
     split across related bodies (shared services, a consolidated district's
     predecessors) shows up too."""
     B = Bodies(con)
-    lo = C.BID_THRESHOLD * C.SPLIT_BAND_LOW
-    rows = con.execute("""
+    rows = []
+    for body, eid, aid, d, amt in con.execute("""
         SELECT a.public_body, re.entity_id, a.id, a.award_date, a.amount
         FROM awards a JOIN rec_entity re ON re.src_table='awards' AND re.src_id=a.id AND re.role='vendor'
-        WHERE a.amount >= ? AND a.amount < ? AND coalesce(a.award_type,'') <> 'change_order'
+        WHERE coalesce(a.award_type,'') <> 'change_order' AND a.amount > 0
         ORDER BY 4
-    """, [lo, C.BID_THRESHOLD]).fetchall()
+    """).fetchall():
+        thr = B.bid_threshold(body, d)
+        if thr * C.SPLIT_BAND_LOW <= amt < thr:
+            rows.append((body, eid, aid, d, amt))
     groups = defaultdict(list)
     for body, eid, aid, d, amt in rows:
         groups[(B.group(body), eid)].append((aid, d, amt, body))
@@ -222,9 +246,11 @@ def split_awards(con, names):
         if len(best) >= 2:
             total = sum(a[2] for a in best)
             bodies = sorted({a[3] for a in best})
-            parts = [(f"{len(best)} awards each ${lo:,.0f}-${C.BID_THRESHOLD:,} within {C.SPLIT_WINDOW_DAYS} days", 25)]
-            if total > C.BID_THRESHOLD:
-                parts.append((f"combined value exceeds bid threshold ({B.bid_law(bodies[0])})", 15))
+            thr = B.bid_threshold(bodies[0], best[-1][1])
+            parts = [(f"{len(best)} awards each {C.SPLIT_BAND_LOW:.0%}-100% of the bid threshold within "
+                      f"{C.SPLIT_WINDOW_DAYS} days", 25)]
+            if total > thr:
+                parts.append((f"combined value exceeds bid threshold {B.threshold_note(bodies[0], best[-1][1])}", 15))
             if len(bodies) > 1:
                 parts.append((f"split across related bodies in group '{grp}'", 10))
             flags.append(_flag("split_awards", parts, bodies[0] if len(bodies) == 1 else grp, eid, names,
@@ -239,7 +265,7 @@ def split_awards(con, names):
 def change_order_growth(con, names):
     B = Bodies(con)
     rows = con.execute("""
-        SELECT o.id, o.public_body, o.contract_ref, o.amount, re.entity_id,
+        SELECT o.id, o.public_body, o.contract_ref, o.amount, o.award_date, re.entity_id,
                sum(co.amount) AS co_total, list(co.id) AS co_ids
         FROM awards o
         JOIN awards co ON co.award_type='change_order' AND co.parent_contract_ref = o.contract_ref
@@ -249,14 +275,14 @@ def change_order_growth(con, names):
         GROUP BY ALL
     """).fetchall()
     flags = []
-    for oid, body, ref, orig, eid, co_total, co_ids in rows:
+    for oid, body, ref, orig, odate, eid, co_total, co_ids in rows:
         pct = co_total / orig
         if pct <= C.CHANGE_ORDER_PCT:
             continue
         parts = [(f"cumulative change orders {pct:.0%} of original (> {C.CHANGE_ORDER_PCT:.0%}, {B.change_order_rule(body)})", 25)]
         if pct > 0.5:
             parts.append(("change orders exceed 50% of original", 15))
-        if orig < C.BID_THRESHOLD <= orig + co_total:
+        if orig < B.bid_threshold(body, odate) <= orig + co_total:
             parts.append(("original under bid threshold, total over it", 20))
         flags.append(_flag("change_order_growth", parts, body, eid, names,
                            f"{names.get(eid)}: contract {ref} grew ${orig:,.0f} -> ${orig + co_total:,.0f} ({pct:+.0%})",

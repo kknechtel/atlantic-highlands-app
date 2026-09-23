@@ -9,6 +9,10 @@
   report [--csv F] [--md F] [--min-score N] [--rule R]
   entity <name>                show a resolved entity, its mentions and match edges
   stats                        row counts
+  fetch [--source S ...] [--refresh] [--limit N]
+                               download linked documents from sources.py
+  text                         extract PDF text for fetched documents
+  docs [--class C]             inventory of fetched documents
 """
 import argparse
 import sys
@@ -18,6 +22,7 @@ import duckdb
 from moneytrail import loaders, report, resolve, rules, schema
 
 DEFAULT_DB = "data/moneytrail.duckdb"
+DEFAULT_RAW = "data/raw"
 
 
 def connect(path):
@@ -48,6 +53,14 @@ def main(argv=None):
     p = sub.add_parser("entity")
     p.add_argument("name")
     sub.add_parser("stats")
+    p = sub.add_parser("fetch")
+    p.add_argument("--source", nargs="*")
+    p.add_argument("--refresh", action="store_true")
+    p.add_argument("--limit", type=int)
+    sub.add_parser("text")
+    p = sub.add_parser("docs")
+    p.add_argument("--class", dest="doc_class")
+    ap.add_argument("--raw", default=DEFAULT_RAW)
     a = ap.parse_args(argv)
 
     con = connect(a.db)
@@ -92,6 +105,27 @@ def main(argv=None):
                 print(f"   edge: {r[0]!r} ~ {r[1]!r}  {r[2]:.0f} via {r[3]}")
         if not ents:
             print("no match")
+    elif a.cmd == "fetch":
+        from moneytrail import fetch
+        print(fetch.fetch_all(con, a.raw, only=a.source, refresh=a.refresh, limit=a.limit))
+    elif a.cmd == "text":
+        from moneytrail import fetch
+        r = fetch.extract_text(con, a.raw)
+        print(f"extracted {r['extracted']}; {len(r['needs_ocr'])} look scanned (need OCR)")
+        for x in r["needs_ocr"]:
+            print("  ", x)
+    elif a.cmd == "docs":
+        from moneytrail import fetch
+        fetch.init(con)
+        q = "SELECT source, doc_class, count(*), min(doc_date), max(doc_date) FROM documents"
+        args = []
+        if a.doc_class:
+            q = ("SELECT doc_date, title, url FROM documents WHERE doc_class = ? ORDER BY doc_date NULLS LAST")
+            args = [a.doc_class]
+        else:
+            q += " GROUP BY ALL ORDER BY 1, 2"
+        for r in con.execute(q, args).fetchall():
+            print("  ".join(str(x) for x in r))
     elif a.cmd == "stats":
         for t in ("source_files", "public_bodies", "contributions", "be_disclosures", "awards", "payments",
                   "employees", "disclosures",

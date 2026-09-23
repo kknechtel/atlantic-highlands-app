@@ -103,6 +103,7 @@ SPECS = {
             "body_group": ["body_group", "group"],
             "successor": ["successor", "successor_body"],
             "aliases": ["aliases", "alias", "aka"],
+            "has_qpa": ["has_qpa", "qpa"],
             "note": ["note", "notes"],
         },
         "required": ["name"],
@@ -128,6 +129,7 @@ SPECS = {
         "fields": {
             "recipient": ["recipient", "committee", "recipient_name"],
             "public_body": ["public_body", "entity", "agency"],
+            "committee_type": ["committee_type", "type"],
             "note": ["note", "notes"],
         },
         "required": ["recipient", "public_body"],
@@ -218,8 +220,14 @@ def load_csv(con, source_type, path, note=None):
             rec["award_type"] = re.sub(r"[^a-z]+", "_", rec["award_type"].lower()).strip("_")
         if source_type == "recipient_map":
             rec["recipient_norm"] = N.norm_org(rec["recipient"])
-        if source_type == "public_bodies" and rec.get("body_type"):
-            rec["body_type"] = rec["body_type"].lower()
+        if source_type == "public_bodies":
+            if rec.get("body_type"):
+                rec["body_type"] = rec["body_type"].lower()
+            q = (rec.get("has_qpa") or "").strip().lower()
+            rec["has_qpa"] = True if q in ("y", "yes", "true", "1") else False if q in ("n", "no", "false", "0") else None
+        if source_type == "recipient_map":
+            ct = (rec.get("committee_type") or "").lower()
+            rec["committee_type"] = next((k for k in ("candidate", "party", "pac") if k in ct), "other" if ct else None)
         rec["_line"] = i
         rec["_raw"] = json.dumps(row)
         records.append(rec)

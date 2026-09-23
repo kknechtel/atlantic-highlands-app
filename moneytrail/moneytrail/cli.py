@@ -13,6 +13,8 @@
                                download linked documents from sources.py
   text                         extract PDF text for fetched documents
   docs [--class C]             inventory of fetched documents
+  extract                      audit findings + approved bills totals from fetched docs
+  manifest [--out F]           write the custody manifest (documents + retrievals) to CSV
   ethics --district CODE --body NAME [--years Y ...]
                                pull + parse School Ethics Commission disclosure
                                statements (Henry Hudson Regional = 1456)
@@ -63,6 +65,9 @@ def main(argv=None):
     sub.add_parser("text")
     p = sub.add_parser("docs")
     p.add_argument("--class", dest="doc_class")
+    sub.add_parser("extract")
+    p = sub.add_parser("manifest")
+    p.add_argument("--out", default="reference/custody_manifest.csv")
     p = sub.add_parser("ethics")
     p.add_argument("--district", required=True)
     p.add_argument("--body", required=True)
@@ -133,6 +138,21 @@ def main(argv=None):
             q += " GROUP BY ALL ORDER BY 1, 2"
         for r in con.execute(q, args).fetchall():
             print("  ".join(str(x) for x in r))
+    elif a.cmd == "manifest":
+        n = con.execute(f"""COPY (
+            SELECT d.sha256, d.source, d.public_body, d.doc_class, d.doc_date, d.title, d.url, d.bytes,
+                   d.content_type, d.first_seen, r.referrer, r.retrieved_at, r.http_status, r.etag, r.last_modified
+            FROM documents d
+            JOIN (SELECT *, row_number() OVER (PARTITION BY sha256 ORDER BY retrieved_at) rn FROM retrievals
+                  WHERE sha256 IS NOT NULL) r ON r.sha256 = d.sha256 AND r.rn = 1
+            ORDER BY d.source, d.doc_date NULLS LAST, d.title
+        ) TO '{a.out}' (HEADER)""").fetchone()
+        print(f"wrote {a.out}")
+    elif a.cmd == "extract":
+        from moneytrail import audit, minutes
+        for title, n in audit.ingest(con).items():
+            print(f"audit_findings  {n:4d}  {title}")
+        print(f"bill_approvals  {minutes.ingest(con)} rows")
     elif a.cmd == "ethics":
         from moneytrail import ethics
         r = ethics.ingest(con, a.raw, a.district, a.body, a.years)
@@ -140,8 +160,8 @@ def main(argv=None):
         for x in r["needs_review"]:
             print("  needs manual review:", x)
     elif a.cmd == "stats":
-        for t in ("source_files", "public_bodies", "contributions", "be_disclosures", "awards", "payments",
-                  "employees", "disclosures",
+        for t in ("source_files", "documents", "public_bodies", "contributions", "be_disclosures", "awards",
+                  "payments", "employees", "disclosures", "audit_findings", "bill_approvals",
                   "recipient_map", "mentions", "entities", "flags"):
             print(f"{t:16s} {con.execute(f'SELECT count(*) FROM {t}').fetchone()[0]}")
     con.close()

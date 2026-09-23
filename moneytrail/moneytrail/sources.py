@@ -28,11 +28,17 @@ SOURCES = {
             "https://www.ahnj.com/ahnj/Agendas/",
             "https://www.ahnj.com/ahnj/Meetings%20and%20Agendas/",
         ],
+        # ahnj.com is a directory tree (Budget Information/Annual Audits/, ...):
+        # follow child folders of each seed page.
+        "follow_children": 2,
     },
     "highlands": {
         "body": "Borough of Highlands",
         "pages": [
-            "https://highlandsnj.gov/category/council-agendas/",
+            "https://highlandsnj.gov/budget-information/",
+            "https://highlandsnj.gov/borough-reports/",
+            "https://highlandsnj.gov/bids-and-rfps/",
+            "https://highlands-nj.municodemeetings.com/",
         ],
     },
 }

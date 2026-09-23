@@ -33,26 +33,60 @@ def _key(name):
     return N._clean(name)
 
 
+# Date each table's rows are "as of", for date-scoped aliases.
+_ASOF = {
+    "awards": "award_date", "payments": "payment_date",
+    "employees": "make_date(pay_year, 12, 31)", "disclosures": "make_date(filing_year, 1, 1)",
+    # school FY ends June 30; for calendar-year bodies this is conservative
+    "audit_findings": "make_date(fiscal_year, 6, 30)",
+}
+_SCOPE = re.compile(r"^(?P<alias>.+?)\s*@(?P<op>from|until)=(?P<d>\d{4}-\d{2}-\d{2})$")
+
+
+def _parse_aliases(name, aliases):
+    """'X;Y@until=2024-06-30' -> [(key, canonical, op, date)]. A scoped alias
+    only applies to rows dated inside its range (a name reused by a successor)."""
+    out = [(_key(name), name, None, None)]
+    for a in (aliases or "").split(";"):
+        a = a.strip()
+        if not a:
+            continue
+        m = _SCOPE.match(a)
+        if m:
+            out.append((_key(m.group("alias")), name, m.group("op"), date.fromisoformat(m.group("d"))))
+        else:
+            out.append((_key(a), name, None, None))
+    return out
+
+
 def canonicalize(con):
     """Rewrite public_body in every source table to the canonical name from
     public_bodies (matching name or any alias). The original spelling stays in
     each row's raw JSON."""
-    amap = {}
+    rules = []
     for name, aliases in con.execute("SELECT name, aliases FROM public_bodies").fetchall():
-        for a in [name] + [x for x in (aliases or "").split(";") if x.strip()]:
-            amap[_key(a)] = name
-    if not amap:
+        rules += _parse_aliases(name, aliases)
+    if not rules:
         return 0
+    plain = {k: n for k, n, op, _ in rules if op is None}
+    scoped = [(k, n, op, d) for k, n, op, d in rules if op]
     changed = 0
-    for table in ("awards", "payments", "employees", "disclosures"):
+    for table in ("awards", "payments", "employees", "disclosures", "audit_findings"):
         for (raw,) in con.execute(f"SELECT DISTINCT public_body FROM {table} WHERE public_body IS NOT NULL").fetchall():
-            canon = amap.get(_key(raw))
+            k = _key(raw)
+            for sk, canon, op, d in scoped:
+                if sk == k:
+                    cmp = ">=" if op == "from" else "<="
+                    changed += con.execute(
+                        f"UPDATE {table} SET public_body = ? WHERE public_body = ? AND {_ASOF[table]} {cmp} ?",
+                        [canon, raw, d]).fetchone()[0] or 0
+            canon = plain.get(k)
             if canon and canon != raw:
                 con.execute(f"UPDATE {table} SET public_body = ? WHERE public_body = ?", [canon, raw])
                 changed += 1
     # recipient_map targets use the same vocabulary
     for (raw,) in con.execute("SELECT DISTINCT public_body FROM recipient_map").fetchall():
-        canon = amap.get(_key(raw))
+        canon = plain.get(_key(raw))
         if canon and canon != raw:
             con.execute("UPDATE recipient_map SET public_body = ? WHERE public_body = ?", [canon, raw])
     return changed

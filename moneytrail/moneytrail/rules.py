@@ -37,7 +37,9 @@ def _names(con):
 def _cite(con, table, ids):
     if not ids:
         return []
-    q = f"""SELECT t.id, sf.path, t.source_row FROM {table} t JOIN source_files sf USING (file_id)
+    # Documents pulled by fetch.py cite their source URL (line = PDF page).
+    q = f"""SELECT t.id, coalesce(d.url, sf.path), t.source_row FROM {table} t JOIN source_files sf USING (file_id)
+            LEFT JOIN documents d ON d.sha256 = sf.sha256
             WHERE t.id IN ({','.join('?' * len(ids))}) ORDER BY t.id"""
     return [{"table": table, "id": i, "file": p, "line": ln} for i, p, ln in con.execute(q, list(ids)).fetchall()]
 
@@ -472,22 +474,131 @@ def payroll_anomalies(con, names):
     return flags
 
 
+# ─── 10. Audit findings ───────────────────────────────────────────────────────
+
+def audit_findings_rules(con, names):
+    """(a) a vendor named in an audit finding; (b) repeat / recurring findings."""
+    flags = []
+    vendor_eids = {r[0] for r in con.execute(
+        "SELECT DISTINCT entity_id FROM rec_entity WHERE role='vendor'").fetchall()}
+    rows = con.execute("""
+        SELECT f.id, f.public_body, f.fiscal_year, f.category, f.is_repeat, f.finding, f.finding_no, re.entity_id
+        FROM audit_findings f
+        LEFT JOIN rec_entity re ON re.src_table='audit_findings' AND re.src_id=f.id AND re.role='audit_vendor'
+        WHERE coalesce(f.category, '') <> 'none'
+    """).fetchall()
+    # vendor names appearing in finding text (normalized substring, >= 2 tokens or >= 8 chars)
+    vnames = [(eid, nn) for eid, nn in con.execute(
+        "SELECT DISTINCT entity_id, norm_name FROM rec_entity WHERE role='vendor'").fetchall()
+        if nn and (len(nn.split()) >= 2 or len(nn) >= 8)]
+    for fid, body, fy, cat, rep, text, no, eid in rows:
+        hits = {eid} if eid in vendor_eids else set()
+        ntext = f" {N.norm_org(text or '')} "
+        hits |= {v for v, nn in vnames if f" {nn} " in ntext}
+        for v in hits:
+            parts = [(f"vendor named in FY{fy} audit finding {no or ''} ({cat})", 25)]
+            if rep:
+                parts.append(("finding marked repeat / prior-year unresolved", 15))
+            flags.append(_flag("audit_vendor_named", parts, body, v, names,
+                               f"{names.get(v)} named in {body} FY{fy} audit finding {no or ''}: {(text or '')[:160]}",
+                               finding=_cite(con, "audit_findings", [fid])))
+    by = defaultdict(list)
+    for fid, body, fy, cat, rep, text, no, _ in rows:
+        by[(body, cat)].append((fy, rep, fid))
+    for (body, cat), items in by.items():
+        yrs = sorted({fy for fy, _, _ in items if fy})
+        consecutive = any(b - a == 1 for a, b in zip(yrs, yrs[1:]))
+        repeat = any(r for _, r, _ in items)
+        if not (consecutive or repeat):
+            continue
+        parts = [(f"{cat} findings recur ({', '.join(f'FY{y}' for y in yrs)})" if consecutive
+                  else f"{cat} finding marked repeat", 20)]
+        if consecutive and repeat:
+            parts.append(("auditor marked it repeat (corrective action not effective)", 10))
+        flags.append(_flag("repeat_audit_finding", parts, body, None, names,
+                           f"{body}: recurring {cat} audit findings {', '.join(f'FY{y}' for y in yrs)}",
+                           findings=_cite(con, "audit_findings", [i for _, _, i in items])))
+    return flags
+
+
+# ─── 11. Itemized payments vs board-approved totals ──────────────────────────
+
+def payments_vs_approved(con, names):
+    """Where both exist, an itemized bills list (payments) for a month should
+    foot to the total the board approved. Minutes win over agendas."""
+    rows = con.execute("""
+        WITH appr AS (
+            SELECT public_body, period_month, kind,
+                   arg_max(amount, CASE doc_class WHEN 'minutes' THEN 1 ELSE 0 END) AS approved,
+                   arg_max(sha256, CASE doc_class WHEN 'minutes' THEN 1 ELSE 0 END) AS sha,
+                   arg_max(page, CASE doc_class WHEN 'minutes' THEN 1 ELSE 0 END) AS page,
+                   arg_max(meeting_date, CASE doc_class WHEN 'minutes' THEN 1 ELSE 0 END) AS meeting
+            FROM bill_approvals WHERE period_month IS NOT NULL AND kind = 'bills'
+            GROUP BY ALL
+        ), paid AS (
+            SELECT public_body, date_trunc('month', payment_date) AS m, sum(amount) AS total, list(id) AS ids
+            FROM payments GROUP BY ALL
+        )
+        SELECT a.public_body, a.period_month, a.approved, p.total, p.ids, a.sha, a.page, a.meeting
+        FROM appr a JOIN paid p ON p.public_body = a.public_body AND p.m = a.period_month
+    """).fetchall()
+    flags = []
+    for body, month, approved, total, ids, sha, page, meeting in rows:
+        diff = total - approved
+        if abs(diff) <= max(1.0, 0.005 * approved):
+            continue
+        url = con.execute("SELECT url FROM documents WHERE sha256 = ?", [sha]).fetchone()
+        parts = [(f"itemized payments ${total:,.2f} vs board-approved ${approved:,.2f} ({diff:+,.2f})", 30)]
+        if diff > 0:
+            parts.append(("more paid than approved", 10))
+        flags.append(_flag("payments_vs_approved", parts, body, None, names,
+                           f"{body} {month:%B %Y}: itemized ${total:,.2f} vs approved ${approved:,.2f} ({diff:+,.2f})",
+                           payments=_cite(con, "payments", ids),
+                           approval={"file": url[0] if url else sha, "line": page, "meeting": str(meeting)},
+                           caveat="Check the period definition (check date vs approval month) before relying."))
+    return flags
+
+
+def _audit_context(con, flags):
+    """Add audit context to other flags on the same body: +10 if the body has
+    findings in the matching area; a zero-point note if its audits were clean."""
+    from moneytrail.audit import PAYROLL_RULES, PROCUREMENT_RULES
+    ctx = defaultdict(lambda: defaultdict(set))
+    for body, fy, cat in con.execute(
+            "SELECT public_body, fiscal_year, category FROM audit_findings").fetchall():
+        ctx[body][cat].add(fy)
+    for f in flags:
+        c = ctx.get(f["public_body"])
+        if not c:
+            continue
+        want = "procurement" if f["rule"] in PROCUREMENT_RULES else "payroll" if f["rule"] in PAYROLL_RULES else None
+        parts = f["evidence"]["score_parts"]
+        if want and c.get(want):
+            parts.append((f"{f['public_body']} has {want} audit finding(s) "
+                          f"{', '.join(f'FY{y}' for y in sorted(c[want]))}", 10))
+        elif c.get("none") and not any(k != "none" for k in c):
+            parts.append((f"audits {', '.join(f'FY{y}' for y in sorted(c['none']))} reported no findings", 0))
+        f["score"] = max(0, min(100, sum(v for _, v in parts)))
+
+
 RULES = [donation_near_award, missing_be_disclosure, aggregate_over_threshold, split_awards,
          change_order_growth, repeat_noncompetitive, employee_vendor_link, official_vendor_link,
-         shared_address, payroll_anomalies]
+         shared_address, payroll_anomalies, audit_findings_rules, payments_vs_approved]
 
 
 def run_all(con, only=None):
     _setup(con)
     names = _names(con)
     con.execute("DELETE FROM flags")
-    counts = {}
+    counts, all_flags = {}, []
     for rule in RULES:
         if only and rule.__name__ not in only:
             continue
         fs = rule(con, names)
         counts[rule.__name__] = len(fs)
-        bulk_insert(con, "flags", ["rule", "score", "public_body", "entity_id", "entity_name", "summary", "evidence"],
-                    [(f["rule"], f["score"], f["public_body"], f["entity_id"], f["entity_name"], f["summary"],
-                      json.dumps(f["evidence"], default=str)) for f in fs])
+        all_flags += fs
+    _audit_context(con, all_flags)
+    bulk_insert(con, "flags", ["rule", "score", "public_body", "entity_id", "entity_name", "summary", "evidence"],
+                [(f["rule"], f["score"], f["public_body"], f["entity_id"], f["entity_name"], f["summary"],
+                  json.dumps(f["evidence"], default=str)) for f in all_flags])
     return counts

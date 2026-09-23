@@ -26,29 +26,16 @@ DOC_EXT = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv")
 DOC_HOSTS = ("files.edl.io",)  # Edlio file CDN: no extension-less surprises, but always documents
 DELAY = 1.0
 
-DDL = """
-CREATE TABLE IF NOT EXISTS documents (
-    sha256 VARCHAR PRIMARY KEY, source VARCHAR, public_body VARCHAR, url VARCHAR, title VARCHAR,
-    doc_class VARCHAR, doc_date DATE, content_type VARCHAR, bytes BIGINT, local_path VARCHAR,
-    first_seen TIMESTAMP, text_extracted BOOLEAN DEFAULT false
-);
-CREATE TABLE IF NOT EXISTS retrievals (
-    url VARCHAR, referrer VARCHAR, title VARCHAR, retrieved_at TIMESTAMP, http_status INTEGER,
-    etag VARCHAR, last_modified VARCHAR, sha256 VARCHAR, error VARCHAR
-);
-CREATE TABLE IF NOT EXISTS doc_text (
-    sha256 VARCHAR, page INTEGER, text VARCHAR
-);
-"""
 
-_A = re.compile(r'<a\b[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.S | re.I)
+_A = re.compile(r"""<a\b[^>]*href\s*=\s*(?:"([^"]+)"|'([^']+)')[^>]*>(.*?)</a>""", re.S | re.I)
 _TAG = re.compile(r"<[^>]+>")
 _MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
 _DATE_IN_TITLE = re.compile(rf"({_MONTHS})\s*(\d{{1,2}}),?\s*(\d{{4}})", re.I)
 
 
 def init(con):
-    con.execute(DDL)
+    from moneytrail import schema
+    schema.init(con)
 
 
 def classify(title, url=""):
@@ -74,15 +61,28 @@ def is_doc_link(url):
     return p.path.lower().endswith(DOC_EXT) or any(p.netloc.endswith(h) for h in DOC_HOSTS)
 
 
+def _anchors(html, base):
+    for dq, sq, inner in _A.findall(html):
+        url = urljoin(base, unescape((dq or sq).strip())).split("#")[0]
+        if url.startswith("http"):
+            yield url, " ".join(unescape(_TAG.sub(" ", inner)).split())
+
+
 def links(html, base):
     out, seen = [], set()
-    for href, inner in _A.findall(html):
-        url = urljoin(base, unescape(href.strip()))
-        if url in seen or not url.startswith("http") or not is_doc_link(url):
+    for url, text in _anchors(html, base):
+        if url in seen or not is_doc_link(url):
             continue
         seen.add(url)
-        out.append((url, " ".join(unescape(_TAG.sub(" ", inner)).split())))
+        out.append((url, text))
     return out
+
+
+def child_pages(html, base):
+    """Same-site pages below `base` (directory-style sites)."""
+    b = base if base.endswith("/") else base + "/"
+    return sorted({u for u, _ in _anchors(html, base)
+                   if u.startswith(b) and u != b and not is_doc_link(u) and u.endswith("/")})
 
 
 def _now():
@@ -98,7 +98,13 @@ def fetch_all(con, root, only=None, refresh=False, limit=None, log=print, sessio
     for source, cfg in SOURCES.items():
         if only and source not in only:
             continue
-        for page in cfg["pages"]:
+        queue = [(p, 0) for p in cfg["pages"]]
+        visited = set()
+        while queue:
+            page, depth = queue.pop(0)
+            if page in visited:
+                continue
+            visited.add(page)
             try:
                 r = s.get(page, timeout=30)
                 r.raise_for_status()
@@ -107,6 +113,8 @@ def fetch_all(con, root, only=None, refresh=False, limit=None, log=print, sessio
                 stats["errors"] += 1
                 continue
             stats["pages"] += 1
+            if depth < cfg.get("follow_children", 0):
+                queue += [(c, depth + 1) for c in child_pages(r.text, page) if c not in visited]
             found = links(r.text, page)
             stats["links"] += len(found)
             log(f"{source}: {len(found)} document links on {page}")
@@ -176,3 +184,26 @@ def extract_text(con, root, log=print):
         if sum(len(t.strip()) for _, _, t in pages) < 200 * max(1, len(pages)) // 4:
             thin.append(rel)
     return {"extracted": len(todo), "needs_ocr": thin}
+
+
+def ocr_pages(con, root, sha, pages, dpi=300):
+    """OCR selected pages of a scanned PDF into doc_text (replacing empty
+    text-layer rows). Used for the tail of scanned audit reports, where the
+    comments and recommendations are."""
+    import io
+
+    import pymupdf
+    import pytesseract
+    from PIL import Image
+    rel = con.execute("SELECT local_path FROM documents WHERE sha256 = ?", [sha]).fetchone()[0]
+    doc = pymupdf.open(os.path.join(root, rel))
+    done = 0
+    for pno in pages:
+        if not 1 <= pno <= len(doc):
+            continue
+        pix = doc[pno - 1].get_pixmap(dpi=dpi)
+        txt = pytesseract.image_to_string(Image.open(io.BytesIO(pix.tobytes("png"))))
+        con.execute("DELETE FROM doc_text WHERE sha256 = ? AND page = ?", [sha, pno])
+        con.execute("INSERT INTO doc_text VALUES (?, ?, ?)", [sha, pno, txt])
+        done += 1
+    return done

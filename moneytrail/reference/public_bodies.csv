@@ -1,0 +1,8 @@
+name,body_type,fy_start_month,body_group,successor,aliases,has_qpa,note
+Henry Hudson Regional School District,school,7,,,HHRSD;Henry Hudson Regional Board of Education;HHRS PK-12 Board of Education;Henry Hudson Regional Schools;Henry Hudson Regional BOE;School District of Henry Hudson Regional@from=2024-07-01,,PK-12 regional formed 7/1/2024 from AHSD (0130); HHRS (2120); HSD (2160). NJ DOE ethics district code 1456.
+Atlantic Highlands School District,school,7,,Henry Hudson Regional School District,School District of Atlantic Highlands;Atlantic Highlands BOE;Atlantic Highlands Board of Education,,predecessor; NJ DOE 0130
+Henry Hudson Regional High School District,school,7,,Henry Hudson Regional School District,School District of Henry Hudson Regional@until=2024-06-30,,predecessor 7-12 regional (NJ DOE 2120); pre-7/1/2024 filings name it 'Henry Hudson Regional' - disambiguate by date
+Highlands School District,school,7,,Henry Hudson Regional School District,School District of Highlands;Highlands BOE;Highlands Board of Education,,predecessor; NJ DOE 2160
+Borough of Atlantic Highlands,municipal,1,,,Atlantic Highlands Borough;Atlantic Highlands,,
+Borough of Highlands,municipal,1,,,Highlands Borough,,
+Monmouth County,county,1,,,County of Monmouth;Monmouth County Board of County Commissioners,,

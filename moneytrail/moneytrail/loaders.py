@@ -128,6 +128,22 @@ SPECS = {
         "required": ["public_body", "official_name"],
         "dates": [], "amounts": [], "ints": ["filing_year"],
     },
+    "audit_findings": {
+        "fields": {
+            "public_body": ["public_body", "entity", "district", "municipality"],
+            "fiscal_year": ["fiscal_year", "fy", "year"],
+            "auditor": ["auditor", "audit_firm", "firm"],
+            "report_type": ["report_type", "report", "type"],
+            "finding_no": ["finding_no", "finding_number", "number", "no"],
+            "category": ["category", "area"],
+            "is_repeat": ["is_repeat", "repeat", "repeat_finding"],
+            "finding": ["finding", "condition", "comment", "text"],
+            "recommendation": ["recommendation", "recommendations"],
+            "vendor": ["vendor", "vendor_named"],
+        },
+        "required": ["public_body", "fiscal_year"],
+        "dates": [], "amounts": [], "ints": ["fiscal_year"],
+    },
     "recipient_map": {
         "fields": {
             "recipient": ["recipient", "committee", "recipient_name"],
@@ -221,6 +237,12 @@ def load_csv(con, source_type, path, note=None):
             rec["record_kind"] = "contribution" if "contrib" in (rec["record_kind"] or "").lower() else "contract"
         if source_type in ("awards",) and rec.get("award_type"):
             rec["award_type"] = re.sub(r"[^a-z]+", "_", rec["award_type"].lower()).strip("_")
+        if source_type == "audit_findings":
+            rv = (rec.get("is_repeat") or "").strip().lower()
+            rec["is_repeat"] = rv in ("y", "yes", "true", "1", "repeat")
+            from moneytrail.audit import categorize
+            rec["category"] = (rec.get("category") or "").lower() or categorize(
+                f"{rec.get('finding') or ''} {rec.get('recommendation') or ''}")
         if source_type == "recipient_map":
             rec["recipient_norm"] = N.norm_org(rec["recipient"])
         if source_type == "public_bodies":
@@ -243,6 +265,8 @@ def load_csv(con, source_type, path, note=None):
         [source_type, str(path), digest, len(records), note],
     ).fetchone()[0]
     if source_type in ("recipient_map", "public_bodies"):
+        # Analyst-maintained full lists: a new version replaces the old one.
+        con.execute(f"DELETE FROM {source_type}")
         cols, vals = table_cols, [[r[c] for c in table_cols] for r in records]
     else:
         cols = ["file_id", "source_row", "raw"] + table_cols

@@ -9,7 +9,7 @@ from moneytrail import loaders, normalize as N, report, resolve, rules, schema
 FX = Path(__file__).parent / "fixtures"
 LOADS = [("contributions", "contributions.csv"), ("recipient_map", "recipient_map.csv"),
          ("be_disclosures", "be.csv"), ("awards", "awards.csv"), ("payments", "payments.csv"),
-         ("employees", "employees.csv")]
+         ("employees", "employees.csv"), ("audit_findings", "audit_findings.csv")]
 
 
 @pytest.fixture
@@ -177,7 +177,7 @@ def test_aggregate_over_threshold(loaded):
 
 def test_split_awards(loaded):
     [f] = flags(loaded, "split_awards")
-    assert f["entity_name"] == "Shoreline Engineering Associates" and f["score"] == 40
+    assert f["entity_name"] == "Shoreline Engineering Associates" and f["score"] == 50  # +10 audit context
 
 
 def test_change_order_growth(loaded):
@@ -187,12 +187,12 @@ def test_change_order_growth(loaded):
 
 def test_repeat_noncompetitive(loaded):
     by = {f["entity_name"]: f["score"] for f in flags(loaded, "repeat_noncompetitive")}
-    assert by == {"Rapid Response Tree Service": 25, "Shoreline Engineering Associates": 20}
+    assert by == {"Rapid Response Tree Service": 35, "Shoreline Engineering Associates": 30}  # +10 audit context
 
 
 def test_employee_vendor_link(loaded):
     [f] = flags(loaded, "employee_vendor_link")
-    assert f["entity_name"] == "Harborview Consulting" and f["score"] == 55
+    assert f["entity_name"] == "Harborview Consulting" and f["score"] == 65  # +10 payroll audit context
 
 
 def test_shared_address(loaded):
@@ -213,3 +213,27 @@ def test_report_has_disclaimer_and_citations(loaded, tmp_path):
     out = tmp_path / "f.csv"
     report.write_csv(fl, out)
     assert out.read_text().count("\n") == len(fl) + 1
+
+
+# ─── audit findings ──────────────────────────────────────────────────────────
+
+def test_audit_category_inferred(loaded):
+    cats = dict(loaded.execute("SELECT finding_no, category FROM audit_findings WHERE finding_no IS NOT NULL").fetchall())
+    assert cats == {"2023-01": "procurement", "2024-01": "procurement", "2024-02": "payroll"}
+
+
+def test_audit_vendor_named(loaded):
+    [f] = flags(loaded, "audit_vendor_named")
+    assert f["entity_name"] == "Coastal Supply Corp" and f["score"] == 25
+
+
+def test_repeat_audit_finding(loaded):
+    [f] = flags(loaded, "repeat_audit_finding")
+    assert "procurement" in f["summary"] and "FY2023, FY2024" in f["summary"] and f["score"] == 30
+
+
+def test_audit_context_boosts_matching_rules(loaded):
+    [f] = flags(loaded, "aggregate_over_bid_threshold")
+    assert f["score"] == 40 and "procurement audit finding" in f["evidence"]
+    [ot] = flags(loaded, "overtime_outlier")
+    assert "payroll audit finding" in ot["evidence"]

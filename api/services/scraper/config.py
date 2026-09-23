@@ -96,6 +96,7 @@ SOURCES = {
         "pages_to_crawl": [
             "/",
             # BOE Agendas & Minutes — by school year
+            "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2749182",  # 2026-2027
             "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2675269",  # 2025-2026
             "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593279",  # 2024-2025
             "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593280",  # Archive
@@ -133,6 +134,10 @@ SOURCES = {
             "/",
             "/regionalization-survey/",
             "/category/council-agendas/",
+            # Financial documents (audits, budgets, bids)
+            "/budget-information/",
+            "/borough-reports/",
+            "/bids-and-rfps/",
         ],
         "direct_downloads": [
             "https://highlandsnj.gov/wp-content/uploads/2024/12/Public-Letter-on-Regionalization.pdf",

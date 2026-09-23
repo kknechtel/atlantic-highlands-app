@@ -29,6 +29,7 @@ MENTION_SOURCES = [
     ("employees", "name", "employee", "person", True),
     ("disclosures", "official_name", "official", "person", True),
     ("disclosures", "business_name", "disclosed_business", "org", "business"),
+    ("audit_findings", "vendor", "audit_vendor", "org", False),
 ]
 
 # Employer strings that carry no entity information.

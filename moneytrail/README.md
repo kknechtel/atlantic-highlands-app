@@ -41,6 +41,7 @@ as JSON, so every flag cites `file:line`.
 |---|---|---|
 | `contributions` | ELEC contribution search export | recipient, amount, date, contributor name (or first/last) |
 | `be_disclosures` | Form BE (N.J.S.A. 19:44A-20.27), one row per reported contract or contribution | business_name, filing_year, record_kind, counterparty |
+| `audit_findings` | Audit report findings (or `extract` from fetched audits) | public_body, fiscal_year |
 | `awards` | Resolutions / bid tabs, incl. change orders (`award_type=change_order`, `parent_contract_ref`) | public_body, vendor, amount, award_date |
 | `payments` | Bills lists / check registers (OPRA) | public_body, vendor, amount, payment_date |
 | `employees` | Payroll (OPRA) | public_body, name |
@@ -86,6 +87,59 @@ contract resolutions, the Auditor's Management Report (AMR) findings, ACFRs
 (already extracted by `api/scripts/extract_school_acfrs.py`), payroll via OPRA,
 and School Ethics Commission disclosure statements.
 
+## Pulling documents
+
+```bash
+python -m moneytrail fetch                 # crawl sources.py pages, download linked PDFs
+python -m moneytrail text                  # PDF text per page (lists scanned files needing OCR)
+python -m moneytrail ethics --district 1456 --body "Henry Hudson Regional School District"
+python -m moneytrail extract               # audit findings + board-approved bills totals
+python -m moneytrail docs [--class audit]  # inventory
+python -m moneytrail manifest              # custody manifest -> reference/custody_manifest.csv
+```
+
+**Custody.** Every download is logged in `retrievals`: URL, the page that
+linked it, time, HTTP status, ETag/Last-Modified and sha256. Content is stored
+by hash in `data/raw/`, and a changed file under the same URL becomes a new
+version instead of overwriting the old one. `data/` is gitignored and the cloud
+container doesn't persist, so `reference/custody_manifest.csv` is committed.
+Anyone can re-fetch a URL and check its hash. For evidentiary use, run the
+fetch on durable storage.
+
+**Sources** (`sources.py`): HHRSD BOE agendas and minutes (2023–24 through
+2026–27), the ahnj.com budget, audit and records tree, and the Highlands budget,
+reports, bids and Municode agendas.
+
+**Bills lists.** HHRSD agendas and minutes approve a monthly "BILLS & CLAIMS …
+in the amount of $X" but don't attach the itemized list. That list is an
+immediate-access OPRA record. `extract` loads the approved totals into
+`bill_approvals`, and `payments_vs_approved` reconciles an OPRA'd list to them.
+Atlantic Highlands minutes from before 2013 do include itemized bills lists
+(vendor, PO, amount), as scanned tables; they aren't parsed yet.
+Current ahnj agendas and minutes are on ecode360, which returns 403 to scripted
+access from here.
+
+**Ethics disclosures** (`ethics.py`). NJ DOE's public School Ethics Commission
+search runs on an open JSON API, which answers only with the search page's
+Origin/Referer headers. Statements come in three formats: fillable form fields,
+forms flattened to text (compared against a blank template), and Adobe
+Fill & Sign vector overlays (OCR). Values are mapped to fields by the table's
+own ruling lines. Yes/No answers are kept as `answer:<question>` rows. Town
+officials' LGEL statements are at fds.dca.nj.gov, an ASP.NET form behind
+Incapsula; that isn't automated yet.
+
+**Audits** (`audit.py`). Findings are extracted from NJ audit reports in both the
+current "2024-003*" format (asterisk = repeat) and the pre-2013 "12-01. That …"
+format, where repeats come from the "number 12-01 is similar to that reported in
+2011" line. For scanned audits only the last 15 pages are OCR'd. Minutes that
+accept an ACFR/AMR "with no audit recommendations" become `category='none'`
+rows, so a clean audit is recorded as data.
+
+**Reference lists** (`reference/`): `public_bodies.csv` covers HHRSD, its three
+predecessors, the two boroughs and the county. An alias can be limited by date
+(`name@until=2024-06-30`) when a successor reuses a name. Loading a new version
+of a reference list replaces the old one.
+
 ## Entity resolution (`resolve.py`)
 
 Every name becomes a mention (contributor, donor's employer, BE filer, vendor,
@@ -111,7 +165,7 @@ entities.
 
 | rule | fires when |
 |---|---|
-| `donation_near_award` | A vendor-linked contribution falls 365 days before to 90 days after an award. Bonus points for the 19:44A-20.5 pattern (award > $17.5k, contribution > $300 before it) and for a recipient mapped to the awarding body. Contributions to committees mapped to a *different* body are dropped. A BE copy of an ELEC contribution is counted once. |
+| `donation_near_award` | A vendor-linked contribution falls between one year before an award and one year after it (the assumed contract term). For counties and municipalities (19:44A-20.4 / 20.5 as amended by P.L.2023 c.30) the statutory bonus needs: an award over $17,500 not made through a fair-and-open process (public bidding now counts as fair and open), and a *reportable* contribution (over $200 after 4/3/2023, over $300 before) to a *candidate committee* of an official of that body. Party-committee contributions no longer disqualify a vendor. Boards of education get the 19:44A-20.26 disclosure check instead. Contributions to committees mapped to a different body are dropped, and a BE copy of an ELEC contribution is counted once. |
 | `missing_be_disclosure` | A vendor received ≥ $50k in a year per loaded data and no Form BE was found for that year. Runs only if BE data is loaded. |
 | `aggregate_over_bid_threshold` | Fiscal-year payments to one vendor exceed the bid threshold and the body has no bid or exempt award on file for it. Runs only for bodies that have award data. |
 | `split_awards` | Two or more awards from one body or body group to one vendor, each 80–100% of the bid threshold, within 365 days. |
@@ -120,10 +174,22 @@ entities.
 | `employee_vendor_link` | A vendor's street address matches an employee's, or a sole-prop vendor's name matches an employee's name. |
 | `shared_vendor_address` | Three or more distinct vendors share one street address. |
 | `official_disclosed_business_vendor` / `official_vendor_link` | A business an official disclosed is a vendor, or an official's address or name matches a vendor. |
+| `audit_vendor_named` / `repeat_audit_finding` | A vendor is named in an audit finding, or a body has findings in the same area in consecutive years or marked repeat. Other flags on a body get +10 when it has findings in the matching area (procurement or payroll), and a zero-point note when its audits were clean. |
+| `payments_vs_approved` | An itemized bills list for a month doesn't foot to the board-approved total (tolerance 0.5%). |
 | `overtime_outlier` / `multiple_public_payrolls` | Overtime above 50% of base pay, or one person on two or more public payrolls in the same year. |
 
-Thresholds are in `config.py`. **Check the bid threshold against the current
-Local Finance Notice.**
+Thresholds and citations are in `config.py`. They were checked against primary
+sources on 2026-09-23: LFN 2025-08, LFN 2023-14, and the text of P.L.2023 c.30.
+Bid thresholds depend on the date:
+
+| | with QPA | LPCL, no QPA | PSCL, no QPA |
+|---|---|---|---|
+| from 7/1/2025 | $53,000 | $17,500 | $39,000 |
+| 7/1/2020 to 6/30/2025 | $44,000 | $17,500 | $32,000 |
+
+Set `has_qpa` per body in `public_bodies`. If it's missing, a QPA is assumed.
+That uses the higher threshold, so it produces fewer flags. The next adjustment
+is due 7/1/2030.
 
 ## Tests
 
@@ -135,9 +201,9 @@ The fixtures in `tests/fixtures/` are synthetic. Names are fictional.
 
 ## Next
 
-1. Get a real ELEC export and a year of Monmouth County resolutions, then fix the header aliases.
-2. Add a resolution PDF → `awards` extractor (reuse `api/services/pdfplumber_service.py`).
-3. Add NJ business registry officers/agents as mentions, for shell and officer-overlap rules.
-4. Add a BE ↔ ELEC mismatch rule: a contribution reported on one form but not the other.
-5. Add cross-municipality professional overlap once more than one town is loaded.
-6. Load federal data: USAspending, SAM exclusions, FAC single audits.
+1. OPRA HHRSD's itemized bills lists (immediate access) and load them as `payments`. `payments_vs_approved` then reconciles them to the 36 months of approved totals already extracted.
+2. Parse the itemized bills tables in pre-2013 Atlantic Highlands minutes, which are already OCR'd.
+3. Build a DCA LGEL disclosure scraper (fds.dca.nj.gov) for borough and county officials.
+4. Build an awards extractor for "To approve the proposal from X … $Y" items in BOE minutes.
+5. OCR the 75 remaining scanned documents (mostly pre-2013 borough minutes and budgets).
+6. Add NJ business registry officers/agents; BE ↔ ELEC mismatch; federal data.

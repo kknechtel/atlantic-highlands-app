@@ -99,6 +99,27 @@ CREATE TABLE IF NOT EXISTS disclosures (
     item VARCHAR, related_person VARCHAR, detail VARCHAR
 );
 
+-- Audit findings: school Auditor's Management Report (AMR), municipal audit
+-- "General Comments and Recommendations", single-audit findings. A row with
+-- category 'none' records an audit reported with no findings (so absence is
+-- evidence, not a gap). fiscal_year = FY end year.
+CREATE TABLE IF NOT EXISTS audit_findings (
+    id BIGINT PRIMARY KEY DEFAULT nextval('rec_seq'),
+    file_id INTEGER, source_row INTEGER, raw JSON,
+    public_body VARCHAR, fiscal_year INTEGER, auditor VARCHAR, report_type VARCHAR,
+    finding_no VARCHAR, category VARCHAR, is_repeat BOOLEAN,
+    finding VARCHAR, recommendation VARCHAR, vendor VARCHAR
+);
+
+-- Board-approved bills totals from minutes/agendas ("To approve the BILLS &
+-- CLAIMS for January 2025 in the amount of $2,206,520.53"). Control totals:
+-- an OPRA'd itemized bills list for that month must foot to this.
+CREATE TABLE IF NOT EXISTS bill_approvals (
+    public_body VARCHAR, meeting_date DATE, period VARCHAR, period_month DATE,
+    kind VARCHAR,              -- bills | payroll
+    amount DOUBLE, doc_class VARCHAR, sha256 VARCHAR, page INTEGER, text VARCHAR
+);
+
 -- Entity resolution output.
 CREATE TABLE IF NOT EXISTS mentions (
     mention_id BIGINT, src_table VARCHAR, src_id BIGINT, role VARCHAR, kind VARCHAR,
@@ -112,6 +133,20 @@ CREATE TABLE IF NOT EXISTS mention_entity (
 );
 CREATE TABLE IF NOT EXISTS entities (
     entity_id BIGINT, kind VARCHAR, canonical_name VARCHAR, n_mentions INTEGER
+);
+
+-- Fetched documents and their custody log (fetch.py).
+CREATE TABLE IF NOT EXISTS documents (
+    sha256 VARCHAR PRIMARY KEY, source VARCHAR, public_body VARCHAR, url VARCHAR, title VARCHAR,
+    doc_class VARCHAR, doc_date DATE, content_type VARCHAR, bytes BIGINT, local_path VARCHAR,
+    first_seen TIMESTAMP, text_extracted BOOLEAN DEFAULT false
+);
+CREATE TABLE IF NOT EXISTS retrievals (
+    url VARCHAR, referrer VARCHAR, title VARCHAR, retrieved_at TIMESTAMP, http_status INTEGER,
+    etag VARCHAR, last_modified VARCHAR, sha256 VARCHAR, error VARCHAR
+);
+CREATE TABLE IF NOT EXISTS doc_text (
+    sha256 VARCHAR, page INTEGER, text VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS flags (

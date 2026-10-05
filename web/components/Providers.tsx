@@ -152,7 +152,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Public routes — published presentations under /p/{slug} and any future
   // public-only pages. They render bare without the sidebar/mobile-nav chrome.
-  const isPublicRoute = pathname?.startsWith("/p/") ?? false;
+  const isPublicRoute =
+    (pathname?.startsWith("/p/") ?? false) || pathname === "/privacy";
   if (isPublicRoute) {
     return <>{children}</>;
   }

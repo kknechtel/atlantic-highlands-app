@@ -226,6 +226,13 @@ export default function LoginForm() {
             Borough of Atlantic Highlands, NJ
           </p>
         )}
+        {/* events.* rewrites every path into /events-app, so link the main domain. */}
+        <a
+          href={eventsApp ? "https://ahnj.info/privacy" : "/privacy"}
+          className="block text-center text-[11px] text-gray-400 hover:text-gray-600 mt-2"
+        >
+          Privacy Policy
+        </a>
       </div>
     </div>
   );

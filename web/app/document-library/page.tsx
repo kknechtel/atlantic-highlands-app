@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getDocuments,
@@ -97,6 +97,7 @@ export default function DocumentLibraryPage() {
   const [deptFilter, setDeptFilter] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerError, setViewerError] = useState<string | null>(null);
   const [chatDoc, setChatDoc] = useState<Document | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -147,6 +148,8 @@ export default function DocumentLibraryPage() {
   const handleSelectDoc = async (doc: Document) => {
     setSelectedDoc(doc);
     setViewerUrl(null);
+    setViewerError(null);
+    setViewerError(null);
     // Fire-and-forget: tell the backend the user clicked this result.
     // Used for relevance analytics — see search_query_log.
     if (searchResponse?.query_id && search.length > 1) {
@@ -162,10 +165,33 @@ export default function DocumentLibraryPage() {
     try {
       const { url } = await getDocumentViewUrl(doc.id);
       setViewerUrl(url);
-    } catch {
+    } catch (err) {
       setViewerUrl(null);
+      setViewerError(err instanceof Error ? err.message : "Couldn't load this file.");
     }
   };
+
+  // Deep link: /document-library?doc=<id> (dashboard "Recently Added" list).
+  // Read window.location directly so the page doesn't need a Suspense
+  // boundary for useSearchParams.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("doc");
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await getDocument(id);
+        if (cancelled) return;
+        setSelectedDoc(full);
+        const { url } = await getDocumentViewUrl(id);
+        if (!cancelled) setViewerUrl(url);
+      } catch (err) {
+        if (!cancelled && err instanceof Error) setViewerError(err.message);
+        // Doc gone or not visible to this user — leave the library unselected.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Result lookup keyed by document id — carries snippet, match_type,
   // additional snippets, page numbers, and chunk-match count so DocRow can
@@ -598,15 +624,43 @@ export default function DocumentLibraryPage() {
                   <div className="w-full h-full flex items-center justify-center p-8">
                     <img src={viewerUrl} alt={selectedDoc.filename} className="max-w-full max-h-full object-contain" />
                   </div>
+                ) : /\.(mp3|m4a|wav|ogg|oga|aac|flac|webm)$/i.test(selectedDoc.filename) ? (
+                  <div className="w-full h-full flex items-center justify-center p-8">
+                    <audio controls preload="metadata" src={viewerUrl} className="w-full max-w-xl" />
+                  </div>
+                ) : /\.(mp4|mov|m4v)$/i.test(selectedDoc.filename) ? (
+                  <video controls preload="metadata" src={viewerUrl} className="w-full h-full bg-black" />
+                ) : /\.(docx?|xlsx?|pptx?)$/i.test(selectedDoc.filename) && /^https:/.test(viewerUrl) ? (
+                  // Office Online renders Word/Excel/PowerPoint from a public
+                  // URL; the presigned S3 URL qualifies for its 1h lifetime.
+                  <iframe
+                    title={selectedDoc.filename}
+                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerUrl)}`}
+                    className="w-full h-full bg-white border-0"
+                  />
                 ) : (
-                  <div className="flex items-center justify-center h-full text-gray-400">
-                    <a href={viewerUrl} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: `${brandColor}cc` }}>
-                      Open file in new tab
-                    </a>
+                  <div className="flex items-center justify-center h-full p-8">
+                    <div className="bg-white rounded-lg p-6 text-center max-w-sm">
+                      <DocumentTextIcon className="w-10 h-10 mx-auto mb-3" style={{ color: brandColor }} />
+                      <p className="text-sm text-gray-700 mb-1">
+                        {/\.wma$/i.test(selectedDoc.filename)
+                          ? "Windows Media Audio can't play in the browser."
+                          : "This file type can't be previewed here."}
+                      </p>
+                      <p className="text-xs text-gray-500 mb-4">Download it to open in a desktop app.</p>
+                      <a href={viewerUrl} download={selectedDoc.filename}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-white text-sm font-medium hover:opacity-90"
+                        style={{ backgroundColor: brandColor }}>
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Download {formatBytes(selectedDoc.file_size)}
+                      </a>
+                    </div>
                   </div>
                 )
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm px-6 text-center">
+                  {viewerError ? `Couldn't load this file: ${viewerError}` : "Loading..."}
+                </div>
               )}
             </div>
           </div>

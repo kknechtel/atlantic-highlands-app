@@ -105,7 +105,7 @@ def _hybrid_chunk_search(
 
     sql = text(f"""
         WITH semantic AS (
-            SELECT c.id, c.document_id, c.content, c.chunk_index, c.page_start, c.page_end,
+            SELECT c.id, c.document_id, c.content, c.context, c.chunk_index, c.page_start, c.page_end,
                    ROW_NUMBER() OVER (ORDER BY c.embedding <=> CAST(:embedding AS vector)) AS sem_rank
             FROM document_chunks c
             JOIN documents d ON d.id = c.document_id
@@ -121,7 +121,7 @@ def _hybrid_chunk_search(
             LIMIT :pool
         ),
         keyword AS (
-            SELECT c.id, c.document_id, c.content, c.chunk_index, c.page_start, c.page_end,
+            SELECT c.id, c.document_id, c.content, c.context, c.chunk_index, c.page_start, c.page_end,
                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(c.fts_vector, COALESCE({tsq_fn}('english', :query),
                                                      plainto_tsquery('english', :query))) DESC) AS kw_rank
             FROM document_chunks c
@@ -143,6 +143,7 @@ def _hybrid_chunk_search(
                 COALESCE(s.id, k.id)            AS chunk_id,
                 COALESCE(s.document_id, k.document_id) AS document_id,
                 COALESCE(s.content, k.content)  AS content,
+                COALESCE(s.context, k.context)  AS context,
                 COALESCE(s.chunk_index, k.chunk_index) AS chunk_index,
                 COALESCE(s.page_start, k.page_start)   AS page_start,
                 COALESCE(s.page_end,   k.page_end)     AS page_end,
@@ -151,11 +152,11 @@ def _hybrid_chunk_search(
             FROM semantic s
             FULL OUTER JOIN keyword k ON s.id = k.id
         )
-        SELECT c.chunk_id, c.document_id, c.content, c.chunk_index,
+        SELECT c.chunk_id, c.document_id, c.content, c.context, c.chunk_index,
                c.page_start, c.page_end, c.score,
                d.filename, d.fiscal_year, d.category, d.doc_type,
                d.department, d.created_at, d.status,
-               d.title, d.doc_date, d.notes
+               d.title, d.doc_date, d.notes, d.municipality
         FROM combined c
         JOIN documents d ON d.id = c.document_id
         ORDER BY c.score DESC
@@ -189,13 +190,13 @@ def _keyword_chunk_search(
     """tsvector-only fallback. Works without pgvector or embeddings."""
     tsq_fn = "websearch_to_tsquery" if use_websearch else "plainto_tsquery"
     sql = text(f"""
-        SELECT c.id AS chunk_id, c.document_id, c.content, c.chunk_index,
+        SELECT c.id AS chunk_id, c.document_id, c.content, c.context, c.chunk_index,
                c.page_start, c.page_end,
                ts_rank_cd(c.fts_vector, COALESCE({tsq_fn}('english', :query),
                                                   plainto_tsquery('english', :query))) AS score,
                d.filename, d.fiscal_year, d.category, d.doc_type,
                d.department, d.created_at, d.status,
-               d.title, d.doc_date, d.notes
+               d.title, d.doc_date, d.notes, d.municipality
         FROM document_chunks c
         JOIN documents d ON d.id = c.document_id
         WHERE c.fts_vector @@ COALESCE({tsq_fn}('english', :query),

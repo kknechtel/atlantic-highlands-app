@@ -362,6 +362,37 @@ def confirm_upload(
     )
 
 
+@router.get("/resolve")
+def resolve_document(
+    name: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Map a `[source: …]` citation to one document: exact filename, then exact
+    title, then the filename without a doubled extension, then a prefix match.
+    Declared before /{document_id} so "resolve" isn't parsed as an id."""
+    import re
+    from sqlalchemy import func
+
+    name = name.strip()
+    base = db.query(Document)
+    accessible = _accessible_project_ids(db, user)
+    if accessible is not None:
+        base = base.filter(Document.project_id.in_(accessible)) if accessible else base.filter(False)
+    collapsed = re.sub(r"(\.[A-Za-z0-9]{2,4})$", r"\1\1", name)  # x.pdf → x.pdf.pdf
+    candidates = [
+        func.lower(Document.filename) == name.lower(),
+        func.lower(Document.title) == name.lower(),
+        func.lower(Document.filename) == collapsed.lower(),
+        Document.filename.ilike(f"{name}%"),
+    ]
+    for cond in candidates:
+        doc = base.filter(cond).order_by(Document.created_at.desc()).first()
+        if doc:
+            return {"id": str(doc.id), "filename": doc.filename, "title": doc.title}
+    raise HTTPException(status_code=404, detail="No document matches that citation")
+
+
 @router.get("/{document_id}", response_model=DocumentResponse)
 def get_document(
     document_id: str,

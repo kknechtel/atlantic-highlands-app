@@ -169,7 +169,7 @@ def _resolve_filters(req: SearchRequest, parsed: query_parser.ParsedQuery) -> di
         "fiscal_year": req.fiscal_year or parsed.fiscal_year,
         "category": req.category or parsed.category,
         "doc_type": req.doc_type or parsed.doc_type,
-        "department": req.department or parsed.department,
+        "department": req.department,  # inferred departments only boost (see rank_chunks)
         "municipality": req.municipality,
         "project_id": req.project_id,
     }
@@ -250,27 +250,40 @@ def _log_search(
 
 # ─── Search endpoint ───────────────────────────────────────────────────────
 
-@router.post("", response_model=SearchResponse, include_in_schema=False)
-@router.post("/", response_model=SearchResponse)
-def search_documents(
-    req: SearchRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+def rank_chunks(
+    db: Session,
+    query: str,
+    *,
+    fiscal_year: Optional[str] = None,
+    category: Optional[str] = None,
+    doc_type: Optional[str] = None,
+    department: Optional[str] = None,
+    municipality: Optional[str] = None,
+    project_id: Optional[str] = None,
+    document_id: Optional[str] = None,
+    pool_size: int = 30,
+    expand: bool = True,
+    rerank: bool = True,
 ):
-    started = time.perf_counter()
-    query = req.query.strip()
-
-    if not query:
-        return SearchResponse(results=[])
-
+    """The full ranking pipeline shared by /api/search and the chat tools:
+    parse → expand → hybrid RRF retrieval → Voyage rerank → recency/title/literal
+    boosts. Returns (chunks sorted best-first, parsed, expansions, base_query)."""
     # ── 1. Parse for structured signals
     parsed = query_parser.parse(query)
     base_query = parsed.stripped or query
-    merged = _resolve_filters(req, parsed)
+    merged = {
+        "fiscal_year": fiscal_year or parsed.fiscal_year,
+        "category": category or parsed.category,
+        "doc_type": doc_type or parsed.doc_type,
+        # Only an explicit department filters; one inferred from the query
+        # text ("harbor" -> Harbor Commission) is a boost below, since many
+        # docs carry the body in their title/header rather than department.
+        "department": department,
+    }
 
     # ── 2. Synonym expansion
     expansions: list[str] = []
-    if not req.disable_expansion:
+    if expand:
         try:
             expansions = query_expansion.expand(base_query, allow_llm=True)
         except Exception as exc:
@@ -281,7 +294,6 @@ def search_documents(
     # ── 3. Hybrid chunk-level retrieval. Pull a pool 3x the limit so the
     # reranker has headroom.
     has_quotes = '"' in query
-    pool_size = max(req.limit * 3, 30)
     try:
         chunks = search_chunks(
             db,
@@ -290,10 +302,10 @@ def search_documents(
             fiscal_year=merged["fiscal_year"],
             category=merged["category"],
             doc_type=merged["doc_type"],
-            document_id=req.document_id,
-            project_id=merged["project_id"],
+            document_id=document_id,
+            project_id=project_id,
             department=merged["department"],
-            municipality=merged["municipality"],
+            municipality=municipality,
             use_websearch=True,
             # Embed the plain query; the OR-expanded string is keyword syntax.
             embed_text=base_query,
@@ -303,9 +315,10 @@ def search_documents(
         chunks = []
 
     # ── 4. Voyage rerank-2 on top-30 (when key + enough results)
-    if chunks and len(chunks) > 3 and not req.disable_rerank and reranker.is_available():
+    if chunks and len(chunks) > 3 and rerank and reranker.is_available():
         try:
-            docs_for_rerank = [c.get("content", "") for c in chunks]
+            # Rerank sees the chunk's doc header too (title · town · body · date).
+            docs_for_rerank = [f"{c.get('context') or ''}\n{c.get('content') or ''}" for c in chunks]
             ranking = reranker.rerank(base_query, docs_for_rerank, top_k=min(30, len(chunks)))
             rerank_map = {idx: score for idx, score in ranking}
             for i, c in enumerate(chunks):
@@ -333,6 +346,14 @@ def search_documents(
         c["score"] = base
     chunks.sort(key=lambda r: r["score"], reverse=True)
 
+    if parsed.department and not department:
+        dept = parsed.department.lower()
+        for c in chunks:
+            hay = f"{c.get('department') or ''} {c.get('context') or ''} {c.get('title') or ''}".lower()
+            if dept in hay:
+                c["score"] = float(c.get("score") or 0) + 0.1
+        chunks.sort(key=lambda r: r["score"], reverse=True)
+
     # ── 6. Literal-match boost (outranks stemmer over-match like "highander").
     # Title matches count too. A boost rather than a filter: dropping every
     # non-literal chunk threw away good semantic hits whenever one chunk
@@ -343,6 +364,34 @@ def search_documents(
             if q_literal.lower() in haystack.lower():
                 c["score"] = float(c.get("score") or 0) + 0.15
         chunks.sort(key=lambda r: r["score"], reverse=True)
+
+    return chunks, parsed, expansions, base_query
+
+
+@router.post("", response_model=SearchResponse, include_in_schema=False)
+@router.post("/", response_model=SearchResponse)
+def search_documents(
+    req: SearchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    started = time.perf_counter()
+    query = req.query.strip()
+
+    if not query:
+        return SearchResponse(results=[])
+
+    chunks, parsed, expansions, base_query = rank_chunks(
+        db, query,
+        fiscal_year=req.fiscal_year, category=req.category, doc_type=req.doc_type,
+        department=req.department, municipality=req.municipality,
+        project_id=req.project_id, document_id=req.document_id,
+        pool_size=max(req.limit * 3, 30),
+        expand=not req.disable_expansion, rerank=not req.disable_rerank,
+    )
+    merged = _resolve_filters(req, parsed)
+    has_quotes = '"' in query
+    q_literal = _strip_operators(query)
 
     # ── 7. Roll up chunks → documents
     by_doc: dict[str, dict] = {}

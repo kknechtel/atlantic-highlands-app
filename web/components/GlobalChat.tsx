@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { searchDocuments, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, type Document } from "@/lib/api";
+import { searchDocuments, resolveCitation, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, type Document } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import FilePreviewModal from "@/components/FilePreviewModal";
@@ -305,12 +305,7 @@ export default function GlobalChat() {
   const handleViewDoc = async (docId: string, filename: string) => {
     try {
       if (!docId && filename) {
-        const r = (await searchDocuments(filename)).results;
-        const exact = r.find((d) => d.filename === filename);
-        const startsWith = r.find((d) => d.filename.toLowerCase().startsWith(filename.toLowerCase()));
-        const contains = r.find((d) => d.filename.toLowerCase().includes(filename.toLowerCase()));
-        const best = exact || startsWith || contains || r[0];
-        if (best) docId = best.id;
+        docId = (await resolveCitation(filename))?.id || "";
       }
       if (!docId) {
         console.warn("Could not find doc for citation:", filename);

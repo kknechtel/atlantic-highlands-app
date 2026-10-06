@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { X, Loader2, ExternalLink } from 'lucide-react';
-import { searchDocuments, getDocumentViewUrl } from '@/lib/api';
+import { resolveCitation, getDocumentViewUrl } from '@/lib/api';
 
 interface DocPreview {
     kind: 'doc';
@@ -92,13 +92,7 @@ export default function CitationPreview({ mode = 'auth', publicSlug }: Props = {
                     });
                 } else {
                     // Auth mode: resolve filename → docId → signed URL.
-                    // searchDocuments returns ordered matches; pick the best
-                    // one (exact filename, then startsWith, then contains).
-                    const r = (await searchDocuments(detail.filename)).results;
-                    const exact = r.find(d => d.filename === detail.filename);
-                    const starts = r.find(d => d.filename.toLowerCase().startsWith(detail.filename.toLowerCase()));
-                    const contains = r.find(d => d.filename.toLowerCase().includes(detail.filename.toLowerCase()));
-                    const best = exact || starts || contains || r[0];
+                    const best = await resolveCitation(detail.filename);
                     if (!best) {
                         setError(`No document found matching "${detail.filename}"`);
                         setLoading(false);

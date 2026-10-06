@@ -105,7 +105,7 @@ KEY HISTORICAL EVENTS IN DOCUMENTS:
 - Waterfront development: Brant Point project (16 upscale homes, starting $2.8M).
 - 2024 tax rate: 1.665 general rate. Municipal rate decreased 2020-2024 while property values rose.
 
-DOCUMENT LIBRARY: 860+ indexed documents (2004-present): budgets, audits, financial statements, council minutes/agendas, ordinances, resolutions, school board minutes, CAFRs, legal documents."""
+DOCUMENT LIBRARY: 5,000+ indexed documents (2004-present): budgets, audits, financial statements, council minutes/agendas, ordinances, resolutions, school board minutes, CAFRs, legal documents."""
 
 
 WORKING_INSTRUCTIONS = """## How to answer
@@ -120,6 +120,12 @@ EVERY factual claim — every dollar amount, date, vote count, name, ordinance n
   - "The board approved the resolution 5-0 [source: January 24, 2024 Regular BOE Meeting Minutes.pdf]."
 
 If a fact came from multiple sources, cite each one separately: `[source: a.pdf] [source: b.pdf]`.
+
+Search results also carry a human-readable `title`, `doc_date`, and `municipality`. Mention the title/date in prose when helpful, but citations must still use the exact `filename`.
+
+## WHICH TOWN
+
+"Highlands" (Borough of Highlands) is a DIFFERENT town from Atlantic Highlands. Results are tagged with `municipality` (atlantic_highlands, highlands, hhrsd, regional, state). When the user asks about one town, pass the `municipality` filter to search_chunks, and never attribute a Highlands record to Atlantic Highlands.
 
 ## STOP NARRATING — JUST DO THE WORK
 
@@ -266,14 +272,19 @@ def _tool_defs() -> list[dict]:
         },
         {
             "name": "search_chunks",
-            "description": "Search PASSAGES across all documents. Use this for fact-finding ('what did the 2023 budget allocate to roads?'). Returns the most relevant chunks with their source documents. Almost always the right first call.",
+            "description": "Search PASSAGES across all documents (keyword + semantic, reranked). Use this for fact-finding ('what did the 2023 budget allocate to roads?'). Returns the most relevant passages with their source document, title, date and page. Almost always the right first call. Narrow with filters instead of re-running broad queries.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
+                    "municipality": {"type": "string", "enum": ["atlantic_highlands", "highlands", "hhrsd", "regional", "state"],
+                                     "description": "atlantic_highlands = Borough of Atlantic Highlands; highlands = neighboring Borough of Highlands (a different town); hhrsd = Henry Hudson Regional School District."},
+                    "doc_type": {"type": "string", "description": "e.g. minutes, agenda, budget, audit, ordinance, resolution, bill_list, planning"},
+                    "department": {"type": "string"},
                     "fiscal_year": {"type": "string"},
-                    "category": {"type": "string", "enum": ["town", "school"]},
-                    "top_k": {"type": "integer", "default": 12, "minimum": 1, "maximum": 30},
+                    "date_from": {"type": "string", "description": "YYYY-MM-DD; only documents dated on/after"},
+                    "date_to": {"type": "string", "description": "YYYY-MM-DD; only documents dated on/before"},
+                    "top_k": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
                 },
                 "required": ["query"],
             },
@@ -451,38 +462,54 @@ def _exec_search_documents(db: Session, args: dict) -> dict:
             {
                 "document_id": str(r["id"]),
                 "filename": r["filename"],
+                "title": r.get("title"),
+                "doc_date": r.get("doc_date"),
+                "municipality": r.get("municipality"),
                 "doc_type": r.get("doc_type"),
-                "category": r.get("category"),
                 "fiscal_year": r.get("fiscal_year"),
                 "summary": (r.get("notes") or "")[:600],
                 "page_count": r.get("page_count"),
-                "score": float(r.get("score") or 0),
             }
             for r in rows
         ],
     }
 
 
+CHUNK_CHARS = 1500
+
+
 def _exec_search_chunks(db: Session, args: dict) -> dict:
-    rows = search_chunks(
-        db,
-        query=args["query"],
-        top_k=int(args.get("top_k", 12)),
+    """Same ranking pipeline as /api/search (parse, expand, hybrid RRF, rerank)."""
+    from routes.search import rank_chunks
+    top_k = min(int(args.get("top_k", 8)), 20)
+    rows, _, _, _ = rank_chunks(
+        db, args["query"],
         fiscal_year=args.get("fiscal_year"),
         category=args.get("category"),
+        doc_type=args.get("doc_type"),
+        department=args.get("department"),
+        municipality=args.get("municipality"),
+        pool_size=max(top_k * 3, 30),
     )
+    date_from, date_to = args.get("date_from"), args.get("date_to")
+    if date_from or date_to:
+        rows = [r for r in rows if r.get("doc_date")
+                and (not date_from or r["doc_date"] >= date_from)
+                and (not date_to or r["doc_date"] <= date_to)]
+    rows = rows[:top_k]
     return {
         "count": len(rows),
         "chunks": [
             {
                 "document_id": str(r["document_id"]),
                 "filename": r["filename"],
+                "title": r.get("title"),
+                "doc_date": r.get("doc_date"),
+                "municipality": r.get("municipality"),
                 "doc_type": r.get("doc_type"),
-                "fiscal_year": r.get("fiscal_year"),
                 "page_start": r.get("page_start"),
                 "page_end": r.get("page_end"),
-                "content": (r.get("content") or "")[:2500],
-                "score": float(r.get("score") or 0),
+                "content": (r.get("content") or "")[:CHUNK_CHARS],
             }
             for r in rows
         ],
@@ -1094,6 +1121,8 @@ async def _stream_claude(
     tool_calls_made = 0
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_read = 0
+    total_cache_write = 0
     continuation_count = 0
     max_continuations = 3
 
@@ -1127,6 +1156,7 @@ async def _stream_claude(
                 "iteration": iteration + 1,
             })
 
+            _mark_last_message_for_cache(messages)
             api_kwargs = {
                 "model": model,
                 "max_tokens": max_tokens,
@@ -1186,8 +1216,11 @@ async def _stream_claude(
 
                 # Accumulate token usage across iterations.
                 if getattr(final_message, "usage", None):
-                    total_input_tokens += getattr(final_message.usage, "input_tokens", 0) or 0
-                    total_output_tokens += getattr(final_message.usage, "output_tokens", 0) or 0
+                    u = final_message.usage
+                    total_input_tokens += getattr(u, "input_tokens", 0) or 0
+                    total_output_tokens += getattr(u, "output_tokens", 0) or 0
+                    total_cache_read += getattr(u, "cache_read_input_tokens", 0) or 0
+                    total_cache_write += getattr(u, "cache_creation_input_tokens", 0) or 0
 
                 stop_reason = final_message.stop_reason
                 tool_blocks = [b for b in final_message.content if getattr(b, "type", None) == "tool_use"]
@@ -1230,14 +1263,20 @@ async def _stream_claude(
                             save_db, source="chat", model=model,
                             input_tokens=total_input_tokens,
                             output_tokens=total_output_tokens,
+                            estimated_cost_usd=_estimate_cost(
+                                model, total_input_tokens, total_output_tokens,
+                                total_cache_read, total_cache_write),
                             user_id=user_id,
                             resource_type="chat_session", resource_id=session_id,
                             metadata={"tool_calls": tool_calls_made,
-                                      "stop_reason": stop_reason},
+                                      "stop_reason": stop_reason,
+                                      "cache_read_tokens": total_cache_read,
+                                      "cache_write_tokens": total_cache_write},
                         )
                     finally:
                         save_db.close()
-                    cost = _estimate_cost(model, total_input_tokens, total_output_tokens)
+                    cost = _estimate_cost(model, total_input_tokens, total_output_tokens,
+                                          total_cache_read, total_cache_write)
                     yield _sse("done", {"session_id": session_id,
                                         "tool_calls_made": tool_calls_made,
                                         "stop_reason": stop_reason,
@@ -1261,7 +1300,8 @@ async def _stream_claude(
                     "stage": "tools",
                 })
 
-                results = []
+                # Announce every call first, then run them concurrently:
+                # Claude often asks for several independent searches at once.
                 for tb in tool_blocks:
                     # share_plan / propose_section are special — emit dedicated
                     # SSE events and don't render the generic tool_call spinner.
@@ -1280,17 +1320,18 @@ async def _stream_claude(
                             "input": tb.input,
                             "description": _describe_tool_call(tb.name, dict(tb.input or {})),
                         })
-                    res = await asyncio.to_thread(run_tool, tb.name, tb.input)
+                outputs = await asyncio.gather(
+                    *(asyncio.to_thread(run_tool, tb.name, tb.input) for tb in tool_blocks)
+                )
+                results = []
+                for tb, res in zip(tool_blocks, outputs):
                     if tb.name not in ("share_plan", "propose_section"):
                         summary = _summarize_tool_result(tb.name, res)
                         yield _sse("tool_result", {"name": tb.name, "summary": summary})
-                    payload = json.dumps(res)
-                    if len(payload) > 30000:
-                        payload = payload[:30000] + '"}'
                     results.append({
                         "type": "tool_result",
                         "tool_use_id": tb.id,
-                        "content": payload,
+                        "content": _fit_json(res),
                     })
 
                 messages.append({"role": "assistant", "content": final_message.content})
@@ -1306,14 +1347,20 @@ async def _stream_claude(
                 save_db, source="chat", model=model,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
+                estimated_cost_usd=_estimate_cost(
+                    model, total_input_tokens, total_output_tokens,
+                    total_cache_read, total_cache_write),
                 user_id=user_id,
                 resource_type="chat_session", resource_id=session_id,
                 metadata={"tool_calls": tool_calls_made,
-                          "stop_reason": "iteration_limit"},
+                          "stop_reason": "iteration_limit",
+                          "cache_read_tokens": total_cache_read,
+                          "cache_write_tokens": total_cache_write},
             )
         finally:
             save_db.close()
-        cost = _estimate_cost(model, total_input_tokens, total_output_tokens)
+        cost = _estimate_cost(model, total_input_tokens, total_output_tokens,
+                              total_cache_read, total_cache_write)
         yield _sse("done", {"session_id": session_id,
                             "tool_calls_made": tool_calls_made,
                             "stop_reason": "iteration_limit",
@@ -1336,15 +1383,61 @@ async def _stream_claude(
         yield _sse("error", {"content": str(exc)[:300]})
 
 
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Per-million pricing for the two models we use. Approximate, USD."""
-    # Sonnet 4.6: $3/Mtok input, $15/Mtok output
-    # Opus 4.7:   $15/Mtok input, $75/Mtok output
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int,
+                   cache_read: int = 0, cache_write: int = 0) -> float:
+    """Approximate USD. input_tokens excludes cached tokens (Anthropic reports
+    them separately): cache reads bill at 0.1x input, cache writes at 1.25x."""
     if "opus" in model.lower():
         in_rate, out_rate = 15.0, 75.0
     else:
         in_rate, out_rate = 3.0, 15.0
-    return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
+    return (input_tokens * in_rate + cache_write * in_rate * 1.25
+            + cache_read * in_rate * 0.1 + output_tokens * out_rate) / 1_000_000
+
+
+def _mark_last_message_for_cache(messages: list) -> None:
+    """Move the conversation cache breakpoint to the end of the newest message,
+    so each tool-loop iteration re-reads prior tool results from cache (0.1x)
+    instead of re-billing them at full price. One breakpoint here + system +
+    tools stays within Anthropic's limit of 4."""
+    for m in messages:
+        if isinstance(m.get("content"), list):
+            for b in m["content"]:
+                if isinstance(b, dict):
+                    b.pop("cache_control", None)
+    last = messages[-1]
+    if isinstance(last.get("content"), str):
+        last["content"] = [{"type": "text", "text": last["content"]}]
+    if isinstance(last.get("content"), list) and last["content"] and isinstance(last["content"][-1], dict):
+        last["content"][-1]["cache_control"] = {"type": "ephemeral"}
+
+
+def _fit_json(res, limit: int = 30000) -> str:
+    """Serialize a tool result under `limit` chars by trimming its largest
+    lists/strings, never by slicing the JSON text (which produced invalid JSON)."""
+    payload = json.dumps(res, default=str)
+    if len(payload) <= limit:
+        return payload
+    if not isinstance(res, dict):
+        return json.dumps({"text": payload[: limit - 100], "_truncated": True})
+    import copy
+    res = copy.deepcopy(res)
+    for _ in range(60):
+        sized = [(len(json.dumps(v, default=str)), k) for k, v in res.items()
+                 if isinstance(v, (list, str)) and v]
+        if not sized:
+            break
+        _, key = max(sized)
+        v = res[key]
+        if isinstance(v, list):
+            res[key] = v[: max(1, len(v) * 2 // 3)] if len(v) > 1 else []
+        else:
+            res[key] = v[: len(v) * 2 // 3] + "…"
+        res["_truncated"] = "result trimmed to fit; narrow the query for more"
+        payload = json.dumps(res, default=str)
+        if len(payload) <= limit:
+            return payload
+    return json.dumps({"error": "result too large", "hint": "narrow the query or filters"})
 
 
 def _summarize_tool_result(name: str, res: dict) -> str:

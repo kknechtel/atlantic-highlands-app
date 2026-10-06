@@ -393,16 +393,21 @@ def _tool_defs() -> list[dict]:
 # ─── Tool executors (server-side reads) ─────────────────────────────────────
 
 def _exec_search_chunks(db: Session, args: dict) -> dict:
-    rows = search_chunks(db, query=args["query"], top_k=int(args.get("top_k", 8)))
+    # Same ranking pipeline as /api/search and the main chat.
+    from routes.search import rank_chunks
+    top_k = min(int(args.get("top_k", 8)), 20)
+    rows = rank_chunks(db, args["query"], pool_size=max(top_k * 3, 30))[0][:top_k]
     return {
         "count": len(rows),
         "chunks": [
             {
                 "filename": r["filename"],
+                "title": r.get("title"),
+                "doc_date": r.get("doc_date"),
+                "municipality": r.get("municipality"),
                 "fiscal_year": r.get("fiscal_year"),
                 "doc_type": r.get("doc_type"),
-                "content": (r.get("content") or "")[:1800],
-                "score": float(r.get("score") or 0),
+                "content": (r.get("content") or "")[:1500],
             }
             for r in rows
         ],

@@ -309,6 +309,22 @@ export async function getDocument(documentId: string): Promise<Document> {
   return request<Document>(`/api/documents/${documentId}`);
 }
 
+/** Map a `[source: name]` citation to a document id. Exact server-side match
+ *  (filename, then title) first; fuzzy search only if that finds nothing. */
+export async function resolveCitation(name: string): Promise<{ id: string; filename: string } | null> {
+  try {
+    return await request<{ id: string; filename: string }>(
+      `/api/documents/resolve?name=${encodeURIComponent(name)}`,
+    );
+  } catch {
+    const r = (await searchDocuments(name)).results;
+    const lower = name.toLowerCase();
+    const best = r.find((d) => d.filename.toLowerCase().startsWith(lower))
+      || r.find((d) => d.filename.toLowerCase().includes(lower)) || r[0];
+    return best ? { id: best.id, filename: best.filename } : null;
+  }
+}
+
 export async function getDocumentViewUrl(documentId: string): Promise<{ url: string }> {
   const result = await request<{ url: string }>(`/api/documents/${documentId}/view-url`);
   // If URL is relative (local storage), prepend the API base

@@ -87,7 +87,9 @@ async def process_one(db, doc, *, enrich: bool = True, reextract: bool = False,
                     res.diff = doc_enrich.apply(doc, er)
                     meta = dict(doc.metadata_)
             else:
-                meta["enrich_error"] = er.error
+                # Fail the doc so it's retried (up to MAX_ATTEMPTS) rather than
+                # sitting "processed" with no title or summary.
+                raise RuntimeError(f"enrichment failed: {er.error}")
 
         if dry_run:
             res.status = "processed"

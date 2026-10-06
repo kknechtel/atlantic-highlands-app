@@ -98,19 +98,14 @@ async def reextract_one(
     db.commit()
     db.refresh(doc)
 
-    # Record OCR cost. Tesseract / pdfplumber are free but still tracked at
-    # zero so the admin sees coverage of the corpus, not just paid runs.
+    # OCR is free (text layer + Tesseract) but still tracked at zero so the
+    # admin sees coverage of the corpus.
     try:
         from services.usage import record_usage
-        tier_to_model = {
-            "pdfplumber": "pdfplumber",
-            "tesseract": "tesseract",
-            "gemini_vision": "gemini-2.5-flash",
-        }
         record_usage(
             db,
             source="ocr",
-            model=tier_to_model.get(result.tier, result.tier or "unknown"),
+            model=result.tier or "unknown",
             estimated_cost_usd=float(result.estimated_cost or 0.0),
             resource_type="document",
             resource_id=str(doc.id),

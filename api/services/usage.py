@@ -27,6 +27,7 @@ _RATES: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-4-5-20251001": (1.0, 5.0),
     "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.5-pro": (1.25, 10.0),
     "gemini-2.0-flash": (0.10, 0.40),
     "voyage-3-lite": (0.02, 0.0),  # embedding-only — output rate N/A

@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 # Cap most municipal docs — first N pages have the substantive content.
 DEFAULT_MAX_PAGES = 30
-# Lower DPI = faster Tesseract for "good enough" output. 150 is plenty for
-# search-target text. Bump to 200 only if the doc has tiny print.
-DEFAULT_DPI = 150
+# 200 DPI: noticeably better on small-print scans than 150, and we only
+# OCR pages whose text layer is missing or garbled.
+DEFAULT_DPI = 200
 # How many pages to OCR concurrently in-process. Tesseract is CPU-bound, so
 # pinning to a few workers avoids context-switching overhead. t3.small has
 # 2 vCPU, t3.medium has 2; tune via env if upgrading instance type.
@@ -68,20 +68,21 @@ def _ocr_one_page(img_bytes: bytes, page_num: int) -> tuple[int, str]:
         return page_num, ""
 
 
-def _render_pages(pdf_bytes: bytes, max_pages: int, dpi: int) -> List[tuple[bytes, int]]:
-    """Render up to max_pages pages to PNG bytes via PyMuPDF."""
+def _render_pages(pdf_bytes: bytes, indexes: List[int], dpi: int) -> List[tuple[bytes, int]]:
+    """Render the given 0-based page indexes to PNG bytes via PyMuPDF."""
     try:
         import fitz  # PyMuPDF
     except ImportError:
         raise RuntimeError("PyMuPDF not installed")
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    n = min(len(doc), max_pages)
     out: List[tuple[bytes, int]] = []
     zoom = dpi / 72
     mat = fitz.Matrix(zoom, zoom)
     try:
-        for p in range(n):
+        for p in indexes:
+            if p >= len(doc):
+                continue
             try:
                 pix = doc[p].get_pixmap(matrix=mat)
                 out.append((pix.tobytes("png"), p))
@@ -92,6 +93,23 @@ def _render_pages(pdf_bytes: bytes, max_pages: int, dpi: int) -> List[tuple[byte
     return out
 
 
+def ocr_pages(
+    pdf_bytes: bytes,
+    indexes: List[int],
+    *,
+    dpi: int = DEFAULT_DPI,
+    workers: int = DEFAULT_WORKERS,
+) -> dict[int, str]:
+    """OCR specific pages. Returns {page_index: text}; failed pages map to ""."""
+    pages = _render_pages(pdf_bytes, indexes, dpi)
+    results: dict[int, str] = {}
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="tesseract") as ex:
+        for fut in as_completed([ex.submit(_ocr_one_page, img, num) for img, num in pages]):
+            page_num, text = fut.result()
+            results[page_num] = text
+    return results
+
+
 def extract_from_pdf(
     pdf_bytes: bytes,
     *,
@@ -99,7 +117,7 @@ def extract_from_pdf(
     dpi: int = DEFAULT_DPI,
     workers: int = DEFAULT_WORKERS,
 ) -> TesseractResult:
-    """OCR a PDF locally with Tesseract. Synchronous (caller can run via to_thread)."""
+    """OCR the first max_pages pages of a PDF. Synchronous (caller can run via to_thread)."""
     if not is_tesseract_available():
         return TesseractResult(
             success=False,
@@ -108,44 +126,31 @@ def extract_from_pdf(
 
     start = time.time()
     try:
-        pages = _render_pages(pdf_bytes, max_pages=max_pages, dpi=dpi)
+        results = ocr_pages(pdf_bytes, list(range(max_pages)), dpi=dpi, workers=workers)
     except Exception as exc:
         logger.error("PDF render failed: %s", exc)
         return TesseractResult(success=False, error=f"render_failed: {exc}",
                                processing_time_seconds=time.time() - start)
 
-    if not pages:
+    if not results:
         return TesseractResult(success=False, error="no_pages_rendered",
                                processing_time_seconds=time.time() - start)
 
-    results: dict[int, str] = {}
-    failed = 0
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="tesseract") as ex:
-        futures = [ex.submit(_ocr_one_page, img, num) for img, num in pages]
-        for fut in as_completed(futures):
-            page_num, text = fut.result()
-            if not text.strip():
-                failed += 1
-            results[page_num] = text
-
-    # Stitch pages back together in order
-    parts = []
-    for p in sorted(results.keys()):
-        text = results[p].strip()
-        if text:
-            parts.append(f"## Page {p + 1}\n\n{text}")
+    failed = sum(1 for t in results.values() if not t.strip())
+    parts = [f"## Page {p + 1}\n\n{results[p].strip()}"
+             for p in sorted(results) if results[p].strip()]
     markdown = "\n\n---\n\n".join(parts)
     elapsed = time.time() - start
 
     logger.info(
         "Tesseract: %d pages, %d chars, %d failed, %.2fs",
-        len(pages), len(markdown), failed, elapsed,
+        len(results), len(markdown), failed, elapsed,
     )
 
     return TesseractResult(
         success=bool(markdown),
         markdown=markdown,
-        page_count=len(pages),
+        page_count=len(results),
         processing_time_seconds=elapsed,
         pages_ocr_failed=failed,
     )

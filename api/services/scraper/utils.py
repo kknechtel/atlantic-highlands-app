@@ -82,7 +82,10 @@ def url_to_descriptive_name(url: str, source_page: str = "", title: str = "") ->
     if title and len(title) > 5 and title.lower() not in ["download", "click here", "link"]:
         # Use title if filename is just a hash or ID
         if re.match(r'^[a-f0-9]{8,}$', clean_name.replace(" ", "").replace("-", "")):
-            result = f"{_safe_filename(title)}{ext}"
+            # Link text is often the filename itself ("753221795.pdf") —
+            # don't append the extension twice.
+            base = title[: -len(ext)] if ext and title.lower().endswith(ext.lower()) else title
+            result = f"{_safe_filename(base)}{ext}"
 
     return _safe_filename(result)[:250]
 
@@ -129,6 +132,19 @@ def source_to_entity_type(source_name: str) -> str:
         # preserves which town it came from.
         return "town"
     return "town"
+
+
+def source_to_municipality(source_name: str) -> str:
+    """Map scraper source name to the government that published the record."""
+    return {
+        "tri": "hhrsd",
+        "tridistrict": "hhrsd",
+        "hhrsd_recordings": "hhrsd",
+        "highlands_borough": "highlands",
+        "highlands_meetings": "highlands",
+        "county": "regional",
+        "nj_state": "state",
+    }.get(source_name, "atlantic_highlands")
 
 
 def detect_doc_type_from_name(filename: str) -> str:

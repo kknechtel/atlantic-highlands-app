@@ -536,5 +536,5 @@ def list_usage_rows(
 # (v1, v2, agent) / document_processor are all instrumented.
 #
 # Still NOT instrumented:
-#   - api/scripts/extract_*.py, summarize_all.py — batch CLI jobs run outside
+#   - api/scripts/extract_*.py, enrich_all.py — batch CLI jobs run outside
 #     the API. Each is a 5-line addition to call record_usage with user_id=None.

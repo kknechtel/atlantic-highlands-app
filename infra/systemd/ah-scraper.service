@@ -16,6 +16,9 @@ WorkingDirectory=/opt/atlantic-highlands/api
 #   sudo systemctl daemon-reload
 # The drop-in file is not in version control (it carries the secret).
 EnvironmentFile=-/etc/atlantic-highlands.env
+# After scraping, new docs are OCR'd (text layer + Tesseract), titled and
+# summarized (flash-lite), and indexed. Tesseract must be on the host:
+#   sudo apt-get install -y tesseract-ocr tesseract-ocr-eng antiword
 
 ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.scheduled_scrape
 

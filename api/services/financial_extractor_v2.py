@@ -546,7 +546,7 @@ async def extract_financial_statement_v2(statement_id: str, s3_key: str):
 
         # Prefer the document's already-OCR'd text over re-running pymupdf.
         # The document.extracted_text column is populated by the OCR pipeline
-        # (ocr_all.py) which falls back to Gemini for scanned PDFs — those
+        # (services.ocr_pipeline: text layer + Tesseract) — scanned
         # PDFs would fail pymupdf4llm here ("pdf->markdown failed") even though
         # we already have good OCR markdown for them.
         from models.document import Document

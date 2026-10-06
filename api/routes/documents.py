@@ -4,7 +4,7 @@ import os
 import uuid
 import mimetypes
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -41,6 +41,7 @@ class DocumentResponse(BaseModel):
     fiscal_year: str | None
     title: str | None = None
     doc_date: str | None = None
+    municipality: str | None = None
     status: str
     notes: str | None
     created_at: str
@@ -61,6 +62,7 @@ class DocumentListItem(BaseModel):
     fiscal_year: str | None
     title: str | None = None
     doc_date: str | None = None
+    municipality: str | None = None
     status: str
     created_at: str
 
@@ -114,6 +116,7 @@ def list_documents(
             fiscal_year=d.fiscal_year,
             title=d.title,
             doc_date=d.doc_date,
+            municipality=d.municipality,
             status=d.status,
             created_at=d.created_at.isoformat() if d.created_at else "",
         )
@@ -248,6 +251,13 @@ def _gate_doc(db: Session, document_id: str, user: User, mode: str = "view") -> 
     return doc
 
 
+async def _process_after_upload(doc_ids: list[str]) -> None:
+    """Extract + title + summarize + index fresh uploads (cheap: local OCR, flash-lite)."""
+    from services.document_processor import process_document
+    for doc_id in doc_ids:
+        await process_document(doc_id)
+
+
 @router.post("/presigned-upload", response_model=PresignedUploadResponse)
 def presigned_upload(
     req: PresignedUploadRequest,
@@ -290,6 +300,7 @@ def presigned_upload(
 @router.post("/confirm-upload", response_model=DocumentResponse)
 def confirm_upload(
     req: ConfirmUploadRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -328,6 +339,7 @@ def confirm_upload(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    background_tasks.add_task(_process_after_upload, [str(doc.id)])
 
     return DocumentResponse(
         id=str(doc.id),
@@ -343,6 +355,7 @@ def confirm_upload(
         fiscal_year=doc.fiscal_year,
         title=doc.title,
         doc_date=doc.doc_date,
+        municipality=doc.municipality,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -371,6 +384,7 @@ def get_document(
         fiscal_year=doc.fiscal_year,
         title=doc.title,
         doc_date=doc.doc_date,
+        municipality=doc.municipality,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -379,6 +393,7 @@ def get_document(
 
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     project_id: str = Form(...),
     doc_type: str = Form(None),
@@ -449,6 +464,7 @@ async def upload_document(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    background_tasks.add_task(_process_after_upload, [str(doc.id)])
 
     return DocumentResponse(
         id=str(doc.id),
@@ -464,6 +480,7 @@ async def upload_document(
         fiscal_year=doc.fiscal_year,
         title=doc.title,
         doc_date=doc.doc_date,
+        municipality=doc.municipality,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),
@@ -472,6 +489,7 @@ async def upload_document(
 
 @router.post("/upload-multiple")
 async def upload_multiple_documents(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     project_id: str = Form(...),
     category: str = Form(None),
@@ -481,6 +499,7 @@ async def upload_multiple_documents(
     project = _resolve_project(db, project_id, user)
 
     results = []
+    new_docs = []
     for file in files:
         content = await file.read()
         file_id = str(uuid.uuid4())
@@ -500,9 +519,11 @@ async def upload_multiple_documents(
             uploaded_by=user.id,
         )
         db.add(doc)
+        new_docs.append(doc)
         results.append({"filename": file.filename, "status": "uploaded"})
 
     db.commit()
+    background_tasks.add_task(_process_after_upload, [str(d.id) for d in new_docs])
     return {"uploaded": len(results), "files": results}
 
 
@@ -717,8 +738,7 @@ def filename_year_backfill(db: Session) -> dict:
     Idempotent and cheap — safe to run on every startup. Touches only rows
     whose stored value isn't already clean. AI inference for docs that the
     filename regex can't help with happens automatically as part of normal
-    document processing (services.document_processor.process_document calls
-    analyze_document, which sets fiscal_year when missing).
+    document processing (services.doc_enrich sets fiscal_year from the text).
     """
     cleaned = 0
     filled = 0
@@ -739,93 +759,6 @@ def filename_year_backfill(db: Session) -> dict:
     if cleaned or filled:
         db.commit()
     return {"cleaned": cleaned, "filled": filled}
-
-
-async def ai_year_inference_pass(
-    batch_size: int = 25,
-    max_per_run: int = 200,
-    delay: float = 0.5,
-):
-    """Background pass: LLM-infer fiscal_year for docs that have extracted text but no year.
-
-    Fires after startup as a fire-and-forget asyncio task. Idempotent across
-    restarts:
-      - Successes write the year.
-      - LLM responded but couldn't find a year → marked metadata.ai_year_attempted
-        so we don't keep asking the same question.
-      - LLM call raised (network, rate limit) → not marked, will retry next time.
-    Capped at max_per_run per process so each restart's AI cost is bounded; the
-    next restart picks up the remaining backlog.
-    """
-    import asyncio
-    from sqlalchemy import func, or_
-    from sqlalchemy.orm.attributes import flag_modified
-    from services.document_processor import analyze_document
-    from database import SessionLocal
-
-    processed = 0
-    total_filled = 0
-    while processed < max_per_run:
-        with SessionLocal() as db:
-            docs = (
-                db.query(Document)
-                .filter(Document.fiscal_year.is_(None))
-                .filter(Document.extracted_text.isnot(None))
-                .filter(func.length(Document.extracted_text) > 200)
-                .filter(
-                    or_(
-                        Document.metadata_["ai_year_attempted"].astext.is_(None),
-                        Document.metadata_["ai_year_attempted"].astext != "true",
-                    )
-                )
-                .limit(batch_size)
-                .all()
-            )
-            if not docs:
-                logger.info(
-                    f"ai_year_inference_pass: done (processed={processed} filled={total_filled})"
-                )
-                return
-
-            batch_filled = 0
-            for doc in docs:
-                if processed >= max_per_run:
-                    break
-                try:
-                    analysis = await analyze_document(doc.extracted_text, doc.filename)
-                except Exception as e:
-                    # Likely transient — leave the doc unmarked so it retries later.
-                    logger.warning(f"ai_year_inference_pass: {doc.filename}: {e}")
-                    await asyncio.sleep(delay)
-                    continue
-
-                if analysis is None:
-                    # All providers failed — also treat as transient.
-                    await asyncio.sleep(delay)
-                    continue
-
-                candidate = analysis.get("fiscal_year")
-                if candidate and _looks_like_clean_year(candidate):
-                    doc.fiscal_year = candidate
-                    batch_filled += 1
-                    total_filled += 1
-
-                # LLM answered (even if "no year") — mark attempted to skip next time.
-                doc.metadata_ = {**(doc.metadata_ or {}), "ai_year_attempted": "true"}
-                flag_modified(doc, "metadata_")
-                processed += 1
-                await asyncio.sleep(delay)
-
-            db.commit()
-            logger.info(
-                f"ai_year_inference_pass batch: filled={batch_filled}/{len(docs)} "
-                f"(running totals: processed={processed} filled={total_filled})"
-            )
-
-    logger.info(
-        f"ai_year_inference_pass: hit per-run cap ({max_per_run}); "
-        f"filled={total_filled} this run"
-    )
 
 
 @router.get("/{document_id}/view-url")
@@ -899,6 +832,7 @@ def update_document(
         fiscal_year=doc.fiscal_year,
         title=doc.title,
         doc_date=doc.doc_date,
+        municipality=doc.municipality,
         status=doc.status,
         notes=doc.notes,
         created_at=doc.created_at.isoformat(),

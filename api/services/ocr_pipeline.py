@@ -1,28 +1,34 @@
 """
-OCR pipeline cascade. Tuned for speed over perfection.
+PDF → markdown, page by page, at zero API cost.
 
-Three-tier strategy for converting a PDF's bytes into markdown text:
+For each page:
+  1. PyMuPDF text layer (instant, free).
+  2. If the page has almost no text, or its text layer is garbled
+     (see services/text_quality.py), OCR just that page with Tesseract.
 
-  1. pdfplumber          — instant, free, native text-layer extraction
-  2. Tesseract (local)   — pages → PNG → pytesseract, parallel ThreadPool
-  3. Gemini Vision OCR   — fallback if Tesseract fails (paid, network)
-
-Tesseract was added as the primary OCR tier because it's local, free,
-parallel, and "good enough" for keyword + semantic search. Gemini Vision
-sticks around as a fallback for the docs Tesseract can't crack.
-
-Adapted from bank-processor/api/services/pipeline/ocr.py.
+No paid Vision fallback: pages Tesseract can't read are marked
+"[page N: unreadable]" so the gap is visible instead of silently empty.
+Output uses "## Page N" headers, which chunking parses for page numbers.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
+
+from services.text_quality import text_is_readable
 
 logger = logging.getLogger(__name__)
 
 PROGRESS_CB = Callable[[int, int], Awaitable[None]]
+
+# A page with fewer chars than this in its text layer is treated as scanned.
+MIN_PAGE_CHARS = 100
+# Cap on pages sent to Tesseract per document. Text-layer pages are uncapped.
+MAX_OCR_PAGES = int(os.environ.get("MAX_OCR_PAGES", "120"))
 
 
 @dataclass
@@ -30,19 +36,71 @@ class OCRResult:
     success: bool
     markdown: str = ""
     page_count: int = 0
-    tier: str = ""              # "pdfplumber" | "tesseract" | "gemini_vision" | "none"
+    tier: str = ""              # "text_layer" | "tesseract" | "mixed" | "none"
     processing_time_ms: float = 0
     estimated_cost: float = 0.0
     error: Optional[str] = None
+    ocr_pages: int = 0
+    unreadable_pages: list[int] = field(default_factory=list)
+    truncated: bool = False     # some pages needed OCR beyond MAX_OCR_PAGES
 
 
-# Below this many chars we treat the pdfplumber result as "didn't really work"
-# and fall through to Gemini Vision. Municipal docs vary widely — a 1-page
-# resolution might legitimately have only a few hundred characters — but if
-# pdfplumber thought the doc was text-based and yields < this many chars,
-# the text layer is probably broken (e.g. CID-encoded text). 300 is a good
-# floor across our corpus.
-MIN_USEFUL_CHARS = 300
+def _extract_sync(pdf_bytes: bytes, filename: str) -> OCRResult:
+    import fitz  # PyMuPDF
+
+    start = time.time()
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        page_count = len(doc)
+        texts = [doc[i].get_text() for i in range(page_count)]
+
+    needs_ocr = [i for i, t in enumerate(texts)
+                 if len(t.strip()) < MIN_PAGE_CHARS or not text_is_readable(t)]
+    truncated = len(needs_ocr) > MAX_OCR_PAGES
+    to_ocr = needs_ocr[:MAX_OCR_PAGES]
+
+    ocr_text: dict[int, str] = {}
+    if to_ocr:
+        from services.tesseract_ocr import is_tesseract_available, ocr_pages
+        if is_tesseract_available():
+            ocr_text = ocr_pages(pdf_bytes, to_ocr)
+        else:
+            logger.warning("[OCR:%s] %d pages need OCR but tesseract is not installed",
+                           filename, len(to_ocr))
+
+    parts: list[str] = []
+    unreadable: list[int] = []
+    for i, layer in enumerate(texts):
+        text = layer.strip()
+        # Prefer OCR when it recovered more than the (readable) text layer;
+        # a short but clean page (e.g. a cover) keeps its layer if OCR fails.
+        if i in ocr_text and len(ocr_text[i].strip()) > len(text if text_is_readable(text) else ""):
+            text = ocr_text[i].strip()
+        elif i in needs_ocr and not text_is_readable(text):
+            text = ""
+        if not text:
+            unreadable.append(i + 1)
+            text = f"[page {i + 1}: unreadable]"
+        parts.append(f"## Page {i + 1}\n\n{text}")
+
+    readable_pages = page_count - len(unreadable)
+    tier = ("none" if readable_pages == 0 else
+            "text_layer" if not ocr_text else
+            "tesseract" if len(ocr_text) == page_count else "mixed")
+    elapsed = (time.time() - start) * 1000
+    logger.info("[OCR:%s] %d pages, %d OCR'd, %d unreadable%s, %.0fms",
+                filename, page_count, len(ocr_text), len(unreadable),
+                " (truncated)" if truncated else "", elapsed)
+    return OCRResult(
+        success=readable_pages > 0,
+        markdown="\n\n".join(parts) if readable_pages else "",
+        page_count=page_count,
+        tier=tier,
+        processing_time_ms=elapsed,
+        ocr_pages=len(ocr_text),
+        unreadable_pages=unreadable,
+        truncated=truncated,
+        error=None if readable_pages else "no readable text",
+    )
 
 
 async def extract_pdf_to_markdown(
@@ -50,107 +108,9 @@ async def extract_pdf_to_markdown(
     filename: str = "",
     progress_callback: Optional[PROGRESS_CB] = None,
 ) -> OCRResult:
-    """Run the OCR cascade on a PDF and return clean markdown.
-
-    Tier 1 (pdfplumber) runs first. If it returns substantive text (the
-    PDF has a usable text layer), we stop there. Otherwise Tier 2 (Gemini
-    Vision) renders + OCRs every page.
-    """
-    start = time.time()
-
-    # ── Tier 1: pdfplumber ────────────────────────────────────────────
+    """Extract a PDF to "## Page N" markdown using the text layer + Tesseract."""
     try:
-        from services.pdfplumber_service import extract_text as plumber
-        plumber_result = plumber(pdf_bytes)
-        if (plumber_result.success and plumber_result.markdown
-                and plumber_result.chars_extracted >= MIN_USEFUL_CHARS):
-            elapsed = (time.time() - start) * 1000
-            logger.info(
-                "[OCR:%s] pdfplumber: %d pages, %d chars, %d tables, %.0fms (free)",
-                filename, plumber_result.page_count, plumber_result.chars_extracted,
-                plumber_result.tables_found, elapsed,
-            )
-            return OCRResult(
-                success=True,
-                markdown=plumber_result.markdown,
-                page_count=plumber_result.page_count,
-                tier="pdfplumber",
-                processing_time_ms=elapsed,
-                estimated_cost=0.0,
-            )
-        # Either short or scanned — fall through.
-        if not plumber_result.is_text_based:
-            logger.info("[OCR:%s] no text layer, falling through to Gemini Vision", filename)
-        else:
-            logger.info(
-                "[OCR:%s] pdfplumber returned only %d chars — falling through to Gemini Vision",
-                filename, plumber_result.chars_extracted,
-            )
-    except ImportError:
-        logger.debug("[OCR:%s] pdfplumber not installed", filename)
+        return await asyncio.to_thread(_extract_sync, pdf_bytes, filename)
     except Exception as exc:
-        logger.warning("[OCR:%s] pdfplumber error: %s", filename, exc)
-
-    # ── Tier 2: Tesseract (local, free, fast) ─────────────────────────
-    try:
-        from services.tesseract_ocr import extract_from_pdf as tesseract_extract, is_tesseract_available
-        if is_tesseract_available():
-            import asyncio
-            result = await asyncio.to_thread(tesseract_extract, pdf_bytes)
-            elapsed = (time.time() - start) * 1000
-            if result.success and result.markdown and len(result.markdown) >= MIN_USEFUL_CHARS:
-                logger.info(
-                    "[OCR:%s] Tesseract: %d pages, %d chars, %d failed, %.0fms (free)",
-                    filename, result.page_count, len(result.markdown), result.pages_ocr_failed, elapsed,
-                )
-                return OCRResult(
-                    success=True,
-                    markdown=result.markdown,
-                    page_count=result.page_count,
-                    tier="tesseract",
-                    processing_time_ms=elapsed,
-                    estimated_cost=0.0,
-                )
-            logger.info("[OCR:%s] Tesseract returned %d chars — falling through to Gemini Vision",
-                        filename, len(result.markdown) if result.markdown else 0)
-        else:
-            logger.debug("[OCR:%s] Tesseract not available, skipping to Gemini", filename)
-    except Exception as exc:
-        logger.warning("[OCR:%s] Tesseract error: %s, falling through to Gemini", filename, exc)
-
-    # ── Tier 3: Gemini Vision (paid, slower, rate-limited) ────────────
-    try:
-        from services.gemini_vision_ocr import get_gemini_vision_ocr
-        gemini = get_gemini_vision_ocr()
-        result = await gemini.extract_from_pdf(pdf_bytes, progress_callback=progress_callback)
-        elapsed = (time.time() - start) * 1000
-        if result.success and result.markdown:
-            logger.info(
-                "[OCR:%s] Gemini Vision: %d pages, %d chars, %.0fms, $%.4f",
-                filename, result.page_count, len(result.markdown), elapsed, result.estimated_cost,
-            )
-            return OCRResult(
-                success=True,
-                markdown=result.markdown,
-                page_count=result.page_count,
-                tier="gemini_vision",
-                processing_time_ms=elapsed,
-                estimated_cost=result.estimated_cost,
-            )
-        logger.warning("[OCR:%s] Gemini returned no usable text: %s", filename, result.error)
-    except ValueError as exc:
-        logger.error("[OCR:%s] Gemini Vision unavailable: %s", filename, exc)
-        return OCRResult(success=False, tier="none",
-                         processing_time_ms=(time.time() - start) * 1000,
-                         error=str(exc))
-    except Exception as exc:
-        logger.error("[OCR:%s] Gemini Vision failed: %s", filename, exc, exc_info=True)
-        return OCRResult(success=False, tier="none",
-                         processing_time_ms=(time.time() - start) * 1000,
-                         error=str(exc))
-
-    return OCRResult(
-        success=False, tier="none",
-        processing_time_ms=(time.time() - start) * 1000,
-        error="All OCR tiers failed",
-    )
+        logger.error("[OCR:%s] extraction failed: %s", filename, exc, exc_info=True)
+        return OCRResult(success=False, tier="none", error=str(exc))

@@ -178,6 +178,9 @@ def _migrate():
         # canonical identifier; title is the display string.
         ("documents", "title", "VARCHAR"),
         ("documents", "doc_date", "VARCHAR"),
+        # atlantic_highlands | highlands | hhrsd | regional | state — seeded
+        # from metadata.source_site below, refined by services.doc_enrich.
+        ("documents", "municipality", "VARCHAR"),
         # Parcel polygons (GeoJSON in JSONB) for the /parcels/map view.
         # Populated by scripts.fetch_parcel_geometry.
         ("parcels", "geometry", "JSONB"),
@@ -231,6 +234,27 @@ def _migrate():
             if not exists:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
                 logger.info(f"Added column {table}.{column}")
+
+        # 1b. Seed documents.municipality for rows that predate the column.
+        # Mirrors services.scraper.utils.source_to_municipality; no-op once set.
+        # Savepoint so a failure here can't abort the rest of the migration.
+        if _table_exists("documents"):
+            try:
+                with conn.begin_nested():
+                    conn.execute(text("""
+                        UPDATE documents SET municipality = CASE
+                            WHEN metadata->>'source_site' IN ('highlands_borough', 'highlands_meetings') THEN 'highlands'
+                            WHEN metadata->>'source_site' IN ('tri', 'tridistrict', 'hhrsd_recordings') THEN 'hhrsd'
+                            WHEN metadata->>'source_site' = 'county' THEN 'regional'
+                            WHEN metadata->>'source_site' = 'nj_state' THEN 'state'
+                            WHEN category = 'school' THEN 'hhrsd'
+                            ELSE 'atlantic_highlands'
+                        END
+                        WHERE municipality IS NULL
+                    """))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_municipality ON documents (municipality)"))
+            except Exception as e:
+                logger.warning(f"municipality seed skipped: {e}")
 
         # 2. Enable pgvector + tsvector for hybrid RAG
         try:

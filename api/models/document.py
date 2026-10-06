@@ -43,6 +43,10 @@ class Document(Base):
     content_type = Column(String, nullable=True)
     doc_type = Column(String, nullable=True)  # "financial_statement", "budget", "audit", "minutes", etc.
     category = Column(String, nullable=True)  # "town", "school"
+    # Which government the record belongs to — "town" alone can't tell
+    # Atlantic Highlands from neighboring Highlands Borough.
+    # atlantic_highlands | highlands | hhrsd | regional | state
+    municipality = Column(String, nullable=True)
     department = Column(String, nullable=True)
     fiscal_year = Column(String, nullable=True)
     # Human-readable title for the document (e.g. "Planning Board Meeting Minutes —

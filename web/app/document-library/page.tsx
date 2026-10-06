@@ -45,6 +45,24 @@ import {
 
 const brandColor = "#385854";
 
+// Top-level library groups, in display order. Keyed by documents.municipality.
+const ENTITIES: Record<string, { label: string; short: string; icon: any }> = {
+  atlantic_highlands: { label: "Borough of Atlantic Highlands", short: "Atlantic Highlands", icon: BuildingOfficeIcon },
+  hhrsd: { label: "Henry Hudson Regional School District", short: "School District", icon: AcademicCapIcon },
+  highlands: { label: "Borough of Highlands", short: "Highlands", icon: BuildingOfficeIcon },
+  regional: { label: "Monmouth County", short: "County", icon: FolderIcon },
+  state: { label: "State of New Jersey", short: "State", icon: FolderIcon },
+  general: { label: "General / Uncategorized", short: "Other", icon: FolderIcon },
+};
+
+/** Municipality group for a doc; falls back to the legacy category for unmigrated rows. */
+function entityOf(doc: Document): string {
+  if (doc.municipality && ENTITIES[doc.municipality]) return doc.municipality;
+  if (doc.category === "school") return "hhrsd";
+  if (doc.category === "town") return "atlantic_highlands";
+  return "general";
+}
+
 interface GroupNode {
   label: string;
   icon?: any;
@@ -91,7 +109,7 @@ export default function DocumentLibraryPage() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectType, setNewProjectType] = useState("");
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [entityFilter, setEntityFilter] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("");
   const [yearFilter, setYearFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
@@ -103,10 +121,9 @@ export default function DocumentLibraryPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const { data: documents } = useQuery({
-    queryKey: ["documents", categoryFilter, docTypeFilter],
+    queryKey: ["documents", docTypeFilter],
     queryFn: () =>
       getDocuments({
-        category: categoryFilter || undefined,
         doc_type: docTypeFilter || undefined,
       }),
   });
@@ -117,10 +134,9 @@ export default function DocumentLibraryPage() {
   });
 
   const { data: searchResponse } = useQuery({
-    queryKey: ["search", search, categoryFilter, docTypeFilter],
+    queryKey: ["search", search, docTypeFilter],
     queryFn: () =>
       searchDocuments(search, {
-        category: categoryFilter || undefined,
         doc_type: docTypeFilter || undefined,
       }),
     enabled: search.length > 1,
@@ -209,6 +225,9 @@ export default function DocumentLibraryPage() {
       const ids = new Set(searchResults.map((r) => r.id));
       docs = docs.filter((d) => ids.has(d.id));
     }
+    if (entityFilter) {
+      docs = docs.filter((d) => entityOf(d) === entityFilter);
+    }
     if (yearFilter) {
       docs = docs.filter((d) => d.fiscal_year === yearFilter);
     }
@@ -219,7 +238,7 @@ export default function DocumentLibraryPage() {
       docs = docs.filter((d) => (d.department || "").toLowerCase().trim() === target);
     }
     return docs;
-  }, [documents, search, searchResults, yearFilter, deptFilter]);
+  }, [documents, search, searchResults, entityFilter, yearFilter, deptFilter]);
 
   // Use server-deduped facet lists (4-digit years, case-insensitive depts).
   const availableYears = useMemo(
@@ -231,32 +250,20 @@ export default function DocumentLibraryPage() {
     [facets],
   );
 
-  const hasActiveFilters = !!(categoryFilter || docTypeFilter || yearFilter || deptFilter);
+  const hasActiveFilters = !!(entityFilter || docTypeFilter || yearFilter || deptFilter);
 
-  // Build hierarchy: Entity (town/school/other) > Doc Type > Documents
+  // Build hierarchy: Entity (municipality) > Doc Type > Documents
   const hierarchy = useMemo(() => {
     const root = new Map<string, GroupNode>();
 
-    const entityOrder = ["town", "school", "general"];
-    const entityLabels: Record<string, string> = {
-      town: "Borough of Atlantic Highlands",
-      school: "School District",
-      general: "General / Uncategorized",
-    };
-    const entityIcons: Record<string, any> = {
-      town: BuildingOfficeIcon,
-      school: AcademicCapIcon,
-      general: FolderIcon,
-    };
-
     for (const doc of displayDocs) {
-      const entity = doc.category || "general";
+      const entity = entityOf(doc);
       const docType = doc.doc_type || "other";
 
       if (!root.has(entity)) {
         root.set(entity, {
-          label: entityLabels[entity] || entity,
-          icon: entityIcons[entity] || FolderIcon,
+          label: ENTITIES[entity]?.label || entity,
+          icon: ENTITIES[entity]?.icon || FolderIcon,
           docs: [],
           children: new Map(),
         });
@@ -287,7 +294,7 @@ export default function DocumentLibraryPage() {
 
     // Return in entity order
     const sorted = new Map<string, GroupNode>();
-    for (const key of entityOrder) {
+    for (const key of Object.keys(ENTITIES)) {
       if (root.has(key)) sorted.set(key, root.get(key)!);
     }
     // Add any remaining
@@ -378,11 +385,12 @@ export default function DocumentLibraryPage() {
 
           {/* Filters — compact one-row layout, more readable than 2x2 */}
           <div className="grid grid-cols-2 gap-1.5">
-            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
+            <select value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}
               className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
               <option value="">All entities</option>
-              <option value="town">Town</option>
-              <option value="school">School</option>
+              {Object.entries(ENTITIES).filter(([k]) => k !== "general").map(([k, e]) => (
+                <option key={k} value={k}>{e.short}</option>
+              ))}
             </select>
             <select value={docTypeFilter} onChange={(e) => setDocTypeFilter(e.target.value)}
               className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
@@ -406,15 +414,15 @@ export default function DocumentLibraryPage() {
           {/* Active filter chips — quick visual + one-click clear */}
           {hasActiveFilters && (
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              {categoryFilter && (
-                <FilterChip label={categoryFilter === "town" ? "Town" : "School"} onClear={() => setCategoryFilter("")} />
+              {entityFilter && (
+                <FilterChip label={ENTITIES[entityFilter]?.short || entityFilter} onClear={() => setEntityFilter("")} />
               )}
               {docTypeFilter && (
                 <FilterChip label={docTypeFilter.replace(/_/g, " ")} onClear={() => setDocTypeFilter("")} />
               )}
               {yearFilter && <FilterChip label={`FY ${yearFilter}`} onClear={() => setYearFilter("")} />}
               {deptFilter && <FilterChip label={deptFilter} onClear={() => setDeptFilter("")} />}
-              <button onClick={() => { setCategoryFilter(""); setDocTypeFilter(""); setYearFilter(""); setDeptFilter(""); }}
+              <button onClick={() => { setEntityFilter(""); setDocTypeFilter(""); setYearFilter(""); setDeptFilter(""); }}
                 className="text-[10px] text-gray-500 hover:text-gray-800 underline ml-1">
                 Clear all
               </button>
@@ -541,7 +549,7 @@ export default function DocumentLibraryPage() {
                 <ChevronLeftIcon className="w-5 h-5" />
               </button>
               <DocumentTextIcon className="hidden md:inline w-4 h-4 flex-shrink-0" style={{ color: brandColor }} />
-              <span className="text-sm font-medium text-gray-900 truncate">{selectedDoc.filename}</span>
+              <span className="text-sm font-medium text-gray-900 truncate">{selectedDoc.title || selectedDoc.filename}</span>
             </div>
             <div className="flex items-center gap-0.5 flex-shrink-0">
               <button onClick={() => { setChatDoc(selectedDoc); setShowChat(true); }}
@@ -616,7 +624,7 @@ export default function DocumentLibraryPage() {
                     isOpen
                     embedded
                     fileUrl={viewerUrl}
-                    filename={selectedDoc.filename}
+                    filename={selectedDoc.title || selectedDoc.filename}
                     onClose={() => { setSelectedDoc(null); setViewerUrl(null); }}
                     highlightTerm={isSearching ? search : undefined}
                   />
@@ -676,7 +684,7 @@ export default function DocumentLibraryPage() {
               documents={documents}
               facets={facets}
               onPickYear={(y) => setYearFilter(y)}
-              onPickEntity={(c) => setCategoryFilter(c)}
+              onPickEntity={(c) => setEntityFilter(c)}
               onPickType={(t) => setDocTypeFilter(t)}
             />
           </div>
@@ -903,9 +911,9 @@ function LibraryOverview({
   }, [documents]);
 
   const entityCounts = useMemo(() => {
-    const counts: Record<string, number> = { town: 0, school: 0, general: 0 };
+    const counts: Record<string, number> = {};
     for (const d of documents) {
-      const k = d.category || "general";
+      const k = entityOf(d);
       counts[k] = (counts[k] || 0) + 1;
     }
     return counts;
@@ -937,13 +945,10 @@ function LibraryOverview({
         <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">By entity</h3>
           <div className="grid grid-cols-3 gap-3">
-            {(
-              [
-                ["town", "Borough", BuildingOfficeIcon],
-                ["school", "School District", AcademicCapIcon],
-                ["general", "Other", FolderIcon],
-              ] as const
-            ).map(([key, label, Icon]) => (
+            {Object.entries(ENTITIES)
+              .filter(([key]) => entityCounts[key])
+              .map(([key, e]) => [key, e.short, e.icon] as const)
+              .map(([key, label, Icon]) => (
               <button key={key} onClick={() => onPickEntity(key === "general" ? "" : key)}
                 className="flex items-start gap-3 p-3 rounded-md border border-gray-100 hover:border-gray-300 hover:bg-gray-50 text-left transition-colors">
                 <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: brandColor }} />

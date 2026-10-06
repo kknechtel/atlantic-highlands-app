@@ -20,6 +20,7 @@ the application code itself.
 """
 import asyncio
 import logging
+import os
 import sys
 
 sys.path.insert(0, "/opt/atlantic-highlands/api")
@@ -87,6 +88,17 @@ async def main() -> int:
                         v["venue"], v["city"], v["scraped"], v["inserted"], status)
     except Exception as exc:
         logger.exception("music scrape step failed: %s", exc)
+
+    # Step 4 — process new docs: local OCR, flash-lite title/summary, index.
+    # Capped per night so a big backlog can't run for hours; the rest
+    # carries over to the next run (or scripts.enrich_all for backfills).
+    try:
+        from services.document_processor import process_pending
+        limit = int(os.environ.get("NIGHTLY_PROCESS_LIMIT", "400"))
+        totals = await process_pending(limit=limit)
+        logger.info("Document processing done: %s", totals)
+    except Exception as exc:
+        logger.exception("document processing step failed: %s", exc)
 
     return 0
 

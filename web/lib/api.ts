@@ -166,6 +166,7 @@ export interface Document {
    *  Populated by services.title_extractor; null on docs not yet backfilled. */
   title?: string | null;
   doc_date?: string | null;
+  municipality?: string | null;
 }
 
 /** Admin: trigger the title/department/date backfill across the corpus. */

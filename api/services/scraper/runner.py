@@ -10,6 +10,7 @@ re-entrant lock. Per-doc commits remain so a kill mid-run loses no work.
 import asyncio
 import logging
 import os
+import re
 import threading
 import uuid
 import mimetypes
@@ -32,7 +33,7 @@ from .crawlers import (
     HHRSDRecordingsCrawler,
 )
 from .scraper import BasicScraper
-from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, detect_doc_type_from_name, detect_fiscal_year
+from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, source_to_municipality, detect_doc_type_from_name, detect_fiscal_year
 
 logger = logging.getLogger("ah_scraper")
 
@@ -200,6 +201,7 @@ def _process_site_blocking(
                         content_type="video/youtube",
                         doc_type=doc_info.get("doc_type") or "recording_school_board",
                         category=doc_info.get("category") or "school",
+                        municipality=source_to_municipality(crawler.source_name),
                         fiscal_year=detect_fiscal_year(doc_info.get("title", "") + " " + mdate),
                         uploaded_by=fallback_user_id,
                         status="uploaded",
@@ -303,6 +305,7 @@ def _process_site_blocking(
                     content_type=content_type,
                     doc_type=doc_type,
                     category=entity_type,
+                    municipality=source_to_municipality(crawler.source_name),
                     fiscal_year=fiscal_year,
                     uploaded_by=fallback_user_id,
                     status="uploaded",
@@ -427,6 +430,10 @@ async def run_scraper(
         existing_fn_docs = db.query(Document.filename).filter(Document.project_id == project.id).all()
         for (fn,) in existing_fn_docs:
             existing_filenames.add(fn.lower())
+            # Rows stored before the ".pdf.pdf" fix must still match the
+            # corrected single-extension name.
+            collapsed = re.sub(r"(\.[a-z0-9]{2,4})\1$", r"\1", fn.lower())
+            existing_filenames.add(collapsed)
 
         all_sites = sites or [
             "ahnj", "ecode", "tri", "nj_state", "opra",

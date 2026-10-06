@@ -37,7 +37,8 @@ async def process_documents(
             Document.status.in_(["uploaded", "error"]),
         )
     else:
-        query = query.filter(Document.status.in_(["uploaded", "error"]))
+        from services.document_processor import pending_query
+        query = pending_query(db)
 
     docs = query.limit(100).all()
 

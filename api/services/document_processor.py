@@ -1,272 +1,170 @@
 """
-Document processing pipeline.
-OCR extraction, AI summarization, and auto-tagging for imported documents.
-"""
-import logging
-import asyncio
-import json
-from typing import Optional, Dict
-from datetime import datetime
+Document processing pipeline: extract → enrich → chunk + embed.
 
-from config import GEMINI_API_KEY, ANTHROPIC_API_KEY
+  1. services.text_extract — local only (PDF text layer + Tesseract, docx, xlsx…)
+  2. services.doc_enrich   — one flash-lite call: title, summary, classification
+  3. services.ingestion    — chunks + embeddings for search and chat
+
+Runs automatically after the nightly scrape (scripts.scheduled_scrape) and
+for backfills (scripts.enrich_all). Statuses: processed | no_text | error.
+A doc that errors is retried on later runs up to MAX_ATTEMPTS.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+MAX_ATTEMPTS = 3
+MIN_TEXT_CHARS = 50
+# Docs the meeting pipeline owns (transcribe → summarize) — skip them here.
+RECORDING_PREFIX = "recording"
 
-async def process_document(document_id: str):
-    """
-    Full document processing pipeline:
-    1. Extract text via OCR (PyMuPDF)
-    2. AI summarization and auto-tagging
-    3. Update document record with extracted data
-    """
-    from database import SessionLocal
-    from models.document import Document
+
+@dataclass
+class ProcessResult:
+    document_id: str
+    status: str
+    method: str = ""
+    chars: int = 0
+    cost_usd: float = 0.0
+    diff: dict = field(default_factory=dict)
+    error: Optional[str] = None
+
+
+async def process_one(db, doc, *, enrich: bool = True, reextract: bool = False,
+                      dry_run: bool = False) -> ProcessResult:
+    """Process one Document using the caller's session. Commits unless dry_run."""
+    from services import doc_enrich
+    from services.ingestion import ingest_document
     from services.s3_service import S3Service
+    from services.text_extract import extract
 
-    db = SessionLocal()
-    s3 = S3Service()
+    meta = dict(doc.metadata_ or {})
+    res = ProcessResult(str(doc.id), doc.status or "")
+    if (doc.doc_type or "").startswith(RECORDING_PREFIX) or (doc.content_type or "").startswith("video/youtube"):
+        res.status, res.method = doc.status or "", "recording_skipped"
+        return res
 
     try:
-        doc = db.query(Document).filter(Document.id == document_id).first()
-        if not doc:
-            logger.error(f"Document {document_id} not found")
-            return
+        # 1. Text — reuse what's stored unless asked to re-extract.
+        text = doc.extracted_text or ""
+        if reextract or len(text.strip()) < MIN_TEXT_CHARS:
+            content = await asyncio.to_thread(S3Service().download_file, doc.s3_key)
+            ex = await extract(doc.filename or "", content or b"")
+            res.method = ex.method
+            if len(ex.text.strip()) >= len(text.strip()):
+                text = ex.text
+                if not dry_run:
+                    doc.extracted_text = text
+                    if ex.page_count:
+                        doc.page_count = ex.page_count
+            meta.update({"extract_method": ex.method, **ex.meta})
+        res.chars = len(text)
 
-        # Skip non-PDFs for now
-        if not doc.filename.lower().endswith(".pdf"):
-            doc.status = "processed"
-            db.commit()
-            return
+        if len(text.strip()) < MIN_TEXT_CHARS:
+            res.status = "no_text"
+            if not dry_run:
+                doc.status, doc.metadata_ = "no_text", meta
+                db.commit()
+            return res
 
-        doc.status = "processing"
-        db.commit()
+        # 2. Enrich (title / summary / classification).
+        if enrich:
+            er = await asyncio.to_thread(doc_enrich.analyze, doc, text)
+            res.cost_usd = er.cost_usd
+            if er.ok:
+                if dry_run:
+                    res.diff = {k: (getattr(doc, k, None) if k != "body" else meta.get("body"), v)
+                                for k, v in er.changes.items()}
+                    res.diff["notes"] = (doc.notes, er.summary)
+                else:
+                    doc.metadata_ = meta
+                    res.diff = doc_enrich.apply(doc, er)
+                    meta = dict(doc.metadata_)
+            else:
+                meta["enrich_error"] = er.error
 
-        # Step 1: Extract text
-        logger.info(f"[{doc.filename}] Extracting text...")
-        content = s3.download_file(doc.s3_key)
-        text = await extract_text_from_pdf(content)
+        if dry_run:
+            res.status = "processed"
+            return res
 
-        if not text or len(text.strip()) < 50:
-            logger.warning(f"[{doc.filename}] Minimal text extracted ({len(text or '')} chars)")
-            doc.status = "processed"
-            doc.metadata_ = {**(doc.metadata_ or {}), "text_length": len(text or ""), "extraction": "minimal"}
-            db.commit()
-            return
-
-        # Store extracted text length
-        text_preview = text[:500] if text else ""
-
-        # Step 2: AI summarization and tagging
-        logger.info(f"[{doc.filename}] Running AI analysis ({len(text)} chars)...")
-        analysis = await analyze_document(text, doc.filename)
-
-        if analysis:
-            # Update document with AI results
-            if analysis.get("doc_type") and not doc.doc_type:
-                doc.doc_type = analysis["doc_type"]
-            if analysis.get("category") and not doc.category:
-                doc.category = analysis["category"]
-            if analysis.get("fiscal_year") and not doc.fiscal_year:
-                doc.fiscal_year = analysis["fiscal_year"]
-            if analysis.get("department") and not doc.department:
-                doc.department = analysis.get("department")
-
-            doc.metadata_ = {
-                **(doc.metadata_ or {}),
-                "text_length": len(text),
-                "text_preview": text_preview,
-                "ai_summary": analysis.get("summary", ""),
-                "ai_tags": analysis.get("tags", []),
-                "ai_entities": analysis.get("entities", []),
-                "ai_date_references": analysis.get("date_references", []),
-                "processed_at": datetime.utcnow().isoformat(),
-                "extraction_model": analysis.get("model", "unknown"),
-            }
-            if analysis.get("summary") and not doc.notes:
-                doc.notes = analysis["summary"]
-
+        # 3. Chunk + embed. ingest_document commits.
+        meta.pop("process_error", None)
+        doc.metadata_ = meta
         doc.status = "processed"
         db.commit()
-        logger.info(f"[{doc.filename}] Processing complete")
+        await asyncio.to_thread(ingest_document, db, doc, True)
+        res.status = "processed"
+        return res
 
-    except Exception as e:
-        logger.error(f"Document processing failed for {document_id}: {e}", exc_info=True)
-        try:
-            doc = db.query(Document).filter(Document.id == document_id).first()
-            if doc:
-                doc.status = "error"
-                doc.metadata_ = {**(doc.metadata_ or {}), "error": str(e)}
-                db.commit()
-        except Exception:
-            pass
-    finally:
-        db.close()
-
-
-async def extract_text_from_pdf(content: bytes) -> Optional[str]:
-    """Extract text from PDF using PyMuPDF."""
-    try:
-        import pymupdf
-        doc = pymupdf.open(stream=content, filetype="pdf")
-        pages = []
-        for page in doc:
-            text = page.get_text()
-            if text.strip():
-                pages.append(text)
-        doc.close()
-
-        if pages:
-            return "\n\n---\n\n".join(pages)
-
-        # If no text found, try pymupdf4llm for better extraction
-        try:
-            import pymupdf4llm
-            doc = pymupdf.open(stream=content, filetype="pdf")
-            markdown = pymupdf4llm.to_markdown(doc)
-            doc.close()
-            return markdown
-        except Exception:
-            pass
-
-        return None
-    except Exception as e:
-        logger.error(f"PDF text extraction failed: {e}")
-        return None
+    except Exception as exc:
+        logger.error("process %s failed: %s", doc.filename, exc, exc_info=True)
+        db.rollback()
+        meta = dict(doc.metadata_ or {})
+        meta["process_attempts"] = int(meta.get("process_attempts") or 0) + 1
+        meta["process_error"] = str(exc)[:500]
+        if not dry_run:
+            doc.status, doc.metadata_ = "error", meta
+            db.commit()
+        res.status, res.error = "error", str(exc)
+        return res
 
 
-async def analyze_document(text: str, filename: str) -> Optional[Dict]:
-    """Use AI to summarize, tag, and classify a document."""
-    # Truncate text for API limits
-    text_for_ai = text[:30000]
-
-    prompt = f"""Analyze this government document and provide structured metadata.
-
-Filename: {filename}
-
-Document text:
-{text_for_ai}
-
-Respond with ONLY a JSON object:
-{{
-  "summary": "2-3 sentence summary of the document's purpose and key content",
-  "doc_type": "one of: agenda, minutes, budget, audit, financial_statement, resolution, ordinance, legal, records_request, presentation, planning, performance_report, general",
-  "category": "one of: town, school, general",
-  "fiscal_year": "YYYY or YYYY-YYYY or null",
-  "department": "department name or null",
-  "tags": ["list", "of", "relevant", "tags"],
-  "entities": ["key people, organizations, or places mentioned"],
-  "date_references": ["important dates mentioned in the document"]
-}}"""
-
-    # Try Gemini first (faster, cheaper)
-    if GEMINI_API_KEY:
-        try:
-            return await _analyze_with_gemini(prompt)
-        except Exception as e:
-            logger.warning(f"Gemini analysis failed: {e}")
-
-    # Fallback to Claude
-    if ANTHROPIC_API_KEY:
-        try:
-            return await _analyze_with_claude(prompt)
-        except Exception as e:
-            logger.warning(f"Claude analysis failed: {e}")
-
-    return None
+def pending_query(db):
+    """Docs that still need processing: new, or errored with attempts left."""
+    from sqlalchemy import or_, cast, Integer
+    from models.document import Document
+    attempts = cast(Document.metadata_["process_attempts"].astext, Integer)
+    return (db.query(Document)
+            .filter(or_(Document.status == "uploaded",
+                        (Document.status == "error") & (or_(attempts.is_(None), attempts < MAX_ATTEMPTS))))
+            .filter(~Document.doc_type.like(f"{RECORDING_PREFIX}%") | Document.doc_type.is_(None))
+            .order_by(Document.created_at.desc()))
 
 
-def _record_doc_processor_usage(model: str, in_t: int, out_t: int) -> None:
-    if not (in_t or out_t):
-        return
-    try:
-        from database import SessionLocal
-        from services.usage import record_usage
-        sess = SessionLocal()
-        try:
-            record_usage(
-                sess, source="document_processor", model=model,
-                input_tokens=in_t, output_tokens=out_t,
-            )
-        finally:
-            sess.close()
-    except Exception:
-        pass
+async def process_pending(limit: Optional[int] = None, concurrency: int = 4) -> dict:
+    """Process every pending doc (newest first). Used after the nightly scrape."""
+    from database import SessionLocal
+    from models.document import Document
+
+    with SessionLocal() as db:
+        q = pending_query(db).with_entities(Document.id)
+        ids = [str(r[0]) for r in (q.limit(limit) if limit else q).all()]
+
+    sem = asyncio.Semaphore(concurrency)
+    totals = {"processed": 0, "no_text": 0, "error": 0, "skipped": 0, "cost_usd": 0.0}
+
+    async def run(doc_id: str):
+        async with sem:
+            with SessionLocal() as db:
+                doc = db.get(Document, doc_id)
+                if not doc:
+                    return
+                r = await process_one(db, doc)
+                totals[r.status if r.status in totals else "skipped"] += 1
+                totals["cost_usd"] += r.cost_usd
+
+    await asyncio.gather(*(run(i) for i in ids))
+    totals["cost_usd"] = round(totals["cost_usd"], 4)
+    logger.info("process_pending: %d docs → %s", len(ids), totals)
+    return totals
 
 
-async def _analyze_with_gemini(prompt: str) -> Optional[Dict]:
-    from google import genai
-    from google.genai import types
+async def process_document(document_id: str):
+    """Process a single document by id (used by /api/processing routes)."""
+    from database import SessionLocal
+    from models.document import Document
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    config = types.GenerateContentConfig(
-        temperature=0.1,
-        max_output_tokens=2000,
-        thinking_config=types.ThinkingConfig(thinking_budget=0),
-    )
-
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
-        lambda: client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=config,
-        ),
-    )
-
-    if response and response.text:
-        usage = getattr(response, "usage_metadata", None)
-        if usage is not None:
-            _record_doc_processor_usage(
-                "gemini-2.5-flash",
-                int(getattr(usage, "prompt_token_count", 0) or 0),
-                int(getattr(usage, "candidates_token_count", 0) or 0),
-            )
-        return _parse_json(response.text, "gemini")
-    return None
-
-
-async def _analyze_with_claude(prompt: str) -> Optional[Dict]:
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
-        lambda: client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
-        ),
-    )
-
-    if response and response.content:
-        _record_doc_processor_usage(
-            "claude-sonnet-4-6",
-            getattr(response.usage, "input_tokens", 0) or 0,
-            getattr(response.usage, "output_tokens", 0) or 0,
-        )
-        return _parse_json(response.content[0].text, "claude")
-    return None
-
-
-def _parse_json(text: str, model: str) -> Optional[Dict]:
-    """Parse JSON from LLM response."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text.rsplit("\n", 1)[0] if "\n" in text else text[:-3]
-    text = text.strip()
-    if text.startswith("json"):
-        text = text[4:].strip()
-
-    try:
-        result = json.loads(text)
-        result["model"] = model
-        return result
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse AI analysis JSON: {e}")
-        return None
+    with SessionLocal() as db:
+        doc = db.get(Document, document_id)
+        if not doc:
+            logger.error("Document %s not found", document_id)
+            return
+        doc.status = "processing"
+        db.commit()
+        await process_one(db, doc)

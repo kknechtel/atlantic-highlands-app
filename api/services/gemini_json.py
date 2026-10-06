@@ -63,13 +63,19 @@ def generate_json(
     from google.genai import types
     from services.usage import estimate_cost, record_usage
 
-    config = types.GenerateContentConfig(
+    cfg = dict(
         temperature=0,
         max_output_tokens=max_output_tokens,
         response_mime_type="application/json",
         response_schema=schema,
-        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
+    # Older google-genai builds (prod) reject thinking_budget; flash-lite
+    # doesn't think by default, so it's only an optimization when available.
+    try:
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except Exception:
+        pass
+    config = types.GenerateContentConfig(**cfg)
     last_err = None
     total_cost = 0.0
     for attempt in range(attempts):

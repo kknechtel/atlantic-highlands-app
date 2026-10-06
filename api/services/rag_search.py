@@ -36,8 +36,8 @@ def search_chunks(
     db: Session,
     query: str,
     top_k: int = 12,
-    semantic_weight: float = 0.6,
-    keyword_weight: float = 0.4,
+    semantic_weight: float = 1.0,
+    keyword_weight: float = 1.0,
     fiscal_year: Optional[str] = None,
     category: Optional[str] = None,
     doc_type: Optional[str] = None,
@@ -45,6 +45,8 @@ def search_chunks(
     project_id: Optional[str] = None,
     department: Optional[str] = None,
     use_websearch: bool = False,
+    municipality: Optional[str] = None,
+    embed_text: Optional[str] = None,
 ) -> list[dict]:
     """Return up to top_k chunks ranked by combined semantic + keyword score.
 
@@ -61,6 +63,12 @@ def search_chunks(
       - project_id: restrict to docs in a project
       - use_websearch: parse `query` with websearch_to_tsquery — enables
         "quoted phrases", OR, -exclude. Falls back to plainto on malformed.
+      - municipality: atlantic_highlands | highlands | hhrsd | regional | state
+      - embed_text: text to embed for the semantic side when `query` carries
+        keyword syntax (OR-expansions, operators) that would muddy the vector.
+
+    Ranking is reciprocal rank fusion of the semantic and keyword lists,
+    scaled so a doc ranked #1 in both scores 1.0 (#1 in one list ≈ 0.5).
     """
     has_vec = _has_vector_column(db, "document_chunks")
 
@@ -70,27 +78,35 @@ def search_chunks(
                 db, query, top_k, semantic_weight, keyword_weight,
                 fiscal_year, category, doc_type, document_id,
                 project_id, department, use_websearch,
+                municipality, embed_text or query,
             )
         except Exception as exc:
             log.warning("Hybrid chunk search failed, falling back to keyword: %s", exc)
 
     return _keyword_chunk_search(
         db, query, top_k, fiscal_year, category, doc_type,
-        document_id, project_id, department, use_websearch,
+        document_id, project_id, department, use_websearch, municipality,
     )
+
+
+# RRF constant (Cormack et al.). With k=60, 1/(k+1) is the top-rank term;
+# RRF_SCALE maps "#1 in both lists" to 1.0 so downstream boosts keep their scale.
+RRF_K = 60
+RRF_SCALE = (RRF_K + 1) / 2
 
 
 def _hybrid_chunk_search(
     db, query, top_k, sem_w, kw_w, fiscal_year, category,
     doc_type, document_id, project_id, department, use_websearch,
+    municipality, embed_text,
 ):
-    embedding = to_pgvector_literal(embed_query(query))
+    embedding = to_pgvector_literal(embed_query(embed_text))
     tsq_fn = "websearch_to_tsquery" if use_websearch else "plainto_tsquery"
 
     sql = text(f"""
         WITH semantic AS (
             SELECT c.id, c.document_id, c.content, c.chunk_index, c.page_start, c.page_end,
-                   1 - (c.embedding <=> CAST(:embedding AS vector)) AS sem_score
+                   ROW_NUMBER() OVER (ORDER BY c.embedding <=> CAST(:embedding AS vector)) AS sem_rank
             FROM document_chunks c
             JOIN documents d ON d.id = c.document_id
             WHERE c.embedding IS NOT NULL
@@ -100,13 +116,14 @@ def _hybrid_chunk_search(
               AND (:document_id IS NULL OR c.document_id = CAST(:document_id AS uuid))
               AND (:project_id IS NULL OR d.project_id = CAST(:project_id AS uuid))
               AND (:department IS NULL OR lower(d.department) = lower(:department))
+              AND (:municipality IS NULL OR d.municipality = :municipality)
             ORDER BY c.embedding <=> CAST(:embedding AS vector)
             LIMIT :pool
         ),
         keyword AS (
             SELECT c.id, c.document_id, c.content, c.chunk_index, c.page_start, c.page_end,
-                   ts_rank_cd(c.fts_vector, COALESCE({tsq_fn}('english', :query),
-                                                     plainto_tsquery('english', :query))) AS kw_score
+                   ROW_NUMBER() OVER (ORDER BY ts_rank_cd(c.fts_vector, COALESCE({tsq_fn}('english', :query),
+                                                     plainto_tsquery('english', :query))) DESC) AS kw_rank
             FROM document_chunks c
             JOIN documents d ON d.id = c.document_id
             WHERE c.fts_vector @@ COALESCE({tsq_fn}('english', :query),
@@ -117,7 +134,8 @@ def _hybrid_chunk_search(
               AND (:document_id IS NULL OR c.document_id = CAST(:document_id AS uuid))
               AND (:project_id IS NULL OR d.project_id = CAST(:project_id AS uuid))
               AND (:department IS NULL OR lower(d.department) = lower(:department))
-            ORDER BY kw_score DESC
+              AND (:municipality IS NULL OR d.municipality = :municipality)
+            ORDER BY kw_rank
             LIMIT :pool
         ),
         combined AS (
@@ -128,8 +146,8 @@ def _hybrid_chunk_search(
                 COALESCE(s.chunk_index, k.chunk_index) AS chunk_index,
                 COALESCE(s.page_start, k.page_start)   AS page_start,
                 COALESCE(s.page_end,   k.page_end)     AS page_end,
-                COALESCE(s.sem_score, 0) * :sem_w
-                  + COALESCE(k.kw_score, 0) * :kw_w   AS score
+                (COALESCE(:sem_w / (:rrf_k + s.sem_rank), 0)
+                  + COALESCE(:kw_w / (:rrf_k + k.kw_rank), 0)) * :rrf_scale AS score
             FROM semantic s
             FULL OUTER JOIN keyword k ON s.id = k.id
         )
@@ -157,13 +175,16 @@ def _hybrid_chunk_search(
         "top_k": top_k,
         "sem_w": sem_w,
         "kw_w": kw_w,
+        "rrf_k": RRF_K,
+        "rrf_scale": RRF_SCALE,
+        "municipality": municipality,
     }).fetchall()
     return [dict(r._mapping) for r in rows]
 
 
 def _keyword_chunk_search(
     db, query, top_k, fiscal_year, category, doc_type,
-    document_id, project_id, department, use_websearch,
+    document_id, project_id, department, use_websearch, municipality=None,
 ):
     """tsvector-only fallback. Works without pgvector or embeddings."""
     tsq_fn = "websearch_to_tsquery" if use_websearch else "plainto_tsquery"
@@ -185,6 +206,7 @@ def _keyword_chunk_search(
           AND (:document_id IS NULL OR c.document_id = CAST(:document_id AS uuid))
           AND (:project_id IS NULL OR d.project_id = CAST(:project_id AS uuid))
           AND (:department IS NULL OR lower(d.department) = lower(:department))
+          AND (:municipality IS NULL OR d.municipality = :municipality)
         ORDER BY score DESC
         LIMIT :top_k
     """)
@@ -194,6 +216,7 @@ def _keyword_chunk_search(
         "document_id": str(document_id) if document_id else None,
         "project_id": str(project_id) if project_id else None,
         "department": department,
+        "municipality": municipality,
         "top_k": top_k,
     }).fetchall()
     return [dict(r._mapping) for r in rows]
@@ -225,7 +248,7 @@ def _hybrid_doc_search(db, query, top_k, fiscal_year, category):
     embedding = to_pgvector_literal(embed_query(query))
     sql = text("""
         WITH semantic AS (
-            SELECT id, 1 - (embedding <=> CAST(:embedding AS vector)) AS sem_score
+            SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> CAST(:embedding AS vector)) AS sem_rank
             FROM documents
             WHERE embedding IS NOT NULL
               AND (:fiscal_year IS NULL OR fiscal_year = :fiscal_year)
@@ -237,7 +260,8 @@ def _hybrid_doc_search(db, query, top_k, fiscal_year, category):
             LIMIT :pool
         ),
         keyword AS (
-            SELECT id, ts_rank_cd(fts_vector, plainto_tsquery('english', :query)) AS kw_score
+            SELECT id, ROW_NUMBER() OVER (
+                       ORDER BY ts_rank_cd(fts_vector, plainto_tsquery('english', :query)) DESC) AS kw_rank
             FROM documents
             WHERE fts_vector @@ plainto_tsquery('english', :query)
               AND (:fiscal_year IS NULL OR fiscal_year = :fiscal_year)
@@ -245,18 +269,18 @@ def _hybrid_doc_search(db, query, top_k, fiscal_year, category):
               AND lower(filename) NOT LIKE '%.xlsx'
               AND lower(filename) NOT LIKE '%.xls'
               AND lower(filename) NOT LIKE '%.csv'
-            ORDER BY kw_score DESC
+            ORDER BY kw_rank
             LIMIT :pool
         ),
         combined AS (
             SELECT COALESCE(s.id, k.id) AS id,
-                   COALESCE(s.sem_score, 0) * 0.6
-                     + COALESCE(k.kw_score, 0) * 0.4 AS score
+                   (COALESCE(1.0 / (:rrf_k + s.sem_rank), 0)
+                     + COALESCE(1.0 / (:rrf_k + k.kw_rank), 0)) * :rrf_scale AS score
             FROM semantic s
             FULL OUTER JOIN keyword k ON s.id = k.id
         )
-        SELECT d.id, d.filename, d.doc_type, d.category, d.fiscal_year,
-               d.notes, d.page_count, c.score
+        SELECT d.id, d.filename, d.title, d.doc_date, d.municipality, d.doc_type,
+               d.category, d.fiscal_year, d.notes, d.page_count, c.score
         FROM combined c
         JOIN documents d ON d.id = c.id
         ORDER BY c.score DESC
@@ -266,13 +290,15 @@ def _hybrid_doc_search(db, query, top_k, fiscal_year, category):
         "embedding": embedding, "query": query,
         "fiscal_year": fiscal_year, "category": category,
         "pool": top_k * 4, "top_k": top_k,
+        "rrf_k": RRF_K, "rrf_scale": RRF_SCALE,
     }).fetchall()
     return [dict(r._mapping) for r in rows]
 
 
 def _keyword_doc_search(db, query, top_k, fiscal_year, category):
     sql = text("""
-        SELECT id, filename, doc_type, category, fiscal_year, notes, page_count,
+        SELECT id, filename, title, doc_date, municipality, doc_type, category,
+               fiscal_year, notes, page_count,
                ts_rank_cd(fts_vector, plainto_tsquery('english', :query)) AS score
         FROM documents
         WHERE fts_vector @@ plainto_tsquery('english', :query)

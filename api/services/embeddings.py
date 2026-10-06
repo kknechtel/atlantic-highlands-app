@@ -12,6 +12,7 @@ a real embedding key is wired up, re-run the ingestion script to overwrite
 hash vectors with semantic ones.
 """
 import hashlib
+from typing import Optional
 import logging
 import os
 
@@ -88,36 +89,40 @@ def _hash_embed(text: str) -> list[float]:
     return arr.tolist()
 
 
-def embed_document(text: str) -> list[float]:
+# With a Voyage key configured, a failed call returns None (stored as NULL and
+# retried by ingestion.reembed_missing) rather than a hash vector that would
+# silently poison semantic ranking. The hash fallback is only for keyless dev.
+
+def embed_document(text: str) -> Optional[list[float]]:
     truncated = text[:32000]
     if VOYAGE_API_KEY:
         try:
             return _voyage_embed([truncated], input_type="document")[0]
         except Exception as exc:
-            log.warning("Voyage embed failed, using hash fallback: %s", exc)
+            log.warning("Voyage embed failed; leaving NULL for retry: %s", exc)
+            return None
     return _hash_embed(truncated)
 
 
-def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[list[float]]:
-    out: list[list[float]] = []
+def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[Optional[list[float]]]:
+    out: list[Optional[list[float]]] = []
     for i in range(0, len(texts), batch_size):
         batch = [t[:32000] for t in texts[i:i + batch_size]]
         if VOYAGE_API_KEY:
             try:
                 out.extend(_voyage_embed(batch, input_type="document"))
-                continue
             except Exception as exc:
-                log.warning("Voyage batch embed failed at offset %d: %s", i, exc)
+                log.warning("Voyage batch embed failed at offset %d; leaving NULL: %s", i, exc)
+                out.extend([None] * len(batch))
+            continue
         out.extend(_hash_embed(t) for t in batch)
     return out
 
 
 def embed_query(query: str) -> list[float]:
+    """Raises when Voyage is configured but fails — callers fall back to keyword search."""
     if VOYAGE_API_KEY:
-        try:
-            return _voyage_embed([query], input_type="query")[0]
-        except Exception as exc:
-            log.warning("Voyage query embed failed: %s", exc)
+        return _voyage_embed([query], input_type="query")[0]
     return _hash_embed(query)
 
 

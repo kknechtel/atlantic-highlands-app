@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from models.document import Document
 from models.document_chunk import DocumentChunk
-from services.chunker import chunk_text
+from services.chunker import chunk_pages
 from services.embeddings import (
     embed_documents_batch,
     embed_document,
@@ -57,13 +57,49 @@ def _refresh_chunk_fts(db: Session, chunk_ids: list) -> None:
     # Same slash normalization as the doc-level vector.
     db.execute(text(r"""
         UPDATE document_chunks
-        SET fts_vector = to_tsvector('english',
-            regexp_replace(coalesce(content, ''), '[/\\|]', ' ', 'g'))
+        SET fts_vector =
+            setweight(to_tsvector('english', regexp_replace(coalesce(context, ''), '[/\\|]', ' ', 'g')), 'D') ||
+            setweight(to_tsvector('english', regexp_replace(coalesce(content, ''), '[/\\|]', ' ', 'g')), 'B')
         WHERE id = ANY(CAST(:ids AS uuid[]))
     """), {"ids": [str(i) for i in chunk_ids]})
 
 
-def _set_doc_embedding(db: Session, doc_id, vec: list[float]) -> None:
+_MUNI_LABEL = {
+    "atlantic_highlands": "Atlantic Highlands",
+    "highlands": "Highlands Borough",
+    "hhrsd": "Henry Hudson Regional School District",
+    "regional": "Monmouth County",
+    "state": "New Jersey",
+}
+
+
+def chunk_header(doc: Document) -> str:
+    """Deterministic one-line context for every chunk of a doc — no LLM."""
+    meta = doc.metadata_ or {}
+    parts = [
+        doc.title or doc.filename,
+        _MUNI_LABEL.get(doc.municipality or "", ""),
+        meta.get("body") or doc.department or "",
+        (doc.doc_type or "").replace("_", " "),
+        doc.doc_date or (f"FY {doc.fiscal_year}" if doc.fiscal_year else ""),
+    ]
+    seen, out = set(), []
+    for p in parts:
+        if p and p.lower() not in seen:
+            seen.add(p.lower())
+            out.append(p)
+    return " · ".join(out)
+
+
+def _with_page(header: str, start, end) -> str:
+    if not start:
+        return header
+    return f"{header} · p.{start}" if start == end else f"{header} · pp.{start}-{end}"
+
+
+def _set_doc_embedding(db: Session, doc_id, vec) -> None:
+    if vec is None:
+        return
     db.execute(text("""
         UPDATE documents
         SET embedding = CAST(:vec AS vector)
@@ -77,6 +113,7 @@ def _set_chunk_embeddings(db: Session, pairs: list[tuple]) -> None:
     Single UPDATE ... FROM (VALUES ...) rather than one round-trip per row
     — a 100-chunk doc went from ~100 statements to 1.
     """
+    pairs = [(cid, vec) for cid, vec in pairs if vec is not None]
     if not pairs:
         return
     values_sql = ", ".join(
@@ -102,30 +139,36 @@ def ingest_document(db: Session, doc: Document, force: bool = False) -> dict:
     # Delete existing chunks to keep this idempotent.
     db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).delete()
 
-    chunks_text = list(chunk_text(doc.extracted_text))
-    if not chunks_text:
+    chunks = chunk_pages(doc.extracted_text)
+    if not chunks:
         return {"document_id": str(doc.id), "skipped": True, "reason": "empty_after_chunking"}
 
     # Insert chunk rows first (without embeddings) so we have IDs.
+    header = chunk_header(doc)
     rows = [
         DocumentChunk(
             document_id=doc.id,
             chunk_index=i,
-            content=c,
-            token_count=len(c) // 4,
+            content=c.content,
+            context=_with_page(header, c.page_start, c.page_end),
+            page_start=c.page_start,
+            page_end=c.page_end,
+            token_count=len(c.content) // 4,
         )
-        for i, c in enumerate(chunks_text)
+        for i, c in enumerate(chunks)
     ]
     db.add_all(rows)
     db.flush()
 
-    # Embed + populate fts in one pass.
-    vecs = embed_documents_batch([r.content for r in rows])
+    # Embed header + passage so "Highlands Council minutes" style queries
+    # match passages that never repeat the body name. fts covers both too.
+    vecs = embed_documents_batch([f"{r.context}\n{r.content}" for r in rows])
     _set_chunk_embeddings(db, [(r.id, v) for r, v in zip(rows, vecs)])
     _refresh_chunk_fts(db, [r.id for r in rows])
 
     # Document-level vector uses filename + notes + first 32K of body.
-    doc_text = " ".join(filter(None, [doc.filename, doc.notes or "", doc.extracted_text[:32000]]))
+    doc_text = " ".join(filter(None, [doc.title or "", doc.filename, doc.notes or "",
+                                      doc.extracted_text[:32000]]))
     _set_doc_embedding(db, doc.id, embed_document(doc_text))
     _refresh_doc_fts(db, doc.id)
 
@@ -168,3 +211,20 @@ def ingest_one(db: Session, document_id: str, force: bool = False) -> dict:
     if not doc:
         return {"error": "not_found"}
     return ingest_document(db, doc, force=force)
+
+
+def reembed_missing(db: Session, limit: int = 2000) -> int:
+    """Embed chunks left NULL by a failed Voyage call. Returns count fixed."""
+    rows = db.execute(text("""
+        SELECT id, coalesce(context, '') || ' ' || content AS body
+        FROM document_chunks WHERE embedding IS NULL
+        ORDER BY created_at DESC LIMIT :n
+    """), {"n": limit}).fetchall()
+    if not rows:
+        return 0
+    vecs = embed_documents_batch([r.body for r in rows])
+    pairs = [(r.id, v) for r, v in zip(rows, vecs) if v is not None]
+    _set_chunk_embeddings(db, pairs)
+    db.commit()
+    log.info("reembed_missing: %d/%d chunks embedded", len(pairs), len(rows))
+    return len(pairs)

@@ -97,6 +97,10 @@ async def main() -> int:
         limit = int(os.environ.get("NIGHTLY_PROCESS_LIMIT", "400"))
         totals = await process_pending(limit=limit)
         logger.info("Document processing done: %s", totals)
+        from database import SessionLocal
+        from services.ingestion import reembed_missing
+        with SessionLocal() as db:
+            reembed_missing(db)
     except Exception as exc:
         logger.exception("document processing step failed: %s", exc)
 

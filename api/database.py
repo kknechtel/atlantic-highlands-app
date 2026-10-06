@@ -181,6 +181,7 @@ def _migrate():
         # atlantic_highlands | highlands | hhrsd | regional | state — seeded
         # from metadata.source_site below, refined by services.doc_enrich.
         ("documents", "municipality", "VARCHAR"),
+        ("document_chunks", "context", "TEXT"),
         # Parcel polygons (GeoJSON in JSONB) for the /parcels/map view.
         # Populated by scripts.fetch_parcel_geometry.
         ("parcels", "geometry", "JSONB"),

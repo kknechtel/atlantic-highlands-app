@@ -13,6 +13,9 @@ class DocumentChunk(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     chunk_index = Column(Integer, nullable=False, default=0)
     content = Column(Text, nullable=False)
+    # One-line doc context ("title · municipality · body · type · date · p.N"),
+    # embedded and indexed with the passage but kept out of displayed snippets.
+    context = Column(Text, nullable=True)
     token_count = Column(Integer, nullable=True)
     page_start = Column(Integer, nullable=True)
     page_end = Column(Integer, nullable=True)

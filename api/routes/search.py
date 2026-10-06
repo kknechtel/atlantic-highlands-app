@@ -77,6 +77,7 @@ class SearchRequest(BaseModel):
     doc_type: str | None = None
     fiscal_year: str | None = None
     department: str | None = None
+    municipality: str | None = None  # atlantic_highlands | highlands | hhrsd | regional | state
     document_id: str | None = None  # in-doc search
     limit: int = 30
     # Power-user escape hatches. Default off — leave them off unless you're
@@ -169,6 +170,7 @@ def _resolve_filters(req: SearchRequest, parsed: query_parser.ParsedQuery) -> di
         "category": req.category or parsed.category,
         "doc_type": req.doc_type or parsed.doc_type,
         "department": req.department or parsed.department,
+        "municipality": req.municipality,
         "project_id": req.project_id,
     }
 
@@ -291,7 +293,10 @@ def search_documents(
             document_id=req.document_id,
             project_id=merged["project_id"],
             department=merged["department"],
+            municipality=merged["municipality"],
             use_websearch=True,
+            # Embed the plain query; the OR-expanded string is keyword syntax.
+            embed_text=base_query,
         )
     except Exception as exc:
         logger.warning("hybrid chunk search failed: %s", exc)
@@ -328,16 +333,16 @@ def search_documents(
         c["score"] = base
     chunks.sort(key=lambda r: r["score"], reverse=True)
 
-    # ── 6. Literal-match dedup (kills stemmer over-match like "highander").
-    # Title matches count too — a doc with the literal in its title is a
-    # legitimate hit even if the body text doesn't carry the exact word.
+    # ── 6. Literal-match boost (outranks stemmer over-match like "highander").
+    # Title matches count too. A boost rather than a filter: dropping every
+    # non-literal chunk threw away good semantic hits whenever one chunk
+    # happened to contain the exact string.
     if q_literal and not has_quotes and chunks:
-        def _has_literal(c):
+        for c in chunks:
             haystack = (c.get("content") or "") + " " + (c.get("title") or "")
-            return q_literal.lower() in haystack.lower()
-        any_literal = any(_has_literal(c) for c in chunks)
-        if any_literal:
-            chunks = [c for c in chunks if _has_literal(c)]
+            if q_literal.lower() in haystack.lower():
+                c["score"] = float(c.get("score") or 0) + 0.15
+        chunks.sort(key=lambda r: r["score"], reverse=True)
 
     # ── 7. Roll up chunks → documents
     by_doc: dict[str, dict] = {}

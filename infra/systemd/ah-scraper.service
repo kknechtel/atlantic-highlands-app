@@ -22,6 +22,22 @@ EnvironmentFile=-/etc/atlantic-highlands.env
 
 ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.scheduled_scrape
 
+# The scrape shares a 2-vCPU, 4 GB box with ah-api. Unbounded, nightly OCR
+# ran the box out of memory every night from Oct 9 2026 and hung it on Oct 15
+# (status check failed, API down). These keep a bad document from taking the
+# API with it: the kernel reclaims from this unit first, kills it (not
+# gunicorn) at the cap, and the API keeps the CPU.
+Environment=TESSERACT_WORKERS=2
+MemoryHigh=1200M
+MemoryMax=1600M
+MemorySwapMax=0
+OOMScoreAdjust=800
+CPUQuota=120%
+Nice=10
+IOSchedulingClass=idle
+# A full crawl with OCR has taken hours; past this it is stuck, not slow.
+TimeoutStartSec=4h
+
 # Don't crash the timer if a scrape errors out. Errors get logged via
 # journal + persisted to scraper_runs.errors.
 SuccessExitStatus=0 1

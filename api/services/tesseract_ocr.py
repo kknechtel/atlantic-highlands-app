@@ -14,7 +14,7 @@ import io
 import logging
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -25,11 +25,13 @@ DEFAULT_MAX_PAGES = 30
 # 200 DPI: noticeably better on small-print scans than 150, and we only
 # OCR pages whose text layer is missing or garbled.
 DEFAULT_DPI = 200
-# How many pages to OCR concurrently in-process. Tesseract is CPU-bound, so
-# pinning to a few workers avoids context-switching overhead. t3.small has
-# 2 vCPU, t3.medium has 2; tune via env if upgrading instance type.
+# How many pages to OCR at once. The API shares this 2-vCPU, 4 GB box, so
+# keep it at the vCPU count or below; tune via env if the instance grows.
 import os
-DEFAULT_WORKERS = int(os.environ.get("TESSERACT_WORKERS", "4"))
+DEFAULT_WORKERS = int(os.environ.get("TESSERACT_WORKERS", "2"))
+# A large-format plan or map at 200 DPI is hundreds of megapixels. Past this
+# the page is rendered smaller; it is a drawing, not a paragraph of text.
+MAX_PAGE_PIXELS = 20_000_000
 
 
 @dataclass
@@ -68,29 +70,23 @@ def _ocr_one_page(img_bytes: bytes, page_num: int) -> tuple[int, str]:
         return page_num, ""
 
 
-def _render_pages(pdf_bytes: bytes, indexes: List[int], dpi: int) -> List[tuple[bytes, int]]:
-    """Render the given 0-based page indexes to PNG bytes via PyMuPDF."""
-    try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        raise RuntimeError("PyMuPDF not installed")
+def _render_page(doc, p: int, dpi: int) -> Optional[bytes]:
+    """One page to PNG bytes, downscaled when it would exceed MAX_PAGE_PIXELS."""
+    import fitz  # PyMuPDF
 
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    out: List[tuple[bytes, int]] = []
+    page = doc[p]
     zoom = dpi / 72
-    mat = fitz.Matrix(zoom, zoom)
+    w, h = page.rect.width * zoom, page.rect.height * zoom
+    if w * h > MAX_PAGE_PIXELS:
+        zoom *= (MAX_PAGE_PIXELS / (w * h)) ** 0.5
     try:
-        for p in indexes:
-            if p >= len(doc):
-                continue
-            try:
-                pix = doc[p].get_pixmap(matrix=mat)
-                out.append((pix.tobytes("png"), p))
-            except Exception as exc:
-                logger.warning("Failed to render page %d: %s", p + 1, exc)
-    finally:
-        doc.close()
-    return out
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+        png = pix.tobytes("png")
+        del pix
+        return png
+    except Exception as exc:
+        logger.warning("Failed to render page %d: %s", p + 1, exc)
+        return None
 
 
 def ocr_pages(
@@ -100,13 +96,40 @@ def ocr_pages(
     dpi: int = DEFAULT_DPI,
     workers: int = DEFAULT_WORKERS,
 ) -> dict[int, str]:
-    """OCR specific pages. Returns {page_index: text}; failed pages map to ""."""
-    pages = _render_pages(pdf_bytes, indexes, dpi)
+    """OCR specific pages. Returns {page_index: text}; failed pages map to "".
+
+    Pages are rendered one at a time as workers free up, so at most `workers`
+    page images are in memory at once. Rendering everything first held up to
+    30 full-resolution pages per document and ran the box out of memory.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        raise RuntimeError("PyMuPDF not installed")
+
     results: dict[int, str] = {}
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="tesseract") as ex:
-        for fut in as_completed([ex.submit(_ocr_one_page, img, num) for img, num in pages]):
-            page_num, text = fut.result()
-            results[page_num] = text
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="tesseract") as ex:
+            pending = set()
+            for p in indexes:
+                if p >= len(doc):
+                    continue
+                if len(pending) >= workers:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    for fut in done:
+                        page_num, text = fut.result()
+                        results[page_num] = text
+                png = _render_page(doc, p, dpi)
+                if png is None:
+                    results[p] = ""
+                    continue
+                pending.add(ex.submit(_ocr_one_page, png, p))
+            for fut in as_completed(pending):
+                page_num, text = fut.result()
+                results[page_num] = text
+    finally:
+        doc.close()
     return results
 
 

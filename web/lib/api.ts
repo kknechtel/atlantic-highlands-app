@@ -1092,6 +1092,26 @@ export async function createInvite(email?: string, expiresHours: number = 72) {
 export async function getInvites() { return request<Invite[]>("/api/admin/invites"); }
 export async function deleteInvite(inviteId: string) { return request(`/api/admin/invites/${inviteId}`, { method: "DELETE" }); }
 
+// ─── Admin: settings (API keys) ───────────────────────────────────────
+
+export interface AppSettingView {
+  key: string;
+  label: string;
+  help: string;
+  secret: boolean;
+  source: "app" | "environment" | null;
+  value: string | null;
+}
+export async function getAppSettings() {
+  return request<{ settings: AppSettingView[] }>("/api/admin/settings");
+}
+export async function saveAppSetting(key: string, value: string) {
+  return request<AppSettingView>(`/api/admin/settings/${key}`, { method: "PUT", body: JSON.stringify({ value }) });
+}
+export async function clearAppSetting(key: string) {
+  return request<AppSettingView>(`/api/admin/settings/${key}`, { method: "DELETE" });
+}
+
 // ─── Admin: corpus health ─────────────────────────────────────────────
 
 export interface AdminDocumentRow {

@@ -39,7 +39,7 @@ from typing import AsyncGenerator, Optional
 import anthropic
 from sqlalchemy.orm import Session
 
-from config import ANTHROPIC_API_KEY
+from config import api_key
 from database import SessionLocal
 from services.rag_search import search_chunks
 
@@ -523,11 +523,11 @@ async def stream_deck_chat(
     deep_thinking: bool = False,
     attachments: Optional[list[dict]] = None,
 ) -> AsyncGenerator[str, None]:
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         yield _sse("error", {"content": "ANTHROPIC_API_KEY not configured"})
         return
 
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=api_key("ANTHROPIC_API_KEY"))
     tools = _tool_defs()
     # Cache the tool defs — identical across the 6-iteration agentic loop.
     if tools:

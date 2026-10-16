@@ -13,10 +13,10 @@ Voyage rerank docs: https://docs.voyageai.com/docs/reranker
 """
 import logging
 import os
+from config import api_key
 
 log = logging.getLogger(__name__)
 
-VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 RERANK_MODEL = "rerank-2"
 # rerank-2 supports up to 16k tokens per doc; we cap at ~3k chars (~750 tokens)
 # per item so a top_n=30 call stays well under the 320k total-tokens cap.
@@ -30,7 +30,7 @@ def rerank(query: str, documents: list[str], top_k: int | None = None) -> list[t
     pass-through ranking using the input order so the caller can keep its
     original hybrid score without branching.
     """
-    if not VOYAGE_API_KEY or not documents:
+    if not api_key("VOYAGE_API_KEY") or not documents:
         return [(i, 0.0) for i in range(len(documents))]
 
     # Truncate aggressively — Voyage charges for full doc length and the
@@ -42,7 +42,7 @@ def rerank(query: str, documents: list[str], top_k: int | None = None) -> list[t
         resp = requests.post(
             "https://api.voyageai.com/v1/rerank",
             headers={
-                "Authorization": f"Bearer {VOYAGE_API_KEY}",
+                "Authorization": f"Bearer {api_key('VOYAGE_API_KEY')}",
                 "Content-Type": "application/json",
             },
             json={
@@ -95,4 +95,4 @@ def rerank(query: str, documents: list[str], top_k: int | None = None) -> list[t
 def is_available() -> bool:
     """Cheap check for callers that want to skip the network round-trip
     when reranking is disabled (e.g. during tests or local dev without a key)."""
-    return bool(VOYAGE_API_KEY)
+    return bool(api_key("VOYAGE_API_KEY"))

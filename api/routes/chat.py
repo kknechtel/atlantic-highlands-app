@@ -37,7 +37,7 @@ from sqlalchemy import desc, text as sql_text
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
-from config import ANTHROPIC_API_KEY, GEMINI_API_KEY
+from config import api_key
 from database import SessionLocal, get_db
 from models.financial import FinancialStatement
 from models.user import User
@@ -1039,7 +1039,7 @@ async def chat_stream(
     request task is killed mid-stream. Each DB op below opens a short-lived
     SessionLocal() and closes it immediately.
     """
-    if not ANTHROPIC_API_KEY and not GEMINI_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY") and not api_key("GEMINI_API_KEY"):
         raise HTTPException(status_code=503, detail="No LLM API key configured")
 
     session_id = req.session_id or str(uuid.uuid4())
@@ -1075,7 +1075,7 @@ async def chat_stream(
     history = [{"role": r.role, "content": r.content} for r in history_rows]
 
     # If only Gemini is configured, fall through to a simpler streamer (no tools).
-    if not ANTHROPIC_API_KEY and GEMINI_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY") and api_key("GEMINI_API_KEY"):
         return StreamingResponse(
             _stream_gemini(_build_system_prompt(req, doc_context), req.query, history,
                            session_id, req.scope_type, req.scope_id, user_id_str),
@@ -1102,7 +1102,7 @@ async def _stream_claude(
     user_id: Optional[str] = None,
 ):
     import anthropic
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=api_key("ANTHROPIC_API_KEY"))
 
     tools = _tool_defs()
     if req.web_search:
@@ -1476,7 +1476,7 @@ async def _stream_gemini(system_prompt, query, history, session_id, scope_type, 
         from google import genai
         from google.genai import types as gtypes
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
         conv = [system_prompt + "\n\n"]
         for msg in history[-10:]:
             conv.append(("User: " if msg["role"] == "user" else "Assistant: ") + msg["content"] + "\n\n")

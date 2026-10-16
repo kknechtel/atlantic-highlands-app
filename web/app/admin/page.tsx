@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import AdminDocumentsPanel from "@/components/admin/AdminDocumentsPanel";
 import AdminCostsPanel from "@/components/admin/AdminCostsPanel";
+import AdminSettingsPanel from "@/components/admin/AdminSettingsPanel";
 
 const brandColor = "#385854";
 
@@ -73,7 +74,7 @@ export default function AdminPage() {
     setTimeout(() => setCopiedInvite(null), 3000);
   };
 
-  const [tab, setTab] = useState<"users" | "documents" | "costs">("users");
+  const [tab, setTab] = useState<"users" | "documents" | "costs" | "settings">("users");
 
   if (!user?.is_admin) {
     return (
@@ -91,7 +92,7 @@ export default function AdminPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
         <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-white">
-          {(["users", "documents", "costs"] as const).map((t) => (
+          {(["users", "documents", "costs", "settings"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -100,7 +101,7 @@ export default function AdminPage() {
               }`}
               style={tab === t ? { backgroundColor: brandColor } : {}}
             >
-              {t === "users" ? "Users" : t === "documents" ? "Documents" : "Costs"}
+              {t === "users" ? "Users" : t === "documents" ? "Documents" : t === "costs" ? "Costs" : "Settings"}
             </button>
           ))}
         </div>
@@ -178,6 +179,7 @@ export default function AdminPage() {
 
       {tab === "documents" && <AdminDocumentsPanel />}
       {tab === "costs" && <AdminCostsPanel />}
+      {tab === "settings" && <AdminSettingsPanel />}
       {tab === "users" && (
         <div className="space-y-6">
 

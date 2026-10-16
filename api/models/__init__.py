@@ -13,3 +13,4 @@ from .community_message import CommunityMessage, CommunityMessageRefType
 from .event_rsvp import EventRsvp
 from .band_profile import BandProfile
 from .event_submission import EventSubmission, SubmissionStatus
+from .app_setting import AppSetting

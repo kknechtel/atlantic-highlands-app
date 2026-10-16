@@ -12,7 +12,7 @@ from typing import Optional
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY
+from config import api_key
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def summarize_meeting(
     raw_text: Optional[str] = None,
 ) -> dict:
     """Returns a dict matching the SYSTEM_PROMPT schema. Caller persists it."""
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY not configured")
 
     if segments:
@@ -82,7 +82,7 @@ def summarize_meeting(
     header = f"Meeting body: {meeting_body}\nMeeting date: {meeting_date or 'unknown'}"
     user_msg = f"{header}\n\n--- Transcript ---\n{transcript_block}"
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
     resp = client.messages.create(
         model=MODEL,
         max_tokens=4096,

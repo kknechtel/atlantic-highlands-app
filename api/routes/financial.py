@@ -13,6 +13,7 @@ from models.document import Document
 from models.financial import FinancialStatement, FinancialLineItem, FinancialAnalysis
 from models.user import User
 from auth import get_current_user
+from config import api_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -672,8 +673,8 @@ def diagnostics(
 
     return {
         "llm_keys": {
-            "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
-            "gemini_api_key_set": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+            "anthropic_api_key_set": bool(api_key("ANTHROPIC_API_KEY")),
+            "gemini_api_key_set": bool(api_key("GEMINI_API_KEY")),
         },
         "statements": {
             "by_status": counts_by_status,

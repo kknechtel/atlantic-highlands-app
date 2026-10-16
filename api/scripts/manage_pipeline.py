@@ -14,7 +14,7 @@ Usage examples:
 
   # Initial setup (env vars or args; --base required)
   export AH_BASE_URL=https://api.atlantichighlands.example
-  export AH_EMAIL=karl@rkc.llc
+  export AH_EMAIL=admin@example.org
   export AH_PASSWORD=...
 
   # See what's in the system

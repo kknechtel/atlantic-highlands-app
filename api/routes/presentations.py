@@ -46,7 +46,7 @@ from auth import (
     shared_resource_ids,
     user_share_role,
 )
-from config import ANTHROPIC_API_KEY
+from config import api_key
 from database import get_db, SessionLocal
 from models.presentation import Presentation
 from models.user import User
@@ -552,7 +552,7 @@ def ai_edit_section(
     the updated presentation (the section's `body` is replaced in place).
 
     Synchronous (no SSE) — these are usually fast (<10s) on Sonnet."""
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
     p = _get_editable_or_404(db, presentation_id, user)
 
@@ -582,7 +582,7 @@ def ai_edit_section(
 
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
         resp = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4000,
@@ -671,7 +671,7 @@ def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str])
     record usage."""
     import anthropic
     import re as _re
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
 
     # Belt-and-suspenders: extract every ```chart fence from the transcript and
     # replace with an opaque placeholder before sending to Claude. The model
@@ -761,7 +761,7 @@ def create_from_chat(
 ):
     """Convert a chat conversation into a draft presentation. The assistant
     structures the messages into 4-8 sections, preserving citations."""
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
     if not body.messages:
         raise HTTPException(400, "messages cannot be empty")

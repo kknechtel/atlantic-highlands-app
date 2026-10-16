@@ -6,6 +6,7 @@ import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import DATABASE_URL
+from config import api_key
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def rag_health() -> dict:
         "pgvector_version": None,
         "documents_embedding_column": False,
         "chunks_embedding_column": False,
-        "voyage_api_key_set": bool(os.environ.get("VOYAGE_API_KEY", "").strip()),
+        "voyage_api_key_set": bool(api_key("VOYAGE_API_KEY")),
         "ready_for_semantic_search": False,
         "degraded_mode": None,  # None | "no_pgvector" | "no_voyage_key"
         "documents_total": 0,
@@ -406,6 +407,19 @@ def _migrate():
                 ))
             except Exception as e:
                 logger.warning(f"Index ix_chat_history_user_id skipped: {e}")
+
+        # 5b. The bulk-import project was once named after a person; it is the
+        # generic "Imported Documents" now. Renamed only when that name is free.
+        if _table_exists("projects"):
+            try:
+                conn.execute(text(
+                    "UPDATE projects SET name = 'Imported Documents', "
+                    "description = 'Bulk imported from a local folder' "
+                    "WHERE name = 'Knechtel Documents' AND NOT EXISTS "
+                    "(SELECT 1 FROM projects WHERE name = 'Imported Documents')"
+                ))
+            except Exception as e:
+                logger.warning(f"import project rename skipped: {e}")
 
         # 6. Sharing tables for presentations and projects. Owner-or-share-or-admin
         # access is enforced at the route level; these tables just record who has

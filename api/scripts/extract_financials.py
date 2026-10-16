@@ -12,14 +12,14 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from google import genai
 from google.genai import types
-from config import GEMINI_API_KEY
+from config import api_key
 from services.s3_service import S3Service
 from database import SessionLocal
 from models.document import Document
 from models.financial import FinancialStatement, FinancialLineItem
 import pymupdf
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
 cfg = types.GenerateContentConfig(temperature=0.1, max_output_tokens=65000,
     thinking_config=types.ThinkingConfig(thinking_budget=0))
 db = SessionLocal()

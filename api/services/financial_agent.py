@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from config import ANTHROPIC_API_KEY, GEMINI_API_KEY
+from config import api_key
 
 logger = logging.getLogger(__name__)
 
@@ -435,10 +435,10 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
         except Exception:
             logger.debug("financial_agent usage record skipped", exc_info=True)
 
-    if ANTHROPIC_API_KEY:
+    if api_key("ANTHROPIC_API_KEY"):
         try:
             import anthropic
-            client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            client = anthropic.AsyncAnthropic(api_key=api_key("ANTHROPIC_API_KEY"))
             # Anthropic SDK requires .stream() for ANY request with max_tokens that
             # could plausibly take >10 min. Use streaming unconditionally so we don't
             # need to guess the threshold.
@@ -472,11 +472,11 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
             last_error = f"claude_api_error: {type(exc).__name__}: {exc}"
             logger.warning("[%s] %s", label, last_error)
 
-    if GEMINI_API_KEY:
+    if api_key("GEMINI_API_KEY"):
         try:
             from google import genai
             from google.genai import types
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
             # ThinkingConfig.thinking_budget is rejected by older SDK versions on
             # the deployed EC2. Build the config without it and try setting it
             # only if the SDK accepts. (We don't actually need thinking for these
@@ -917,8 +917,8 @@ async def run_full_drill(statement_id: str) -> Dict[str, Any]:
         "success_count": success_count,
         "error_count": error_count,
         "synthesis_ok": "error" not in synthesis,
-        "llm_models_attempted": [m for m, k in [("claude-sonnet-4-6", ANTHROPIC_API_KEY),
-                                                 ("gemini-2.5-flash", GEMINI_API_KEY)] if k],
+        "llm_models_attempted": [m for m, k in [("claude-sonnet-4-6", api_key("ANTHROPIC_API_KEY")),
+                                                 ("gemini-2.5-flash", api_key("GEMINI_API_KEY"))] if k],
     }
 
     # Persist regardless of success — caller needs to see errors.

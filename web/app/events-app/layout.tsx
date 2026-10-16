@@ -1,6 +1,7 @@
 "use client";
+import { SITE_HOST, TOWN, EVENTS_AREA } from "@/lib/municipality";
 
-// Events-app shell (events.ahnj.info).
+// Events-app shell (events.<site host>).
 //   Mobile:  top bar (logo + profile avatar) + bottom tab nav
 //   Desktop: left sidebar with logo on top, nav links, profile at bottom
 //
@@ -9,8 +10,8 @@
 //
 // The nav uses CLEAN URLs (no /events-app prefix). The Host-based
 // middleware rewrites the user-visible URL on every request, so a
-// <Link href="/calendar"> from a page served under events.ahnj.info
-// navigates to events.ahnj.info/calendar → middleware routes to
+// <Link href="/calendar"> from a page served under events.<site>
+// navigates to events.<site>/calendar → middleware routes to
 // /events-app/calendar/page.tsx.
 
 import Link from "next/link";
@@ -84,13 +85,13 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/events-logo.png"
-            alt="ahnj.info"
+            alt={SITE_HOST}
             className="w-10 h-10 object-contain flex-shrink-0"
           />
           <div className="leading-tight min-w-0">
             <div className="text-sm font-semibold text-gray-900 truncate">Around Town</div>
             <div className="text-[10px] text-gray-500 truncate">
-              AH · Highlands · Sea Bright
+              {[TOWN.short_name, ...EVENTS_AREA.slice(1)].join(" · ")}
             </div>
           </div>
         </Link>
@@ -173,13 +174,13 @@ export default function EventsAppLayout({ children }: { children: React.ReactNod
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/events-logo.png"
-                alt="ahnj.info"
+                alt={SITE_HOST}
                 className="w-9 h-9 object-contain"
               />
               <div className="leading-tight">
                 <div className="text-sm font-semibold text-gray-900">Around Town</div>
                 <div className="hidden sm:block text-[10px] text-gray-500">
-                  Atlantic Highlands · Highlands · Sea Bright
+                  {EVENTS_AREA.join(" · ")}
                 </div>
               </div>
             </Link>

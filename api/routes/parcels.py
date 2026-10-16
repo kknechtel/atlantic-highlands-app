@@ -1,4 +1,4 @@
-"""Parcel routes - search and view Atlantic Highlands property records."""
+"""Parcel routes - search and view the town's property records."""
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -138,7 +138,7 @@ def parcels_geojson(
 ):
     """Return (filtered) parcels as a GeoJSON FeatureCollection for the
     /parcels/map view. Properties are kept light so the payload stays
-    manageable (~1 MB for 1,942 AH parcels with polygons). The map view
+    manageable (~1 MB for ~2,000 parcels with polygons). The map view
     hits /api/parcels/{id} per click for full detail.
 
     NOTE: This must be declared BEFORE /{parcel_id} or FastAPI's router

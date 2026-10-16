@@ -12,7 +12,7 @@ than iterating per-row. Postgres only needs to scan the docs/chunks table
 once each. On a 4k-doc corpus this completes in <10 seconds.
 
 Usage on prod:
-    /opt/atlantic-highlands/api/venv/bin/python scripts/rebuild_fts.py
+    venv/bin/python scripts/rebuild_fts.py    # from api/
 """
 import logging
 import os

@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 /**
  * VersionsPanel — slide-in side panel listing every PresentationVersion
@@ -23,7 +24,7 @@ interface Props {
 }
 
 export default function VersionsPanel({
-  presentationId, open, onClose, onAfterRollback, brandColor = '#385854',
+  presentationId, open, onClose, onAfterRollback, brandColor = TOWN.brand_color,
 }: Props) {
   // Reference getAuthToken so the import isn't tree-shaken away — the
   // shared API client below already injects the header for us, but

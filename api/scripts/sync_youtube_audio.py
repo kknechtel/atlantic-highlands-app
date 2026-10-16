@@ -5,7 +5,7 @@ cookies — they fingerprint the IP-to-session mismatch and serve degraded
 responses (storyboards only). The only sustainable workaround that
 doesn't cost ongoing $$ is to do the download from a residential IP.
 
-Run this script on your laptop whenever HHRSD posts new meetings:
+Run this script on your laptop whenever the school board posts new meetings:
 
     cd api
     python -m scripts.sync_youtube_audio

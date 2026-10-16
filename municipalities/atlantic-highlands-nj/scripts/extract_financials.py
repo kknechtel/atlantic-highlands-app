@@ -5,21 +5,25 @@ For NJ school district ACFRs (AHSD/0130, HHRS/2120, HSD/2160), prefer
 scripts/extract_school_acfrs.py — this generic script handles the town
 case and any single-entity school case, but its entity_name inference is
 weaker and its priority dedup is less surgical.
+
+
+Specific to Atlantic Highlands, NJ.
 """
 import os, sys, json, time
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_API = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "api"))
+sys.path.insert(0, _API)
+os.chdir(_API)
 
 from google import genai
 from google.genai import types
-from config import GEMINI_API_KEY
+from config import api_key
 from services.s3_service import S3Service
 from database import SessionLocal
 from models.document import Document
 from models.financial import FinancialStatement, FinancialLineItem
 import pymupdf
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
 cfg = types.GenerateContentConfig(temperature=0.1, max_output_tokens=65000,
     thinking_config=types.ThinkingConfig(thinking_budget=0))
 db = SessionLocal()

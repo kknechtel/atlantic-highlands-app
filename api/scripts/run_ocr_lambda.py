@@ -11,8 +11,7 @@ EC2 box can run it without contending with the API workers — a far cry
 from the local-Tesseract approach that pinned both vCPUs.
 
 Usage (run on EC2 or locally with the prod DATABASE_URL):
-    /opt/atlantic-highlands/api/venv/bin/python \
-        /opt/atlantic-highlands/api/scripts/run_ocr_lambda.py
+    cd <install dir>/api && venv/bin/python scripts/run_ocr_lambda.py
 
 Env vars:
     LAMBDA_FN     function name           (default: ah-pdf-ocr)

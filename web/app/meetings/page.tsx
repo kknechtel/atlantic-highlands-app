@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SCHOOL_ABBR } from "@/lib/municipality";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -7,11 +8,11 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import { Loader2, Mic, Youtube, Calendar, FileText, Sparkles } from "lucide-react";
 import { listMeetings, type MeetingListItem } from "@/lib/meetingsApi";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 const BODY_PRESETS = [
   { key: "", label: "All bodies" },
-  { key: "HHRSD Board of Education", label: "HHRSD BOE (school)" },
+  { key: `${SCHOOL_ABBR} Board of Education`, label: `${SCHOOL_ABBR} BOE (school)` },
   { key: "Borough Council", label: "Borough Council" },
   { key: "Planning Board", label: "Planning Board" },
   { key: "Harbor Commission", label: "Harbor Commission" },
@@ -28,7 +29,7 @@ type PlatformTab = "all" | "youtube" | "audio";
 
 const TABS: { key: PlatformTab; label: string; description: string }[] = [
   { key: "all", label: "All recordings", description: "Video and audio combined" },
-  { key: "youtube", label: "Videos", description: "HHRSD board meetings (YouTube)" },
+  { key: "youtube", label: "Videos", description: `${SCHOOL_ABBR} board meetings (YouTube)` },
   { key: "audio", label: "Audio only", description: "Town body meetings (Council, Planning, Harbor)" },
 ];
 
@@ -84,13 +85,13 @@ export default function MeetingsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Meeting recordings</h1>
           <p className="text-sm text-gray-500">
-            Atlantic Highlands and HHRSD public meetings. Transcribe to enable search and AI summaries.
+            {TOWN.name} and {SCHOOL_ABBR} public meetings. Transcribe to enable search and AI summaries.
           </p>
         </div>
       </div>
 
-      {/* Platform tabs: separates video meetings (HHRSD on YouTube) from
-          audio-only town meetings (Council/Planning/Harbor on ahnj.com). */}
+      {/* Platform tabs: separates video meetings (school board on YouTube) from
+          audio-only town meetings (from the town website). */}
       <div className="border-b border-gray-200 mb-4">
         <nav className="flex gap-1" aria-label="Recording type">
           {TABS.map((t) => {

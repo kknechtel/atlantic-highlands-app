@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -75,7 +76,7 @@ export default function NarrativePage() {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              <BuildingOfficeIcon className="w-4 h-4" /> Borough of Atlantic Highlands
+              <BuildingOfficeIcon className="w-4 h-4" /> {TOWN.official_name}
             </button>
             <button
               onClick={() => setActiveTab("school")}
@@ -132,12 +133,10 @@ function TownNarrative({
       <div className="prose prose-sm max-w-none">
         <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <BuildingOfficeIcon className="w-5 h-5 text-blue-600" />
-          Borough of Atlantic Highlands - Financial Overview
+          {TOWN.official_name} - Financial Overview
         </h2>
         <p className="text-gray-600 leading-relaxed">
-          Atlantic Highlands is a residential borough in Monmouth County, New Jersey with a
-          population of approximately 4,400. The borough operates under a mayor-council form
-          of government. The following analysis covers the borough's financial performance
+          {TOWN.about?.town ? `${TOWN.about.town} ` : ""}The following analysis covers the borough's financial performance
           based on extracted data from annual audits and financial statements.
         </p>
       </div>
@@ -237,13 +236,10 @@ function SchoolNarrative({
       <div className="prose prose-sm max-w-none">
         <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <AcademicCapIcon className="w-5 h-5 text-orange-600" />
-          Atlantic Highlands School District - Financial Overview
+          {TOWN.name} School District - Financial Overview
         </h2>
         <p className="text-gray-600 leading-relaxed">
-          The Atlantic Highlands Elementary School (AHES) serves pre-K through 8th grade. The
-          district is part of the Henry Hudson Regional School District (Tri-District) which
-          also includes Highlands Elementary and Henry Hudson Regional High School. The
-          following analysis covers the district's financial performance from comprehensive
+          {TOWN.about?.school ? `${TOWN.about.school} ` : ""}The following analysis covers the district's financial performance from comprehensive
           annual financial reports (CAFRs) and annual management reports (AMRs).
         </p>
       </div>

@@ -10,7 +10,7 @@ discriminator so the editor can dispatch to the right apply handler.
 Tools exposed to Claude
 -----------------------
 Read tools (deterministic, executed server-side):
-  - search_chunks                  RAG over indexed AH documents
+  - search_chunks                  RAG over the indexed town documents
   - read_deck                      Return the live deck sections (compact JSON)
   - read_react_component_source    Fetch full TSX for one react_component section
 
@@ -39,22 +39,23 @@ from typing import AsyncGenerator, Optional
 import anthropic
 from sqlalchemy.orm import Session
 
-from config import ANTHROPIC_API_KEY
+from config import api_key
 from database import SessionLocal
+from municipality import TOWN, place
 from services.rag_search import search_chunks
 
 log = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """You are an expert analyst helping the user build a presentation about Atlantic Highlands, NJ municipal affairs.
+SYSTEM_PROMPT = """You are an expert analyst helping the user build a presentation about __PLACE__ municipal affairs.
 
 You can:
-  1. Answer questions about the deck or the Atlantic Highlands document corpus.
+  1. Answer questions about the deck or the __TOWN_NAME__ document corpus.
   2. Propose section content via the propose_* tools.
 
 GROUND RULES
 - ALWAYS call read_deck first when asked to revise/shorten/expand/cite an existing section.
-- Always call search_chunks to ground claims in indexed AH documents before drafting.
+- Always call search_chunks to ground claims in indexed __SHORT_NAME__ documents before drafting.
 - NEVER mutate the deck directly. Use a propose_* tool and let the user Apply or Discard:
     propose_section_edit       — replace an existing narrative section's body
     propose_new_section        — insert a brand new narrative section
@@ -80,8 +81,8 @@ The TSX runs in a sandboxed `react-live` environment. You have these globals —
 - React + hooks: `useState`, `useMemo`, `useCallback`, `useEffect`
 - Recharts: `ResponsiveContainer`, `LineChart`, `BarChart`, `PieChart`, `AreaChart`, `Line`, `Bar`, `Pie`, `Area`, `XAxis`, `YAxis`, `CartesianGrid`, `Tooltip`, `Legend`, `Cell`
 - Lucide icons: `TrendingUp`, `TrendingDown`, `AlertTriangle`, `CheckCircle2`, `Calendar`, `DollarSign`, `Users`, `FileText`, `Globe`
-- AH primitives: `KPICard({label, value, delta?, trend?, sub?})`, `Callout({kind, title?, children})`, `Stat({label, value})`, `Section({title?, children})`
-- `BRAND` constant: "#385854" (AH brand color, use for chart series)
+- Deck primitives: `KPICard({label, value, delta?, trend?, sub?})`, `Callout({kind, title?, children})`, `Stat({label, value})`, `Section({title?, children})`
+- `BRAND` constant: "__BRAND_COLOR__" (__SHORT_NAME__ brand color, use for chart series)
 
 NO `window`, `fetch`, `document`, `localStorage`. Any reference throws a clean ReferenceError.
 
@@ -103,6 +104,13 @@ For layout / column / new computed field changes, call read_react_component_sour
 the full TSX, then propose_react_component with the SAME `name` (the editor offers a Replace affordance when
 names match — the existing `data` is preserved).
 """
+for _token, _value in {
+    "__PLACE__": place(),
+    "__TOWN_NAME__": TOWN.name,
+    "__SHORT_NAME__": TOWN.short_name,
+    "__BRAND_COLOR__": TOWN.brand_color,
+}.items():
+    SYSTEM_PROMPT = SYSTEM_PROMPT.replace(_token, _value)
 
 
 def _tool_defs() -> list[dict]:
@@ -112,7 +120,7 @@ def _tool_defs() -> list[dict]:
         # ── Read tools (server-side) ─────────────────────────────────────────
         {
             "name": "search_chunks",
-            "description": "Search passages across the indexed Atlantic Highlands document corpus.",
+            "description": f"Search passages across the indexed {TOWN.name} document corpus.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -523,11 +531,11 @@ async def stream_deck_chat(
     deep_thinking: bool = False,
     attachments: Optional[list[dict]] = None,
 ) -> AsyncGenerator[str, None]:
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         yield _sse("error", {"content": "ANTHROPIC_API_KEY not configured"})
         return
 
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.AsyncAnthropic(api_key=api_key("ANTHROPIC_API_KEY"))
     tools = _tool_defs()
     # Cache the tool defs — identical across the 6-iteration agentic loop.
     if tools:

@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 /**
  * EnhancedDocumentChatModal — document-scoped chat modal with full SSE
@@ -45,7 +46,7 @@ function newId(prefix: string): string {
 }
 
 export default function EnhancedDocumentChatModal({
-    document: doc, isOpen, onClose, brandColor = "#385854",
+    document: doc, isOpen, onClose, brandColor = TOWN.brand_color,
 }: Props) {
     const router = useRouter();
     const [messages, setMessages] = useState<ChatMessage[]>([]);

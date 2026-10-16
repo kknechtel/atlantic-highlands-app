@@ -29,7 +29,7 @@ from typing import Optional
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY
+from config import api_key
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ def extract_events(
     can map to a clean 4xx. Per-event parse glitches are silently
     dropped and surfaced in `notes`.
     """
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY not configured")
     if mime_type not in ALLOWED_MIME_TYPES:
         raise RuntimeError(f"unsupported image type: {mime_type}")
@@ -141,7 +141,7 @@ def extract_events(
         )
 
     b64 = base64.b64encode(image_bytes).decode("ascii")
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
 
     resp = client.messages.create(
         model=MODEL,

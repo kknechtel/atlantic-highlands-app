@@ -1,36 +1,46 @@
-// Cloudflare Worker: ahnj.com proxy for the scraper.
+// Cloudflare Worker: town-site proxy for the scraper.
 //
-// Why this exists: www.ahnj.com (54.175.134.164, also AWS us-east-1)
-// firewalls inbound traffic from other AWS source IPs, so our EC2-hosted
-// scraper can't open TCP to it. This Worker runs on Cloudflare's edge,
-// fetches the target URL from a residential-class IP, and returns the
-// bytes verbatim. The scraper rewrites ahnj.com URLs through here.
+// Why this exists: some town sites firewall inbound traffic from AWS source
+// IPs (the original case: www.ahnj.com, itself on AWS us-east-1), so an
+// EC2-hosted scraper can't open TCP to them. This Worker runs on Cloudflare's
+// edge, fetches the target URL from a residential-class IP, and returns the
+// bytes verbatim. The scraper rewrites URLs of sources marked
+// `"proxy": true` in sources.json through here.
 //
 // Deploy:
 //   cd workers/ahnj-proxy
+//   # set ALLOWED_HOSTS in wrangler.toml to the proxied sources' hosts
 //   npx wrangler@latest login
 //   npx wrangler@latest secret put PROXY_SECRET   # paste a random 32+ char secret
 //   npx wrangler@latest deploy                    # prints the worker URL
 //
-// Then on the EC2:
+// Then on the server:
 //   systemctl edit ah-api
 //     [Service]
-//     Environment="AHNJ_PROXY_URL=https://ahnj-proxy.<your-account>.workers.dev"
-//     Environment="AHNJ_PROXY_SECRET=<same secret>"
+//     Environment="SCRAPER_PROXY_URL=https://<worker name>.<your-account>.workers.dev"
+//     Environment="SCRAPER_PROXY_SECRET=<same secret>"
 //   systemctl restart ah-api
+// (The scraper also reads the older AHNJ_PROXY_URL / AHNJ_PROXY_SECRET names.)
 //
 // Security model: shared-secret header + host allowlist. Without the
 // secret, the Worker 403s; even with the secret it will only fetch the
 // allowlisted hosts, so it can't be turned into a generic open proxy.
 
-// Hosts the EC2 scraper can't reach directly. ahnj.com firewalls AWS source
-// IPs; highlands-nj.municodemeetings.com appears to throttle datacenter IPs
-// (pagination returns ~6 docs vs. ~600 from a residential IP).
-const ALLOWED_HOSTS = new Set([
-  "www.ahnj.com",
-  "ahnj.com",
-  "highlands-nj.municodemeetings.com",
-]);
+// Hosts the scraper can't reach directly: the ALLOWED_HOSTS var in
+// wrangler.toml (comma-separated). The default is the original deployment's
+// list: ahnj.com firewalls AWS source IPs; highlands-nj.municodemeetings.com
+// appears to throttle datacenter IPs (pagination returns ~6 docs vs. ~600
+// from a residential IP).
+const DEFAULT_ALLOWED_HOSTS = "www.ahnj.com,ahnj.com,highlands-nj.municodemeetings.com";
+
+function allowedHosts(env) {
+  return new Set(
+    (env.ALLOWED_HOSTS || DEFAULT_ALLOWED_HOSTS)
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
 
 const FORWARD_REQUEST_HEADERS = [
   "user-agent",
@@ -76,7 +86,7 @@ export default {
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
       return new Response("only http(s) targets", { status: 400 });
     }
-    if (!ALLOWED_HOSTS.has(parsed.hostname.toLowerCase())) {
+    if (!allowedHosts(env).has(parsed.hostname.toLowerCase())) {
       return new Response(`host not allowed: ${parsed.hostname}`, { status: 403 });
     }
 

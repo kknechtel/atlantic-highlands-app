@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, text as sql_text
 from sqlalchemy.orm import Session
 
+from config import PUBLIC_WEB_ORIGIN
 from database import get_db
 from models.user import User, InviteToken
 from models.document import Document, Project
@@ -210,7 +211,7 @@ def create_invite(
     db.commit()
 
     # Build the invite URL — frontend will read the ?invite= param
-    base_url = "https://ahnj.info"
+    base_url = PUBLIC_WEB_ORIGIN
     invite_url = f"{base_url}?invite={token}"
 
     return InviteResponse(
@@ -538,3 +539,74 @@ def list_usage_rows(
 # Still NOT instrumented:
 #   - api/scripts/extract_*.py, enrich_all.py — batch CLI jobs run outside
 #     the API. Each is a 5-line addition to call record_usage with user_id=None.
+
+
+# ── Settings (API keys) ──────────────────────────────────────────────────────
+
+
+class SettingUpdate(BaseModel):
+    value: str
+
+
+def _setting_view(key: str) -> dict:
+    from config import _get
+    from services.app_settings import SETTINGS, saved
+
+    meta = SETTINGS[key]
+    in_app = (saved().get(key) or "").strip()
+    in_env = (_get(key) or "").strip()
+    value = in_app or in_env
+    if not value:
+        shown = None
+    elif meta["secret"]:
+        shown = f"…{value[-4:]}" if len(value) > 8 else "set"
+    else:
+        shown = value
+    return {
+        "key": key,
+        "label": meta["label"],
+        "help": meta["help"],
+        "secret": meta["secret"],
+        "source": "app" if in_app else "environment" if in_env else None,
+        "value": shown,
+    }
+
+
+@router.get("/settings")
+def list_settings(admin: User = Depends(get_admin_user)):
+    from services.app_settings import SETTINGS, invalidate
+
+    invalidate()
+    return {"settings": [_setting_view(k) for k in SETTINGS]}
+
+
+@router.put("/settings/{key}")
+def save_setting(
+    key: str,
+    body: SettingUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    from services.app_settings import SETTINGS, save
+
+    if key not in SETTINGS:
+        raise HTTPException(status_code=404, detail="Unknown setting")
+    value = body.value.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Value is empty; use Remove to clear it")
+    save(db, key, value, admin.email)
+    return _setting_view(key)
+
+
+@router.delete("/settings/{key}")
+def clear_setting(
+    key: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    from services.app_settings import SETTINGS, clear
+
+    if key not in SETTINGS:
+        raise HTTPException(status_code=404, detail="Unknown setting")
+    clear(db, key)
+    return _setting_view(key)

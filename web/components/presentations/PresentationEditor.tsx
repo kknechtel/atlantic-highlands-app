@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -34,7 +35,7 @@ interface Props {
   initialPreviewing?: boolean;
 }
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 /** Mint a new section id locally — server's `_ensure_section_ids` accepts
  *  any non-empty string so we can add sections without a roundtrip. */

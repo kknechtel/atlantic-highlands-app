@@ -10,21 +10,24 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from config import GEMINI_API_KEY
+from config import api_key
 from services.llm_models import GEMINI_FLASH_LITE
 
 logger = logging.getLogger(__name__)
 
 _client = None
+_client_key = ""
 
 
 def _get_client():
-    global _client
-    if _client is None:
-        if not GEMINI_API_KEY:
-            raise RuntimeError("GEMINI_API_KEY not configured")
+    """Shared client, rebuilt when an admin changes the key."""
+    global _client, _client_key
+    key = api_key("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY not configured")
+    if _client is None or key != _client_key:
         from google import genai
-        _client = genai.Client(api_key=GEMINI_API_KEY)
+        _client, _client_key = genai.Client(api_key=key), key
     return _client
 
 

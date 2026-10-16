@@ -1,15 +1,19 @@
 [Unit]
-Description=Atlantic Highlands daily alert digest
+Description=Municipal hub daily alert digest
 After=network-online.target ah-api.service ah-scraper.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/atlantic-highlands/api
+# Paths and the env file keep the original deployment's names
+# (/opt/atlantic-highlands); adjust them when installing for another town.
 # Inherit ah-api's env (DATABASE_URL, AWS creds, DIGEST_FROM_EMAIL,
 # DIGEST_REPLY_TO, PUBLIC_WEB_ORIGIN). DIGEST_FROM_EMAIL must be a verified
 # SES identity (domain or address) or sends are silently dropped.
 EnvironmentFile=-/etc/atlantic-highlands.env
+# Which municipalities/<slug>/ profile this deployment serves.
+Environment=MUNICIPALITY=atlantic-highlands-nj
 
 ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.run_digest
 

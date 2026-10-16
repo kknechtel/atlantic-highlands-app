@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -39,7 +40,7 @@ interface Props {
  * in the AskAIPanel proposal preview.
  */
 export default function NarrativeBlock({
-  section, editable, onSave, onCitationClick, brandColor = '#385854',
+  section, editable, onSave, onCitationClick, brandColor = TOWN.brand_color,
 }: Props) {
   const body = section.body || '';
 

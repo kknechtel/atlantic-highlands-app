@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, EVENTS_URL } from "@/lib/municipality";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -27,7 +28,7 @@ import {
 import { useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 const mainTabs = [
   { name: "Home", href: "/", icon: ChartBarIcon, activeIcon: ChartBarSolid },
@@ -51,7 +52,7 @@ const moreItems: MoreItem[] = [
 // External — community subdomain. Rendered separately in the More sheet
 // with an "open in new tab" icon so users know they're leaving the
 // civic-research app.
-const COMMUNITY_APP_URL = "https://events.ahnj.info";
+const COMMUNITY_APP_URL = EVENTS_URL;
 
 const DISMISSED_CHAT_KEY = "ah_chat_dismissed";
 

@@ -1,11 +1,12 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAdminDocuments, type AdminDocumentRow } from "@/lib/api";
 import { CheckCircle2, XCircle, AlertTriangle, Search } from "lucide-react";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 type Tri = "" | "yes" | "no";
 

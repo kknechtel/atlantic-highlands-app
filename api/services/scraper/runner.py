@@ -15,23 +15,13 @@ import threading
 import uuid
 import mimetypes
 from datetime import datetime
+from functools import partial
 from typing import Optional
+from urllib.parse import urlparse
 
-from .crawlers import (
-    AHNJCrawler,
-    ECode360Crawler,
-    TriDistrictCrawler,
-    NJStateCrawler,
-    OPRACrawler,
-    PoliceCrawler,
-    FireCrawler,
-    CountyCrawler,
-    CensusCrawler,
-    HighlandsBoroughCrawler,
-    HighlandsMeetingsCrawler,
-    AHRecordingsCrawler,
-    HHRSDRecordingsCrawler,
-)
+from .config import SOURCES, RECORDING_SOURCES
+from .crawlers import CRAWLERS, DEFAULT_CRAWLER
+from municipality import TOWN
 from .scraper import BasicScraper
 from .utils import categorize_url, url_to_filename, url_to_descriptive_name, source_to_entity_type, source_to_municipality, detect_doc_type_from_name, detect_fiscal_year
 
@@ -50,7 +40,7 @@ MAX_PARALLEL_SITES = max(1, int(os.environ.get("SCRAPER_MAX_PARALLEL", "4")))
 
 # Global state for tracking scraper progress.
 # `per_site` is keyed by site_name and contains a sub-dict of the same metric set
-# so the UI can render a per-source progress strip ("ahnj.com: 312 found, 287 uploaded, 25 skipped").
+# so the UI can render a per-source progress strip ("example.gov: 312 found, 287 uploaded, 25 skipped").
 _scraper_status = {
     "running": False,
     "current_site": None,
@@ -76,6 +66,25 @@ def _empty_site_stats() -> dict:
         "started_at": None,
         "completed_at": None,
     }
+
+
+def site_crawlers() -> dict:
+    """{site_key: (display name, crawler factory)} for every configured source,
+    in sources.json order. site_key is the source's `site_key` (a short legacy
+    key the UI may send) or its name; the display name is its `label` or the
+    base_url host."""
+    table = {}
+    for group in (SOURCES, RECORDING_SOURCES):
+        for name, cfg in group.items():
+            kind = cfg.get("crawler") or DEFAULT_CRAWLER
+            cls = CRAWLERS.get(kind)
+            if cls is None:
+                logger.warning(f"Source {name}: unknown crawler {kind!r}, skipping")
+                continue
+            host = urlparse(cfg.get("base_url", "")).netloc
+            label = cfg.get("label") or (host[4:] if host.startswith("www.") else host) or name
+            table[cfg.get("site_key") or name] = (label, partial(cls, name))
+    return table
 
 
 def get_scraper_status() -> dict:
@@ -179,7 +188,8 @@ def _process_site_blocking(
                     if not yt_id:
                         continue
                     mdate = recording.get("meeting_date") or "undated"
-                    descriptive_name = f"HHRSD BOE - {mdate} - {doc_info.get('title') or yt_id}.youtube"
+                    name_prefix = doc_info.get("name_prefix") or "Meeting"
+                    descriptive_name = f"{name_prefix} - {mdate} - {doc_info.get('title') or yt_id}.youtube"
                     raw_filename = f"youtube_{yt_id}.json"
                     s3_key = f"recordings/youtube/{yt_id}"
                     # Test-and-claim atomically so two threads can't both pass
@@ -373,7 +383,7 @@ async def run_scraper(
     and creates Document records in the database.
 
     historical: when False, crawlers skip seed paths flagged as archive
-        material (AHNJ 2005-2013, older Planning Board archive trees). The
+        material (a source's historical_pages, e.g. old agenda archives). The
         UI "Skip historical archives" checkbox passes False.
     triggered_by: arbitrary string written to scraper_runs.triggered_by
         for later auditing — typically "ui:<user_id>", "schedule", or
@@ -409,10 +419,11 @@ async def run_scraper(
             project = db.query(Project).filter(Project.id == project_id).first()
         else:
             # Create a default scraper project
-            project = db.query(Project).filter(Project.name == "AH Scraped Documents").first()
+            project_name = f"{TOWN.short_name} Scraped Documents"
+            project = db.query(Project).filter(Project.name == project_name).first()
             if not project:
                 project = Project(
-                    name="AH Scraped Documents",
+                    name=project_name,
                     description="Documents automatically scraped from town and school websites",
                     entity_type="town",
                     created_by=user_id or str(uuid.uuid4()),
@@ -437,30 +448,13 @@ async def run_scraper(
             collapsed = re.sub(r"(\.[a-z0-9]{2,4})\1$", r"\1", fn.lower())
             existing_filenames.add(collapsed)
 
-        all_sites = sites or [
-            "ahnj", "ecode", "tri", "nj_state", "opra",
-            "police", "fire", "county", "census",
-            "highlands_borough", "highlands_meetings",
-            "ah_recordings", "hhrsd_recordings",
-        ]
-        all_uploaded = []
-
         # ── Crawl each site ───────────────────────────────────────
-        crawlers = {
-            "ahnj": ("ahnj.com", AHNJCrawler),
-            "ecode": ("ecode360.com", ECode360Crawler),
-            "tri": ("tridistrict.org", TriDistrictCrawler),
-            "nj_state": ("NJ State / Courts", NJStateCrawler),
-            "opra": ("OPRAmachine", OPRACrawler),
-            "police": ("Police/Crime Data", PoliceCrawler),
-            "fire": ("Fire/EMS Data", FireCrawler),
-            "county": ("Monmouth County", CountyCrawler),
-            "census": ("Census ACS Data", CensusCrawler),
-            "highlands_borough": ("highlandsnj.gov", HighlandsBoroughCrawler),
-            "highlands_meetings": ("highlands-nj.municodemeetings.com", HighlandsMeetingsCrawler),
-            "ah_recordings": ("AH meeting recordings (audio)", AHRecordingsCrawler),
-            "hhrsd_recordings": ("HHRSD BOE recordings (YouTube)", HHRSDRecordingsCrawler),
-        }
+        crawlers = site_crawlers()
+        # Accept a source's sources.json name as well as its site_key.
+        key_for = {name: cfg.get("site_key") or name
+                   for group in (SOURCES, RECORDING_SOURCES) for name, cfg in group.items()}
+        all_sites = [key_for.get(s, s) for s in sites] if sites else list(crawlers)
+        all_uploaded = []
 
         # Pre-populate the planned site list so the UI can render the full list
         # of sites (and their pending status) before any of them start.
@@ -473,7 +467,7 @@ async def run_scraper(
 
         # Run each site's full pipeline in a worker thread. Concurrency is
         # capped by MAX_PARALLEL_SITES — small municipal hosts don't love
-        # being hit by 13 parallel crawlers, and we want to leave headroom
+        # being hit by a dozen parallel crawlers, and we want to leave headroom
         # for the API itself.
         fallback_user_id = user_id or str(project.created_by)
         sem = asyncio.Semaphore(MAX_PARALLEL_SITES)

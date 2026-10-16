@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useMemo } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
@@ -12,11 +13,10 @@ interface Props {
   onSelect: (feature: ParcelFeature) => void;
 }
 
-// Atlantic Highlands borough — rough center of the parcel set. Zoom 14 frames
-// the whole town comfortably on a typical viewport without cutting off the
-// peripheral parcels along the harbor or Memorial Pkwy.
-const AH_CENTER: [number, number] = [40.4117, -74.0354];
-const AH_ZOOM = 14;
+// Rough center of the town's parcel set, and a zoom that frames the whole
+// town on a typical viewport.
+const MAP_CENTER: [number, number] = TOWN.map.center;
+const MAP_ZOOM = TOWN.map.zoom;
 
 /**
  * Color a parcel by its assessment relative to the precomputed quantile bins.
@@ -41,7 +41,7 @@ export default function ParcelMap({ features, bins, colors, onSelect }: Props) {
   const layerKey = `${features.length}-${bins.join(",")}`;
 
   return (
-    <MapContainer center={AH_CENTER} zoom={AH_ZOOM} className="w-full h-full" preferCanvas>
+    <MapContainer center={MAP_CENTER} zoom={MAP_ZOOM} className="w-full h-full" preferCanvas>
       {/* OpenStreetMap base tiles — free for non-commercial use within OSM's
           tile-usage policy. For production we'd switch to a CDN provider
           (Stadia, MapTiler) that has a free tier + better SLAs. */}

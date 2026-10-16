@@ -22,7 +22,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable
 
-from config import GEMINI_API_KEY
+from config import api_key
 from services.llm_models import GEMINI_FLASH_LITE
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ PROMPT = """Transcribe this page of a municipal document exactly as printed, for
 
 
 def enabled() -> bool:
-    return bool(GEMINI_API_KEY)
+    return bool(api_key("GEMINI_API_KEY"))
 
 
 def _page_png(src, i: int) -> bytes:

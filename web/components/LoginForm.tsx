@@ -1,11 +1,12 @@
 "use client";
+import { TOWN, SITE_HOST } from "@/lib/municipality";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/app/contexts/AuthContext";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 const HAS_GOOGLE = !!process.env.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID;
 
 // Detect events-app subdomain to swap branding + Google-first emphasis.
@@ -67,7 +68,7 @@ export default function LoginForm() {
   const isInviteFlow = inviteToken && inviteValid;
   const eventsApp = isEventsApp();
   const headerBg = eventsApp ? "#1d7a6c" : brandColor;
-  const headerTitle = eventsApp ? "Around Town" : "Atlantic Highlands";
+  const headerTitle = eventsApp ? "Around Town" : TOWN.name;
   const headerSub = eventsApp
     ? "Events · check-ins · chat"
     : "Document Intelligence Platform";
@@ -81,7 +82,7 @@ export default function LoginForm() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/events-logo.png"
-              alt="ahnj.info"
+              alt={SITE_HOST}
               className="w-16 h-16 object-contain"
             />
           </div>
@@ -223,12 +224,12 @@ export default function LoginForm() {
           </a>
         ) : (
           <p className="text-center text-xs text-gray-400 mt-4">
-            Borough of Atlantic Highlands, NJ
+            {TOWN.official_name}, {TOWN.state}
           </p>
         )}
         {/* events.* rewrites every path into /events-app, so link the main domain. */}
         <a
-          href={eventsApp ? "https://ahnj.info/privacy" : "/privacy"}
+          href={eventsApp ? `${TOWN.site_url}/privacy` : "/privacy"}
           className="block text-center text-[11px] text-gray-400 hover:text-gray-600 mt-2"
         >
           Privacy Policy

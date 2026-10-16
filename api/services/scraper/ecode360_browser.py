@@ -52,6 +52,20 @@ class BrowserPages:
         self._page = self._ctx.new_page()
         return self
 
+    def capture_json(self, url_fragment: str) -> list:
+        """Collect JSON bodies of responses whose URL contains `url_fragment`
+        (the page's own API calls, made with its own headers and cookies)."""
+        bucket: list = []
+
+        def on_response(r):
+            if url_fragment in r.url and "json" in (r.headers.get("content-type") or ""):
+                try:
+                    bucket.append(r.json())
+                except Exception:
+                    pass
+        self._page.on("response", on_response)
+        return bucket
+
     def get(self, url: str) -> str | None:
         try:
             self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -62,7 +76,23 @@ class BrowserPages:
             else:
                 logger.warning("ecode360: challenge not cleared for %s", url)
                 return None
-            self._page.wait_for_timeout(1000)
+            # Listings can render after load (or after a throttled first paint):
+            # wait for document links, but return what's there if none appear.
+            try:
+                self._page.wait_for_selector("a[href*='/document/']", timeout=20000)
+                # Long lists render in batches: wait until the count stops growing.
+                last, stable = -1, 0
+                for _ in range(30):
+                    n = self._page.locator("a[href*='/document/']").count()
+                    stable = stable + 1 if n == last else 0
+                    if stable >= 2:
+                        break
+                    last = n
+                    self._page.mouse.wheel(0, 20000)
+                    self._page.wait_for_timeout(1500)
+            except Exception:
+                pass
+            self._page.wait_for_timeout(500)
             return self._page.content()
         except Exception as exc:
             logger.warning("ecode360: browser fetch failed for %s: %s", url, exc)
@@ -123,21 +153,34 @@ class ClearedDownloader(BasicScraper):
         return None, fname
 
 
+def api_documents(payloads: list) -> list[dict]:
+    """Documents from the library's own JSON (`/api/<code>/pub-doc/type/<id>`),
+    which carries the full list; the rendered page shows only part of it."""
+    for body in reversed(payloads):
+        if isinstance(body, dict) and isinstance(body.get("documents"), list):
+            return body["documents"]
+    return []
+
+
 class ECode360Crawler:
-    """Atlantic Highlands' eCode360 library: every resolution, minutes, agendas,
-    budgets, legislation. Titles carry the resolution number ("2026-068 …")."""
+    """A town's eCode360 library: resolutions, minutes, agendas, budgets,
+    legislation. Settings come from the source's sources.json entry: the
+    customer code and categories are read from `pages_to_crawl`
+    ("/AT0153/documents/Resolutions" …). Titles carry the resolution number."""
 
-    CUSTOMER = "AT0153"
     # library folder → doc_type hint
-    CATEGORIES = {"Resolutions": "resolution", "Minutes": "minutes", "Agendas": "agenda", "Budgets": "budget",
-                  "Legislation": "ordinance", "Misc._Documents": None, "Comprehensive_Plans": "planning"}
+    DOC_TYPES = {"Resolutions": "resolution", "Minutes": "minutes", "Agendas": "agenda", "Budgets": "budget",
+                 "Legislation": "ordinance", "Comprehensive_Plans": "planning"}
 
-    def __init__(self):
-        self.source_name = "ecode360"
-        self.base_url = "https://ecode360.com"
+    def __init__(self, source_name: str = "ecode360"):
+        from .config import RECORDING_SOURCES, SOURCES
+        self.source_name = source_name
+        self.config = SOURCES.get(source_name) or RECORDING_SOURCES.get(source_name) or {}
+        self.base_url = self.config.get("base_url", "https://ecode360.com").rstrip("/")
         self.historical = False
         self.progress_callback = None
-        warm = f"{self.base_url}/{self.CUSTOMER}/documents/Resolutions"
+        self.pages = [p for p in self.config.get("pages_to_crawl", []) if "/documents/" in p]
+        warm = self.base_url + (self.pages[0] if self.pages else "/")
         # The runner downloads with crawler.downloader when present.
         self.basic = self.downloader = ClearedDownloader(warm, delay=max(REQUEST_DELAY, 1.0))
 
@@ -145,16 +188,39 @@ class ECode360Crawler:
         found: list[dict] = []
         seen: set[str] = set()
         min_year = None if self.historical else int(os.getenv("ECODE360_MIN_YEAR", "0")) or None
+        if not self.pages:
+            self.basic.errors.append(f"{self.source_name}: no /<code>/documents/<Category> pages_to_crawl configured")
+            return []
         try:
             with BrowserPages() as browser:
-                for cat, doc_type in self.CATEGORIES.items():
-                    url = f"{self.base_url}/{self.CUSTOMER}/documents/{cat}"
+                api = browser.capture_json("/pub-doc/type/")
+                for path in self.pages:
+                    cat = path.rstrip("/").split("/")[-1]
+                    customer = path.strip("/").split("/")[0]
+                    doc_type = self.DOC_TYPES.get(cat)
+                    url = self.base_url + path
+                    api.clear()
                     html = browser.get(url)
                     if not html:
                         self.basic.errors.append(f"ecode360: could not load {url}")
                         continue
                     n = 0
-                    for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
+                    for d in api_documents(api):
+                        if not d.get("id") or d.get("private"):
+                            continue
+                        full = f"{self.base_url}/{customer}/document/{d['id']}.{d.get('extension') or 'pdf'}"
+                        year = int(str(d.get("date") or "0")[:4] or 0)
+                        if full in seen or (min_year and year and year < min_year):
+                            continue
+                        seen.add(full)
+                        item = {"url": full, "title": f"{cat.replace('_', ' ').rstrip('.')} — {' '.join((d.get('title') or '').split())}",
+                                "source_page": url, "category": cat.replace("_", " "), "doc_date": d.get("date")}
+                        if doc_type:
+                            item["doc_type"] = doc_type
+                        found.append(item)
+                        n += 1
+                    # Fallback: links in the rendered page, if the API response didn't arrive.
+                    for a in ([] if n else BeautifulSoup(html, "html.parser").find_all("a", href=True)):
                         href = a["href"]
                         if "/document/" not in href or ".pdf" not in href.lower():
                             continue

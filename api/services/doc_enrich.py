@@ -2,9 +2,9 @@
 One cheap model call per document → title, summary, and classification.
 
 Input is the first ~10k chars of extracted text plus filename / URL /
-source-site hints. Hints guide the model but the text wins: a
-"highlands_borough" source that is clearly Atlantic Highlands minutes
-gets municipality=atlantic_highlands.
+source-site hints. Hints guide the model but the text wins: a source
+tagged for a neighboring town whose text is clearly the primary town's
+minutes gets the primary town's municipality id.
 
 Writes overwrite scraper guesses unless the field is listed in
 metadata.locked_fields (set when a person edits it in the UI).
@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from municipality import entities, entity, entity_ids, place
 from services.gemini_json import generate_json
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ DOC_TYPES = [
     "notice", "newsletter", "presentation", "policy", "report",
     "performance_report", "election", "menu", "calendar", "form", "general",
 ]
-MUNICIPALITIES = ["atlantic_highlands", "highlands", "hhrsd", "regional", "state"]
+MUNICIPALITIES = entity_ids()
 FIELDS = ("title", "doc_type", "body", "municipality", "department", "doc_date", "fiscal_year")
 
 SCHEMA = {
@@ -50,20 +51,24 @@ SCHEMA = {
     "required": ["title", "summary", "doc_type", "municipality", "confidence"],
 }
 
-PROMPT = """You index public records for Atlantic Highlands, NJ. Read the document excerpt and return JSON.
+def _government_lines() -> str:
+    lines = []
+    for e in entities():
+        desc = e.get("index_hint") or (f"{e['label']} — {e['note']}" if e.get("note") else e["label"])
+        lines.append(f"- {e['id']}: {desc}")
+    return "\n".join(lines)
+
+
+PROMPT = """You index public records for {place}. Read the document excerpt and return JSON.
 
 Governments (municipality):
-- atlantic_highlands: Borough of Atlantic Highlands (council, planning board, harbor commission, zoning, police, DPW)
-- highlands: Borough of Highlands — a DIFFERENT neighboring town (Navesink Ave, "Borough of Highlands", Highlands council)
-- hhrsd: Henry Hudson Regional School District / Tri-District / AH Elementary / Highlands Elementary / Henry Hudson Regional HS
-- regional: Monmouth County or other regional bodies
-- state: State of New Jersey agencies
+{governments}
 Decide from the TEXT (letterhead, seal, addresses, body names). Source hints can be wrong.
 
 Fields:
 - title: concise and specific, <= 90 chars. Pattern "<Short body> — <Kind>, <Mon D, YYYY>" when there is a meeting or date,
-  e.g. "Highlands Council — Minutes, Jan 1, 2026", "AH Planning Board — Agenda, Apr 2, 2026",
-  "HHRSD — 2025-26 User-Friendly Budget", "Ordinance 2026-07 — Short-Term Rentals". Never a bare filename or number.
+  e.g. "Council — Minutes, Jan 1, 2026", "Planning Board — Agenda, Apr 2, 2026",
+  "School District — 2025-26 User-Friendly Budget", "Ordinance 2026-07 — Short-Term Rentals". Never a bare filename or number.
 - summary: one plain sentence saying what it is, then 2-4 short "- " bullets with the concrete specifics
   (actions taken, votes, dollar amounts, addresses, names of applicants). No preamble like "This document".
   If the excerpt is a menu, calendar, or form, one sentence is enough.
@@ -123,6 +128,8 @@ def analyze(doc, text: str) -> EnrichResult:
     """Run the model on one document. Does not touch the DB."""
     meta = doc.metadata_ or {}
     prompt = PROMPT.format(
+        place=place(),
+        governments=_government_lines(),
         filename=doc.filename or "",
         source_site=meta.get("source_site") or "upload",
         source_url=meta.get("source_url") or "",
@@ -173,8 +180,9 @@ def apply(doc, result: EnrichResult) -> dict:
         doc.notes = result.summary
     # Keep the legacy category column consistent for code that still filters on it.
     muni = result.changes.get("municipality")
-    if muni in ("atlantic_highlands", "highlands", "hhrsd") and "category" not in locked:
-        doc.category = "school" if muni == "hhrsd" else "town"
+    kind = (entity(muni) or {}).get("kind")
+    if kind in ("town", "school") and "category" not in locked:
+        doc.category = "school" if kind == "school" else "town"
     meta.update({
         "enrich_version": ENRICH_VERSION,
         "enriched_at": datetime.utcnow().isoformat(),

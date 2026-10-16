@@ -25,8 +25,7 @@ import os
 import sys
 import time
 
-sys.path.insert(0, "/opt/atlantic-highlands/api")
-# Local dev fallback so `python -m scripts.transcribe_pending` works from api/
+# So `python -m scripts.transcribe_pending` resolves api/ modules from anywhere.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logging.basicConfig(

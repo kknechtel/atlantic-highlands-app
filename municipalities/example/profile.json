@@ -1,0 +1,165 @@
+{
+  "slug": "example",
+  "name": "Example",
+  "official_name": "Town of Example",
+  "short_name": "EX",
+  "kind": "town",
+  "state": "ST",
+  "state_name": "Example State",
+  "county": "Example County",
+  "timezone": "America/New_York",
+  "site_name": "Example Town Hub",
+  "site_url": "https://example-town.org",
+  "contact_email": "admin@example.org",
+  "official_site": "https://www.example-town.gov",
+  "town_hall": {
+    "name": "Example Town Hall",
+    "address": "1 Main St, Example, ST 00000"
+  },
+  "map": {
+    "center": [
+      40.0,
+      -74.0
+    ],
+    "zoom": 14
+  },
+  "brand_color": "#385854",
+  "banner_alt": "View of Example",
+  "events_area": [
+    "Example"
+  ],
+  "fiscal_year": "calendar year",
+  "about": {
+    "town": "Example is a town in Example County, Example State (pop ~10,000).",
+    "school": "Example School District serves the town's public schools.",
+    "school_finance_note": "",
+    "school_trend_note": ""
+  },
+  "census": {
+    "state_fips": "00",
+    "county_fips": "000",
+    "place_fips": "00000"
+  },
+  "opra_body": "example",
+  "s3_bucket": "example-town-documents",
+  "db_name": "example_town",
+  "school_constituent_towns": [
+    "Example"
+  ],
+  "department_aliases": {
+    "Police": [
+      "expd",
+      "example police",
+      "example police department"
+    ],
+    "Fire": [
+      "exfd",
+      "example fire",
+      "example fire department"
+    ]
+  },
+  "search_synonyms": {
+    "ex": [
+      "example",
+      "town of example"
+    ]
+  },
+  "finance": {
+    "population": 10000,
+    "school_enrollment": 1500,
+    "school_budget": "~$25M",
+    "muni_revenue_notes": [],
+    "muni_fund_balance_notes": []
+  },
+  "opra": {
+    "portal_label": "the town's online records request form",
+    "local_rules": [
+      "- Custodian: Municipal Clerk, Town of Example",
+      "  Contact: (555) 555-0100"
+    ],
+    "agencies": {
+      "borough": {
+        "agency_name": "Town of Example",
+        "abbr": "the Town",
+        "address_line": "1 Main St, Example, ST 00000",
+        "phone": "(555) 555-0100",
+        "email": "clerk@example-town.gov",
+        "custodian_name": "Jane Doe",
+        "custodian_title": "Municipal Clerk",
+        "submission_note": "Submit by email to clerk@example-town.gov or in person at 1 Main St.",
+        "govpilot_url": "",
+        "info": [
+          "=== TOWN OF EXAMPLE - RECORDS REQUEST INFO ===",
+          "Custodian: Jane Doe, Municipal Clerk",
+          "Email: clerk@example-town.gov"
+        ],
+        "fax": ""
+      },
+      "school": {
+        "agency_name": "Example School District",
+        "abbr": "ESD",
+        "address_line": "2 School Rd, Example, ST 00000",
+        "phone": "(555) 555-0200",
+        "email": "records@example-schools.org",
+        "custodian_name": "John Doe",
+        "custodian_title": "Board Secretary",
+        "submission_note": "Email the completed form to records@example-schools.org.",
+        "form_url": "",
+        "info": [
+          "=== EXAMPLE SCHOOL DISTRICT - RECORDS REQUEST INFO ===",
+          "Custodian: John Doe, Board Secretary",
+          "Email: records@example-schools.org"
+        ],
+        "fax": ""
+      }
+    }
+  },
+  "entities": [
+    {
+      "id": "example_town",
+      "label": "Town of Example",
+      "short": "Example",
+      "kind": "town",
+      "primary": true,
+      "index_hint": "Town of Example (council, planning board, zoning, police, public works)",
+      "aliases": [
+        "example",
+        "town of example"
+      ]
+    },
+    {
+      "id": "example_schools",
+      "label": "Example School District",
+      "short": "School District",
+      "kind": "school",
+      "abbr": "ESD",
+      "fiscal_year": "July-June school year",
+      "index_hint": "Example School District (board of education, schools, budgets)",
+      "aliases": [
+        "example school district",
+        "esd",
+        "example schools"
+      ]
+    },
+    {
+      "id": "regional",
+      "label": "Example County",
+      "short": "County",
+      "kind": "regional",
+      "index_hint": "Example County or other regional bodies",
+      "aliases": [
+        "example county"
+      ]
+    },
+    {
+      "id": "state",
+      "label": "Example State",
+      "short": "State",
+      "kind": "state",
+      "index_hint": "State agencies and courts",
+      "aliases": [
+        "example state"
+      ]
+    }
+  ]
+}

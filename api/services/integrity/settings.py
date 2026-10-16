@@ -1,5 +1,5 @@
 """
-Integrity settings for the Atlantic Highlands deployment.
+Integrity settings for this deployment (New Jersey rule pack).
 
 Mirrors the New Jersey rule pack in civic-lens (jurisdictions/us/nj): statutory
 thresholds and citations the rules quote. Update here when DLGS re-indexes them.
@@ -17,13 +17,20 @@ class _Entity:
 
 
 class _Deployment:
-    primary_entity = _Entity("atlantic_highlands")
+    """The bits of the deployment the integrity engine reads, from the
+    municipality profile (municipalities/<slug>/profile.json)."""
     integrity = INTEGRITY
-    # HHRSD (and its predecessors) run July–June; the borough runs on the calendar year.
-    _SCHOOL = {"hhrsd", "ahsd", "hsd", "hhrs"}
+
+    @property
+    def primary_entity(self) -> _Entity:
+        from municipality import primary_entity
+        return _Entity(primary_entity()["id"])
 
     def fiscal_year_for(self, year: int, month: int, entity_key: str | None = None) -> str:
-        if (entity_key or "") not in self._SCHOOL:
+        # School districts run July–June; municipalities in NJ on the calendar year.
+        from municipality import entity
+        ent = entity(entity_key) if entity_key else None
+        if not ent or ent.get("kind") != "school":
             return str(year)
         first = year if month >= 7 else year - 1
         return f"{first}-{(first + 1) % 100:02d}"

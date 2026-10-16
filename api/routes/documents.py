@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.document import Document, Project
 from models.user import User
+from municipality import TOWN, entities, primary_entity
 from auth import (
     get_current_user,
     get_admin_user,
@@ -603,7 +604,7 @@ def bulk_import(
     registers .ref pointers to every file it finds. A non-admin user could
     use it to enumerate and (via download_file) read anything the API
     process can read. In practice this is a dev-only convenience for
-    ingesting a local Box folder; production should not call it.
+    ingesting a local folder; production should not call it.
     """
     directory = req.directory
     if not os.path.isdir(directory):
@@ -616,11 +617,11 @@ def bulk_import(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
     else:
-        project = db.query(Project).filter(Project.name == "Knechtel Documents").first()
+        project = db.query(Project).filter(Project.name == "Imported Documents").first()
         if not project:
             project = Project(
-                name="Knechtel Documents",
-                description="Bulk imported from local Box folder",
+                name="Imported Documents",
+                description="Bulk imported from a local folder",
                 entity_type="general",
                 created_by=user.id,
             )
@@ -687,11 +688,11 @@ def bulk_import(
 
 def _categorize_file(filename: str, rel_path: str) -> str:
     lower = (filename + " " + rel_path).lower()
-    school_keywords = ["ahes", "hhrs", "hhrpk", "boe", "tridistrict", "tri-district",
-                       "school", "board of education", "budget presentation"]
+    school_aliases = [a for e in entities() if e.get("kind") == "school" for a in e.get("aliases", [])]
+    school_keywords = school_aliases + ["boe", "school", "board of education", "budget presentation"]
     if any(kw in lower for kw in school_keywords):
         return "school"
-    town_keywords = ["atlantic highlands", "borough", "adopted budget", "audit report", "ads"]
+    town_keywords = primary_entity().get("aliases", []) + [TOWN.kind, "adopted budget", "audit report", "ads"]
     if any(kw in lower for kw in town_keywords):
         return "town"
     return "general"

@@ -37,7 +37,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from config import ANTHROPIC_API_KEY, GEMINI_API_KEY
+from config import api_key
+from municipality import TOWN, entities, profile
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ NJ SCHOOL REVENUE STRUCTURE:
     * Preschool Education Aid (PEA) — only for districts with state-approved preschool
     * School Choice Aid — for Interdistrict Public School Choice districts
     * Extraordinary Special Education Aid — paid in arrears for individual SpEd students >$40K (lumpy)
-    * Adjustment Aid — LARGELY PHASED OUT under S2 (2018); FY26 budget eliminated for most. Don't expect for HHRSD.
+    * Adjustment Aid — LARGELY PHASED OUT under S2 (2018); FY26 budget eliminated for most. Don't expect it for this district.
     * Stabilization / Hold-Harmless Aid (created FY25/FY26 to limit cuts to losing districts)
     * Educational Adequacy Aid (former Abbotts, narrow)
 - Federal Aid: IDEA, Title I-IV, Perkins (in Special Revenue Fund 20, NOT counted as state aid)
@@ -92,12 +93,12 @@ Produce JSON:
 Output ONLY valid JSON. No fences."""
 
 
-REVENUE_PROMPT_MUNI = """You are an analyst examining REVENUE on a NJ MUNICIPAL financial statement (Borough of Atlantic Highlands).
+REVENUE_PROMPT_MUNI = """You are an analyst examining REVENUE on a NJ MUNICIPAL financial statement (__OFFICIAL_NAME__).
 
 CRITICAL: NJ municipalities use REGULATORY BASIS accounting (per N.J.A.C. 5:30, NOT GAAP). The Annual Financial Statement (AFS) is filed with DLGS each February 10 for calendar-year municipalities.
 
 ENTITY: {entity_name}
-FISCAL YEAR: {fiscal_year}  (NJ municipalities default to Calendar Year, Jan-Dec; AH is calendar year)
+FISCAL YEAR: {fiscal_year}  (NJ municipalities default to Calendar Year, Jan-Dec; __TOWN_NAME__ is __FISCAL_YEAR__)
 TYPE: {statement_type}
 TOTAL REVENUE: {total_revenue}
 
@@ -113,9 +114,9 @@ NJ MUNICIPAL CURRENT FUND REVENUE STRUCTURE:
 - State Aid:
     * Energy Tax Receipts (ETR) — historically split with CMPTRA but for FY26+ CMPTRA was FULLY CONSOLIDATED INTO ETR; expect $0 CMPTRA on FY26+ AFS without flagging it as a decline
     * Garden State Trust (small, dedicated)
-    * Transitional Aid (only for distressed municipalities — NOT typical for AH)
-    * Highlands Protection Fund Aid (NW NJ Highlands Council municipalities ONLY — NOT Atlantic Highlands; the name is coincidence)
-- Local Revenue / Misc Anticipated:
+    * Transitional Aid (only for distressed municipalities)
+    * Highlands Protection Fund Aid (NW NJ Highlands Council municipalities ONLY)
+__MUNI_REVENUE_NOTES__- Local Revenue / Misc Anticipated:
     * Licenses, Fees, Permits, Construction Code, Beach/Harbor fees, Rental
     * Interest on Investments / Deposits
     * PILOT (Payment in Lieu of Taxes) from tax-exempt entities
@@ -227,7 +228,7 @@ Produce JSON:
   "questions": ["..."]
 }}
 
-For Atlantic Highlands borough use ~4318 population; for HHRSD report debt per pupil (use ~725 students).
+__DEBT_SCALE_NOTE__
 
 Output ONLY valid JSON. No fences."""
 
@@ -247,7 +248,7 @@ PRIOR YEAR FUND BALANCES:
 
 CRITICAL NJ RULES (do NOT use GFOA's 16% benchmark for schools):
 - Unrestricted general fund balance is STATUTORILY CAPPED at the GREATER of 2% of general fund expenditures OR $250,000 (N.J.S.A. 18A:7F-7).
-- For a small district like Henry Hudson Regional (~725 students, ~$15-20M budget), the $250K floor often binds, not the 2% percent.
+- __SMALL_DISTRICT_NOTE__
 - Excess can be moved (with board action / commissioner approval where required) to:
     * Capital Reserve (N.J.S.A. 18A:21-2; -3; -4 / N.J.A.C. 6A:23A-14.1)
     * Maintenance Reserve (N.J.S.A. 18A:7F-41 / N.J.A.C. 6A:23A-14.2)
@@ -297,8 +298,7 @@ NJ MUNICIPAL CONTEXT:
 - Key health metric: ratio of UNRESERVED Current Fund balance to expenditures. DLGS Best Practices guidance flags <5% as concerning; healthy NJ Current Fund typically 8-15%.
 - "Surplus regenerated" = excess of revenue realized over expenditures + reserves canceled. This is the operational signal — NOT raw revenue minus expenditures, because towns intentionally anticipate fund balance as revenue.
 - "Surplus anticipated as revenue" in next year's budget = how much fund balance is being USED. Pay attention to whether the town is depleting or building.
-- Atlantic Highlands operates a Water/Sewer Utility — that has SEPARATE fund balance (Utility Operating + Utility Capital) which should be analyzed separately.
-
+__MUNI_FUND_BALANCE_NOTES__
 Produce JSON:
 {{
   "total_current_fund_balance": 0,
@@ -362,6 +362,50 @@ Produce JSON:
 Be specific. Cite numbers. Output ONLY valid JSON. No fences."""
 
 
+# ─── Town-specific prompt text (from the municipality profile) ──────────────
+
+def _town_prompt_values() -> dict[str, str]:
+    fin = profile().get("finance", {})
+    school = next((e for e in entities() if e.get("kind") == "school"), None)
+    pop, kids = fin.get("population"), fin.get("school_enrollment")
+    debt = []
+    if pop:
+        debt.append(f"For {TOWN.name} {TOWN.kind} use ~{pop} population")
+    if kids:
+        debt.append(f"for {(school.get('abbr') or school['label']) if school else 'the school district'} report debt per pupil (use ~{kids} students)")
+    if not debt:
+        debt.append("Report debt per capita for towns and per pupil for school districts")
+    size = ", ".join(x for x in [f"~{kids} students" if kids else "", f"{fin['school_budget']} budget" if fin.get("school_budget") else ""] if x)
+    small = "For a small district"
+    if school and size:
+        small += f" like {school['label']} ({size})"
+    small += ", the $250K floor often binds, not the 2% percent."
+
+    def bullets(key: str) -> str:
+        return "".join(f"- {n}\n" for n in fin.get(key, []))
+
+    return {
+        "__OFFICIAL_NAME__": TOWN.official_name,
+        "__TOWN_NAME__": TOWN.name,
+        "__FISCAL_YEAR__": TOWN.fiscal_year,
+        "__MUNI_REVENUE_NOTES__": bullets("muni_revenue_notes"),
+        "__DEBT_SCALE_NOTE__": "; ".join(debt) + ".",
+        "__SMALL_DISTRICT_NOTE__": small,
+        "__MUNI_FUND_BALANCE_NOTES__": bullets("muni_fund_balance_notes"),
+    }
+
+
+def _localize_prompts():
+    import sys
+    module = sys.modules[__name__]
+    values = {k: v.replace("{", "{{").replace("}", "}}") for k, v in _town_prompt_values().items()}
+    for name in _PROMPT_FIELDS:
+        template = getattr(module, name)
+        for token, value in values.items():
+            template = template.replace(token, value)
+        setattr(module, name, template)
+
+
 # ─── Prompt sanity check at import time ──────────────────────────────────────
 # Catches any unescaped `{...}` brace bug before the agent is ever invoked.
 
@@ -400,6 +444,7 @@ def _validate_prompts():
             ) from exc
 
 
+_localize_prompts()
 _validate_prompts()
 
 
@@ -435,10 +480,10 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
         except Exception:
             logger.debug("financial_agent usage record skipped", exc_info=True)
 
-    if ANTHROPIC_API_KEY:
+    if api_key("ANTHROPIC_API_KEY"):
         try:
             import anthropic
-            client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            client = anthropic.AsyncAnthropic(api_key=api_key("ANTHROPIC_API_KEY"))
             # Anthropic SDK requires .stream() for ANY request with max_tokens that
             # could plausibly take >10 min. Use streaming unconditionally so we don't
             # need to guess the threshold.
@@ -472,11 +517,11 @@ async def _call_llm(prompt: str, max_output: int = 16000, label: str = "drill") 
             last_error = f"claude_api_error: {type(exc).__name__}: {exc}"
             logger.warning("[%s] %s", label, last_error)
 
-    if GEMINI_API_KEY:
+    if api_key("GEMINI_API_KEY"):
         try:
             from google import genai
             from google.genai import types
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
             # ThinkingConfig.thinking_budget is rejected by older SDK versions on
             # the deployed EC2. Build the config without it and try setting it
             # only if the SDK accepts. (We don't actually need thinking for these
@@ -917,8 +962,8 @@ async def run_full_drill(statement_id: str) -> Dict[str, Any]:
         "success_count": success_count,
         "error_count": error_count,
         "synthesis_ok": "error" not in synthesis,
-        "llm_models_attempted": [m for m, k in [("claude-sonnet-4-6", ANTHROPIC_API_KEY),
-                                                 ("gemini-2.5-flash", GEMINI_API_KEY)] if k],
+        "llm_models_attempted": [m for m, k in [("claude-sonnet-4-6", api_key("ANTHROPIC_API_KEY")),
+                                                 ("gemini-2.5-flash", api_key("GEMINI_API_KEY"))] if k],
     }
 
     # Persist regardless of success — caller needs to see errors.

@@ -1,9 +1,12 @@
-"""Deep scrape all remaining document sources for Atlantic Highlands."""
+"""Deep scrape all remaining document sources for Atlantic Highlands.
+
+Specific to Atlantic Highlands, NJ.
+"""
 import sys, os, requests, re, time, uuid
 from pathlib import Path
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "api"))  # repo-root/api
 from database import SessionLocal
 from models.document import Document, Project
 from models.user import User

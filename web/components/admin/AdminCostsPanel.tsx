@@ -1,10 +1,11 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getUsageSummary, getUsageRows, type UsageSummary, type UsageRow } from "@/lib/api";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 function fmtUsd(n: number): string {
   if (n < 0.01) return `$${n.toFixed(4)}`;

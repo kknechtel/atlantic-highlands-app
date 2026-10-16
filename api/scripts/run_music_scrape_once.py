@@ -5,8 +5,8 @@ out so it can be invoked via SSM without nested-quote shell games.
 
 Usage on EC2:
     sudo systemctl restart ah-api    # so the latest event_scrapers package is loaded
-    cd /opt/atlantic-highlands/api
-    /opt/atlantic-highlands/api/venv/bin/python -m scripts.run_music_scrape_once
+    cd <install dir>/api
+    venv/bin/python -m scripts.run_music_scrape_once
 """
 import json
 import logging

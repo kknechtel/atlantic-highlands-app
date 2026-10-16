@@ -12,7 +12,8 @@ from models.document import Document
 from models.financial import FinancialStatement
 from models.user import User
 from auth import get_current_user
-from config import GEMINI_API_KEY
+from config import api_key
+from municipality import TOWN
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,8 +58,11 @@ async def generate_report(
 
     doc_context = "\n".join(f"- [{d.doc_type}] {d.filename}: {d.notes[:150]}" for d in docs)
 
+    school_name = f"{TOWN.name} School District"
+    overview_subject = TOWN.official_name if req.entity_type == "town" else school_name
+    budget_subject = TOWN.name if req.entity_type == "town" else "the school district"
     prompts = {
-        "financial_overview": f"""Write a comprehensive financial overview report for the {"Borough of Atlantic Highlands" if req.entity_type == "town" else "Atlantic Highlands School District"}.
+        "financial_overview": f"""Write a comprehensive financial overview report for the {overview_subject}.
 
 Include:
 1. Executive Summary
@@ -78,7 +82,7 @@ Recent documents:
 
 Format as a professional report with headers, bullet points, and specific dollar amounts. Cite source documents.""",
 
-        "budget_analysis": f"""Write a detailed budget analysis for {"Atlantic Highlands" if req.entity_type == "town" else "the school district"}.
+        "budget_analysis": f"""Write a detailed budget analysis for {budget_subject}.
 Compare budgeted vs actual amounts where available. Identify trends, concerns, and opportunities.
 
 Financial data:
@@ -87,7 +91,7 @@ Financial data:
 Documents:
 {doc_context[:5000]}""",
 
-        "school_district": f"""Write a comprehensive analysis of the Atlantic Highlands School District (AHES) finances and operations.
+        "school_district": f"""Write a comprehensive analysis of the {school_name} finances and operations.
 Cover enrollment trends, per-pupil spending, budget trends, fund balance, debt, and comparisons with state averages.
 
 Financial data:
@@ -99,7 +103,7 @@ Documents:
 
     prompt = prompts.get(req.report_type, req.custom_prompt or "Write a financial report.")
 
-    if not GEMINI_API_KEY:
+    if not api_key("GEMINI_API_KEY"):
         async def no_key():
             yield f"data: {json.dumps({'type': 'delta', 'content': 'Configure GEMINI_API_KEY to generate reports.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -110,7 +114,7 @@ Documents:
     async def stream_report():
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
         config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=16000)
 
         loop = asyncio.get_event_loop()

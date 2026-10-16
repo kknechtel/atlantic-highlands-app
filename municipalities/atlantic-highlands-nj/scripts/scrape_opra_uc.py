@@ -1,12 +1,14 @@
 """
+Specific to Atlantic Highlands, NJ.
+
 Scrape OPRAmachine using undetected-chromedriver to bypass Cloudflare.
 Also scrape ecode360 documents while we have a Cloudflare-proof browser.
-Run: python scripts/scrape_opra_uc.py
+Run: python municipalities/atlantic-highlands-nj/scripts/scrape_opra_uc.py
 """
 import sys, re, json, time, uuid, logging
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "api"))  # repo-root/api
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 

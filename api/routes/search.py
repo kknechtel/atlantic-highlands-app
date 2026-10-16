@@ -39,6 +39,7 @@ from auth import get_current_user
 from database import get_db
 from models.document import Document
 from models.user import User
+from municipality import TOWN, profile
 from services import query_expansion, query_parser, reranker
 from services.rag_search import search_chunks
 
@@ -77,7 +78,7 @@ class SearchRequest(BaseModel):
     doc_type: str | None = None
     fiscal_year: str | None = None
     department: str | None = None
-    municipality: str | None = None  # atlantic_highlands | highlands | hhrsd | regional | state
+    municipality: str | None = None  # an entity id from the municipality profile
     document_id: str | None = None  # in-doc search
     limit: int = 30
     # Power-user escape hatches. Default off — leave them off unless you're
@@ -566,7 +567,7 @@ _YEAR_RE_FOUR = re.compile(r"\b(19|20)\d{2}\b")
 def _year_window() -> tuple[int, int]:
     """Return (min, max) plausible fiscal years. Cached implicitly per request."""
     cur = datetime.utcnow().year
-    # Atlantic Highlands doesn't really have digital records before 1990.
+    # Small towns rarely have digital records before 1990.
     # Allow a small grace window on the upper end so a forward-dated budget
     # (e.g. FY2027 introduced 2026-Q3) shows up.
     return 1990, cur + 2
@@ -615,21 +616,19 @@ def _normalize_year(raw: Optional[str]) -> Optional[str]:
 # ── Department canonicalization ─────────────────────────────────────────
 #
 # The AI extracts department names from document text — same logical unit
-# appears as "Police", "Police Department", "PD", "AHPD" in different docs.
+# appears as "Police", "Police Department", "PD", "XYPD" in different docs.
 # Without consolidation the dropdown becomes a wall of near-duplicates.
 #
 # The map is conservative: only entries where we're confident the variants
 # refer to the same department. When in doubt, leave it alone — the
 # casefold dedup below still collapses pure-casing variants.
+_GOV = TOWN.kind.title()  # "Borough", "Township", ...
 _DEPT_CANONICAL: dict[str, str] = {
     # Police
     "police": "Police",
     "police department": "Police",
     "police dept": "Police",
     "pd": "Police",
-    "ahpd": "Police",
-    "atlantic highlands police": "Police",
-    "atlantic highlands police department": "Police",
 
     # Public works
     "public works": "Public Works",
@@ -643,9 +642,6 @@ _DEPT_CANONICAL: dict[str, str] = {
     "fire dept": "Fire",
     "fire company": "Fire",
     "fire co": "Fire",
-    "ahvfd": "Fire",
-    "atlantic highlands fire": "Fire",
-    "atlantic highlands volunteer fire": "Fire",
 
     # EMS / First aid
     "ems": "EMS",
@@ -655,11 +651,11 @@ _DEPT_CANONICAL: dict[str, str] = {
     "ambulance": "EMS",
 
     # Governance
-    "borough council": "Borough Council",
-    "town council": "Borough Council",
-    "mayor and council": "Borough Council",
-    "council": "Borough Council",
-    "mayor & council": "Borough Council",
+    "borough council": f"{_GOV} Council",
+    "town council": f"{_GOV} Council",
+    "mayor and council": f"{_GOV} Council",
+    "council": f"{_GOV} Council",
+    "mayor & council": f"{_GOV} Council",
 
     # School board
     "board of education": "Board of Education",
@@ -692,9 +688,9 @@ _DEPT_CANONICAL: dict[str, str] = {
     "cfo": "Finance",
     "treasurer": "Finance",
 
-    "borough clerk": "Borough Clerk",
-    "clerk": "Borough Clerk",
-    "municipal clerk": "Borough Clerk",
+    "borough clerk": f"{_GOV} Clerk",
+    "clerk": f"{_GOV} Clerk",
+    "municipal clerk": f"{_GOV} Clerk",
 
     "tax assessor": "Tax Assessor",
     "assessor": "Tax Assessor",
@@ -714,15 +710,12 @@ _DEPT_CANONICAL: dict[str, str] = {
 
     "court": "Municipal Court",
     "municipal court": "Municipal Court",
-
-    # School-side
-    "henry hudson regional school district": "HHRSD",
-    "henry hudson regional": "HHRSD",
-    "hhrsd": "HHRSD",
-    "atlantic highlands elementary": "AHES",
-    "atlantic highlands elementary school": "AHES",
-    "ahes": "AHES",
 }
+# Town-specific spellings (local police/fire abbreviations, school names) come
+# from the profile: {"Canonical Name": ["variant", ...]}.
+for _canonical, _variants in profile().get("department_aliases", {}).items():
+    for _v in _variants:
+        _DEPT_CANONICAL[_v.casefold()] = _canonical
 
 
 def _normalize_dept(raw: Optional[str]) -> Optional[str]:

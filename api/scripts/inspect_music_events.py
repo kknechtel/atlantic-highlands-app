@@ -1,7 +1,7 @@
 """One-shot diagnostic — print recent music events per venue.
 
 Usage:
-    /opt/atlantic-highlands/api/venv/bin/python -m scripts.inspect_music_events
+    venv/bin/python -m scripts.inspect_music_events    # from api/
 """
 import sys
 

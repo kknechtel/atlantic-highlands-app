@@ -31,8 +31,8 @@ class ScraperRun(Base):
 
     # List of {filename, source, category, doc_type, url, fiscal_year?}
     # for every doc that actually landed in S3 + RDS on this run. Lets the
-    # UI render "New since last run: X PDFs from ahnj.com Planning Board, Y
-    # from tridistrict, …" without a join.
+    # UI render "New since last run: X PDFs from <town site> Planning Board, Y
+    # from <school site>, …" without a join.
     new_docs = Column(JSONB, nullable=False, default=list)
 
     __table_args__ = (

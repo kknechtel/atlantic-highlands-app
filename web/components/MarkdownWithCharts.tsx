@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 /**
  * MarkdownWithCharts — markdown renderer that also expands inline
@@ -28,7 +29,7 @@ import type { FactCheckResultItem } from './MarkdownRenderer';
 const MarkdownRenderer = dynamic(() => import('./MarkdownRenderer'), { ssr: false });
 
 const AH_PALETTE = [
-    '#385854', '#6A9B95', '#B2D4D0', '#CCA43B',
+    TOWN.brand_color, '#6A9B95', '#B2D4D0', '#CCA43B',
     '#8A6E3E', '#2F2F2F', '#D26A4F', '#4F7AD2',
 ];
 
@@ -231,7 +232,7 @@ function ChartFromSpec({ spec }: { spec: ChartSpec }) {
 
 interface Props {
     content: string;
-    /** Forwarded to the inner MarkdownRenderer for AH-style citations. */
+    /** Forwarded to the inner MarkdownRenderer for filename citations. */
     onCitationClick?: (info: { filename: string }) => void;
     /** Forwarded — when set, citation pills get verdict badges. */
     factCheckResults?: FactCheckResultItem[];

@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -50,12 +51,12 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 md:p-8">
-      {/* Banner — sunset over Raritan Bay, with title overlay. The bottom-to-top
+      {/* Banner photo with title overlay. The bottom-to-top
           gradient keeps the white text legible against the bright sky. */}
       <div className="relative h-40 md:h-56 rounded-xl overflow-hidden shadow mb-6 md:mb-8">
         <Image
           src="/dashboard-banner.jpg"
-          alt="Sunset over Raritan Bay from Atlantic Highlands"
+          alt={TOWN.banner_alt || TOWN.name}
           fill
           priority
           sizes="(min-width: 768px) 80vw, 100vw"
@@ -67,7 +68,7 @@ export default function Dashboard() {
         <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 text-white">
           <h1 className="text-2xl md:text-3xl font-bold drop-shadow-lg">Dashboard</h1>
           <p className="text-sm md:text-base text-white/90 drop-shadow">
-            Atlantic Highlands Document Library &amp; Financial Analysis
+            {TOWN.name} Document Library &amp; Financial Analysis
           </p>
         </div>
       </div>

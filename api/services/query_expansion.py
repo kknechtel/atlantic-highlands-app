@@ -3,8 +3,8 @@ Query expansion for municipal / civic search.
 
 Two layers:
 
-  1. Static synonym dictionary (instant, no network). Captures local Atlantic
-     Highlands / HHRSD vocabulary that Postgres' English stemmer can't reach:
+  1. Static synonym dictionary (instant, no network). Captures local town /
+     school-district vocabulary that Postgres' English stemmer can't reach:
        - acronyms ("CAFR" → "comprehensive annual financial report")
        - civic jargon ("redev" → "redevelopment")
        - euphemisms ("trash fees" → "sanitation rates")
@@ -22,6 +22,8 @@ import logging
 import os
 import re
 from functools import lru_cache
+from config import api_key
+from municipality import TOWN, entities, place, profile
 
 log = logging.getLogger(__name__)
 
@@ -32,12 +34,6 @@ log = logging.getLogger(__name__)
 # Conservative on purpose: only add entries where the synonym is unambiguous
 # and the false-positive risk is low.
 _SYNONYMS: dict[str, list[str]] = {
-    # Acronyms — borough/school district specific
-    "ahnj": ["atlantic highlands", "borough of atlantic highlands"],
-    "ah": ["atlantic highlands"],
-    "hhrsd": ["henry hudson regional school district", "henry hudson"],
-    "ahes": ["atlantic highlands elementary school"],
-
     # Financial documents
     "cafr": ["comprehensive annual financial report", "annual financial report"],
     "acfr": ["annual comprehensive financial report", "annual financial report"],
@@ -105,6 +101,27 @@ _SYNONYMS: dict[str, list[str]] = {
     "abc license": ["alcoholic beverage license", "liquor license"],
     "liquor license": ["abc license", "alcoholic beverage"],
 }
+
+
+
+def _local_synonyms() -> dict[str, list[str]]:
+    """Town/school acronyms from the profile: each one-word entity alias
+    (an acronym) expands to that entity's multi-word aliases; the profile's
+    search_synonyms add or override entries."""
+    out: dict[str, list[str]] = {}
+    for e in entities():
+        if e.get("kind") not in ("town", "school"):
+            continue
+        aliases = [a.lower() for a in e.get("aliases", [])]
+        phrases = [a for a in aliases if " " in a]
+        for a in aliases:
+            if " " not in a and phrases:
+                out[a] = phrases
+    out.update({k.lower(): v for k, v in profile().get("search_synonyms", {}).items()})
+    return out
+
+
+_SYNONYMS.update(_local_synonyms())
 
 # Precompute reverse mappings so "comprehensive annual financial report"
 # also expands to "CAFR". Skip multi-word values that would already match
@@ -177,20 +194,24 @@ def expand(query: str, allow_llm: bool = True) -> list[str]:
     return expansions
 
 
+def _corpus_owners() -> str:
+    schools = "".join(f" and the {e['label']}" for e in entities() if e.get("kind") == "school")
+    return f"{place()} ({TOWN.kind}){schools}"
+
+
 def _llm_paraphrase(query: str) -> list[str]:
     """Ask Gemini for 3 paraphrases of a short query. Returns [] on any error.
 
     Cached at the module level (via expand's lru_cache) so a repeated user
     query doesn't re-pay the round-trip.
     """
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
+    key = api_key("GEMINI_API_KEY")
+    if not key:
         return []
 
     prompt = (
         "You are helping search a municipal government document corpus for "
-        "Atlantic Highlands, NJ (borough) and the Henry Hudson Regional School "
-        "District. Given the user's search query, return 3 short paraphrases "
+        f"{_corpus_owners()}. Given the user's search query, return 3 short paraphrases "
         "or synonym phrases that would help find relevant documents — civic "
         "vocabulary, government acronyms, related terms. Return as a JSON "
         "array of strings, lowercase, no explanation.\n\n"
@@ -201,7 +222,7 @@ def _llm_paraphrase(query: str) -> list[str]:
     try:
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=key)
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,

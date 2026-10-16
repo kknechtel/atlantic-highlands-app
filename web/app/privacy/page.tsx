@@ -1,12 +1,13 @@
+import { TOWN, SCHOOL_ENTITY, SITE_HOST, EVENTS_HOST } from "@/lib/municipality";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy · Atlantic Highlands",
-  description: "How ahnj.info and events.ahnj.info collect, use, and protect your information.",
+  title: `Privacy Policy · ${TOWN.name}`,
+  description: `How ${SITE_HOST} and ${EVENTS_HOST} collect, use, and protect your information.`,
 };
 
 const EFFECTIVE = "October 5, 2026";
-const CONTACT = "karl@rkc.llc";
+const CONTACT = TOWN.contact_email;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -21,18 +22,17 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
-        <a href="/" className="text-xs text-gray-500 hover:text-gray-700">← ahnj.info</a>
+        <a href="/" className="text-xs text-gray-500 hover:text-gray-700">← {SITE_HOST}</a>
         <h1 className="text-3xl font-semibold text-gray-900 mt-4">Privacy Policy</h1>
         <p className="text-sm text-gray-500 mt-1">Effective {EFFECTIVE}</p>
 
         <div className="mt-6 text-sm text-gray-700 leading-relaxed space-y-3">
           <p>
-            This policy covers <strong>ahnj.info</strong> (civic research on the Borough of
-            Atlantic Highlands and the Henry Hudson Regional School District) and{" "}
-            <strong>events.ahnj.info</strong> (the community events app), together the
+            This policy covers <strong>{SITE_HOST}</strong> (civic research on the{" "}
+            {TOWN.official_name} and the {SCHOOL_ENTITY.label}) and{" "}
+            <strong>{EVENTS_HOST}</strong> (the community events app), together the
             &ldquo;Service.&rdquo; The Service is an independent project. It is not operated by,
-            or affiliated with, the Borough of Atlantic Highlands or the Henry Hudson Regional
-            School District.
+            or affiliated with, the {TOWN.official_name} or the {SCHOOL_ENTITY.label}.
           </p>
           <p>
             Most of what the Service shows is already public: meeting agendas, minutes and

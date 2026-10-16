@@ -1,4 +1,4 @@
-"""Presentation models — analytical decks and reports about Atlantic Highlands."""
+"""Presentation models — analytical decks and reports about the town."""
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Boolean

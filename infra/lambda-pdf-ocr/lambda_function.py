@@ -1,5 +1,5 @@
 """
-AHNJ PDF OCR Lambda — adapted from bank-processor/lambda-pdf-ocr.
+PDF OCR Lambda — adapted from bank-processor/lambda-pdf-ocr.
 
 Receives an S3 key, downloads the PDF, OCRs it page-by-page with
 Tesseract, returns markdown text. Caller (the EC2 driver) is
@@ -9,7 +9,7 @@ Secrets Manager access.
 
 Input event:
     {
-        "bucket": "atlantic-highlands-documents-738265942536",  # optional, env default
+        "bucket": "<documents bucket>",                          # optional, env default
         "pdf_key": "documents/.../foo.pdf",                      # required
         "max_pages": 30,                                          # optional, default 30
         "dpi": 150                                                # optional, default 150
@@ -44,6 +44,7 @@ log.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
 
+# deploy.sh always sets S3_BUCKET; the fallback is the original deployment's bucket.
 DEFAULT_BUCKET = os.environ.get("S3_BUCKET", "atlantic-highlands-documents-738265942536")
 HARD_PAGE_CAP = 50  # absolute upper bound regardless of input — protects timeout
 

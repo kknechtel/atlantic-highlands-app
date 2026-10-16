@@ -1,6 +1,7 @@
 """
-Site-specific crawlers adapted for S3 upload.
-Each crawler finds documents and uploads them to S3 via the provided callback.
+Crawlers, one per kind of site. A source in the municipality's sources.json
+picks its crawler with the `crawler` key (see CRAWLERS at the bottom); every
+crawler takes the source name and reads its settings from that source.
 """
 import logging
 import re
@@ -12,6 +13,7 @@ from bs4 import BeautifulSoup
 from .scraper import BasicScraper, SeleniumScraper
 from .utils import categorize_url
 from .config import SOURCES, RECORDING_SOURCES, REQUEST_DELAY
+from municipality import TOWN, entity, entity_for_source
 
 logger = logging.getLogger("ah_scraper")
 
@@ -24,6 +26,16 @@ def _deduplicate_docs(docs: list[dict]) -> list[dict]:
             seen.add(doc["url"])
             unique.append(doc)
     return unique
+
+
+def _source_config(source_name: str) -> dict:
+    return SOURCES.get(source_name) or RECORDING_SOURCES.get(source_name) or {}
+
+
+def _source_category(source_name: str) -> str:
+    """School or town, from the kind of government that publishes the source."""
+    ent = entity(entity_for_source(source_name)) or {}
+    return "school" if ent.get("kind") == "school" else "town"
 
 
 def _get_stealth_driver():
@@ -51,12 +63,13 @@ def _get_stealth_driver():
         return None
 
 
-class AHNJCrawler:
-    """Crawler for ahnj.com (Borough of Atlantic Highlands)."""
+class SiteCrawler:
+    """Two-level crawl of a site's seed pages (pages_to_crawl, plus
+    historical_pages when historical). Uses Selenium when available."""
 
-    def __init__(self):
-        self.source_name = "ahnj"
-        self.config = SOURCES["ahnj"]
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
         self.basic = BasicScraper()
         self.selenium = None
         # When False, skip historical_pages (2005-2013 archive years).
@@ -69,7 +82,7 @@ class AHNJCrawler:
                 self.selenium = SeleniumScraper()
                 self.selenium._ensure_driver()
             except Exception:
-                logger.warning("Selenium not available for ahnj.com — using basic scraper")
+                logger.warning(f"Selenium not available for {self.source_name} — using basic scraper")
                 self.selenium = False
         return self.selenium if self.selenium else self.basic
 
@@ -77,7 +90,7 @@ class AHNJCrawler:
         all_docs = []
         scraper = self._get_scraper()
         visited = set()
-        # Two-level deep crawl from each seed: many AH archive trees nest
+        # Two-level deep crawl from each seed: municipal archive trees often nest
         # /Archive/<Year>/<Month-Day>/<file>.pdf, so depth=1 misses most PDFs.
         max_pages = 250
         cb = getattr(self, "progress_callback", None)
@@ -124,13 +137,20 @@ from .ecode360_browser import ECode360Crawler  # noqa: E402,F401
 
 
 class OPRACrawler:
-    """Crawler for OPRAmachine.com - crowdsourced OPRA requests for Atlantic Highlands.
-    Requires Selenium due to Cloudflare protection."""
+    """Crawler for OPRAmachine.com - crowdsourced OPRA requests for the town's
+    public body (profile `opra_body`). Requires Selenium due to Cloudflare protection."""
 
-    def __init__(self):
-        self.source_name = "opra"
-        self.config = SOURCES.get("opra", {})
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
         self.driver = None
+
+    def _slugs(self) -> list[str]:
+        body = getattr(TOWN, "opra_body", None)
+        if not body:
+            return []
+        kind = getattr(TOWN, "kind", None)
+        return [body] + ([f"{kind}_of_{body}"] if kind else [])
 
     def find_documents(self) -> list[dict]:
         all_docs = []
@@ -141,7 +161,7 @@ class OPRACrawler:
 
         try:
             # Try multiple possible slugs
-            for slug in ["atlantic_highlands", "borough_of_atlantic_highlands"]:
+            for slug in self._slugs():
                 url = f"https://opramachine.com/body/{slug}"
                 logger.info(f"  Trying OPRAmachine: {url}")
                 self.driver.get(url)
@@ -201,78 +221,30 @@ class OPRACrawler:
             self.driver = None
 
 
-class PoliceCrawler:
-    """Crawler for police/crime data sources."""
+class PagesCrawler:
+    """Queues a source's direct_downloads and collects document links from each
+    of its pages_to_crawl (full URLs or paths under base_url). With
+    `follow_subpages: N`, also scans the first N same-site links of each page."""
 
-    def __init__(self):
-        self.source_name = "police"
-        self.config = SOURCES.get("police", {})
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
         self.basic = BasicScraper()
 
     def find_documents(self) -> list[dict]:
         all_docs = []
-        for url in self.config.get("pages_to_crawl", []):
-            try:
-                soup = self.basic.fetch_page(url)
-                if soup:
-                    docs = self.basic.find_document_links(soup, url)
-                    all_docs.extend(docs)
-                    if docs:
-                        logger.info(f"  Police: found {len(docs)} documents on {url}")
-            except Exception as e:
-                logger.warning(f"Police scrape failed for {url}: {e}")
-        return _deduplicate_docs(all_docs)
-
-    def _cleanup(self):
-        pass
-
-
-class FireCrawler:
-    """Crawler for fire/EMS data sources."""
-
-    def __init__(self):
-        self.source_name = "fire"
-        self.config = SOURCES.get("fire", {})
-        self.basic = BasicScraper()
-
-    def find_documents(self) -> list[dict]:
-        all_docs = []
-        for url in self.config.get("pages_to_crawl", []):
-            try:
-                soup = self.basic.fetch_page(url)
-                if soup:
-                    docs = self.basic.find_document_links(soup, url)
-                    all_docs.extend(docs)
-                    if docs:
-                        logger.info(f"  Fire/EMS: found {len(docs)} documents on {url}")
-            except Exception as e:
-                logger.warning(f"Fire scrape failed for {url}: {e}")
-        return _deduplicate_docs(all_docs)
-
-    def _cleanup(self):
-        pass
-
-
-class HighlandsBoroughCrawler:
-    """Crawler for highlandsnj.gov (HHRSD constituent town).
-    The borough WordPress site has a small number of direct PDFs plus a
-    Municode meetings portal that's handled separately."""
-
-    def __init__(self):
-        self.source_name = "highlands_borough"
-        self.config = SOURCES.get("highlands_borough", {})
-        self.basic = BasicScraper()
-
-    def find_documents(self) -> list[dict]:
-        all_docs = []
-        # Direct downloads — known stable URLs (court letters, regionalization decisions)
         for url in self.config.get("direct_downloads", []):
+            filename = url.split("/")[-1]
+            if not filename or "." not in filename:
+                filename = url.split("/")[-2] + ".pdf"
             all_docs.append({
                 "url": url,
-                "title": url.split("/")[-1],
+                "title": filename,
                 "source_page": url,
-                "category": "highlands_borough",
+                "category": self.source_name,
             })
+            logger.info(f"  Queued direct download: {filename}")
+        follow = int(self.config.get("follow_subpages", 0))
         for path in self.config.get("pages_to_crawl", []):
             url = self.config["base_url"] + path if path.startswith("/") else path
             try:
@@ -280,19 +252,25 @@ class HighlandsBoroughCrawler:
                 if soup:
                     docs = self.basic.find_document_links(soup, url)
                     all_docs.extend(docs)
+                    if follow:
+                        subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
+                        for sub in subpages[:follow]:
+                            sub_soup = self.basic.fetch_page(sub)
+                            if sub_soup:
+                                all_docs.extend(self.basic.find_document_links(sub_soup, sub))
                     if docs:
-                        logger.info(f"  Highlands Borough: found {len(docs)} documents on {url}")
+                        logger.info(f"  {self.source_name}: found {len(docs)} documents on {url}")
             except Exception as e:
-                logger.warning(f"Highlands Borough scrape failed for {url}: {e}")
+                logger.warning(f"{self.source_name} scrape failed for {url}: {e}")
         return _deduplicate_docs(all_docs)
 
     def _cleanup(self):
         pass
 
 
-class HighlandsMeetingsCrawler:
-    """Crawler for highlands-nj.municodemeetings.com (Highlands Borough Council
-    meeting agendas + packets, hosted on Microsoft Azure blob storage).
+class MunicodeMeetingsCrawler:
+    """Crawler for a <town>.municodemeetings.com portal (council meeting
+    agendas + packets, hosted on Microsoft Azure blob storage).
 
     The portal is a Drupal site with an infinite-scroll meetings table.
     Hitting `/` returns only the first ~15-20 meetings (~50 PDFs); the next
@@ -301,9 +279,9 @@ class HighlandsMeetingsCrawler:
 
     MAX_PAGES = 30  # cap; real depth is ~18
 
-    def __init__(self):
-        self.source_name = "highlands_meetings"
-        self.config = SOURCES.get("highlands_meetings", {})
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
         self.basic = BasicScraper()
         self.progress_callback = None
 
@@ -326,14 +304,14 @@ class HighlandsMeetingsCrawler:
                 docs = [d for d in docs if "ecode360.com" not in urlparse(d["url"]).netloc.lower()]
                 if not docs:
                     # Empty page = past the end of the infinite-scroll list.
-                    logger.info(f"  Highlands Meetings portal: no docs at page={page}, stopping")
+                    logger.info(f"  {self.source_name} portal: no docs at page={page}, stopping")
                     break
                 all_docs.extend(docs)
-                logger.info(f"  Highlands Meetings portal: page={page} → {len(docs)} documents")
+                logger.info(f"  {self.source_name} portal: page={page} → {len(docs)} documents")
                 if self.progress_callback:
                     self.progress_callback(len(docs))
             except Exception as e:
-                logger.warning(f"Highlands Meetings scrape failed for {url}: {e}")
+                logger.warning(f"{self.source_name} scrape failed for {url}: {e}")
                 break
         return _deduplicate_docs(all_docs)
 
@@ -353,7 +331,7 @@ class HighlandsMeetingsCrawler:
 #     }
 #   }
 
-# Year regex used by AH recording-folder discovery. Year-only links live next
+# Year regex used by recording-folder discovery. Year-only links live next
 # to month/day named subfolders we don't want to recurse into.
 _YEAR_FOLDER_RE = re.compile(r"/(20\d{2})(?:%20Recordings)?/?$", re.I)
 
@@ -367,7 +345,7 @@ def _year_from_url(url: str) -> int | None:
     m = _URL_YEAR_RE.search(unquote(url))
     return int(m.group(1)) if m else None
 
-# Parse common AH filename date formats:
+# Parse common recording filename date formats:
 #   2024.03.05, 2024-03-05  → ymd
 #   3.5.2024, 03-05-2024    → mdy
 #   "March 5, 2024"         → month_name
@@ -387,7 +365,7 @@ _MONTHS = {m: i for i, m in enumerate(
 
 
 def _parse_meeting_date(text: str) -> str | None:
-    """Return YYYY-MM-DD or None. Try several formats found across AH portals."""
+    """Return YYYY-MM-DD or None. Try several formats found across municipal portals."""
     text = unquote(text)
     for pat, kind in _DATE_PATTERNS:
         m = pat.search(text)
@@ -414,17 +392,19 @@ def _parse_meeting_date(text: str) -> str | None:
     return None
 
 
-class AHRecordingsCrawler:
-    """Crawler for Atlantic Highlands meeting recordings (audio files on ahnj.com).
+class FolderRecordingsCrawler:
+    """Crawler for meeting recordings published as audio files in folder
+    listings on the town site.
 
-    Three bodies — Council (flat), Planning Board (year subfolders),
-    Harbor (year subfolders). Filters to last 12 months by parsed filename
+    One pass per entry in the source's `bodies`, flat or with year subfolders
+    (`year_subfolders`). Filters to last 12 months by parsed filename
     date when present, else keeps the file if its source page is the
     current-year folder."""
 
-    def __init__(self):
-        self.source_name = "ah_recordings"
-        self.config = RECORDING_SOURCES["ah_recordings"]
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
+        self.category = _source_category(source_name)
         self.basic = BasicScraper()
         self.progress_callback = None
         # 12 months back from today. We compare to the parsed file date.
@@ -437,7 +417,7 @@ class AHRecordingsCrawler:
             try:
                 soup = self.basic.fetch_page(base)
             except Exception as e:
-                logger.warning(f"AH recordings ({body['name']}) parent fetch failed: {e}")
+                logger.warning(f"{self.source_name} ({body['name']}) parent fetch failed: {e}")
                 continue
             if not soup:
                 continue
@@ -470,7 +450,7 @@ class AHRecordingsCrawler:
                         continue
                     media = self.basic.find_media_links(page_soup, page_url)
                 except Exception as e:
-                    logger.warning(f"AH recordings page failed {page_url}: {e}")
+                    logger.warning(f"{self.source_name} page failed {page_url}: {e}")
                     continue
 
                 for item in media:
@@ -493,7 +473,7 @@ class AHRecordingsCrawler:
                     body_docs.append({
                         **item,
                         "doc_type": body["doc_type"],
-                        "category": "town",
+                        "category": self.category,
                         "recording": {
                             "platform": "audio",
                             "meeting_body": body["name"],
@@ -502,7 +482,7 @@ class AHRecordingsCrawler:
                     })
 
             if body_docs:
-                logger.info(f"  AH recordings — {body['name']}: {len(body_docs)} files")
+                logger.info(f"  {self.source_name} — {body['name']}: {len(body_docs)} files")
                 if self.progress_callback:
                     self.progress_callback(len(body_docs))
                 all_docs.extend(body_docs)
@@ -518,8 +498,8 @@ _YOUTUBE_ID_RE = re.compile(
 )
 
 
-class HHRSDRecordingsCrawler:
-    """Crawler for the HHRSD ('tri-district') Board Meeting Recordings page.
+class YouTubeLinksCrawler:
+    """Crawler for a Board Meeting Recordings page that links to YouTube.
 
     The page is a flat list of <a href="https://youtu.be/<id>">Month Day, Year
     Board of Education Meeting</a> entries. We extract the YouTube video ID
@@ -527,9 +507,12 @@ class HHRSDRecordingsCrawler:
     transcripts come from YouTube's auto-captions and the player is embedded
     in the UI."""
 
-    def __init__(self):
-        self.source_name = "hhrsd_recordings"
-        self.config = RECORDING_SOURCES["hhrsd_recordings"]
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
+        self.category = _source_category(source_name)
+        self.meeting_body = self.config.get("meeting_body") or "Board of Education"
+        self.name_prefix = self.config.get("name_prefix") or self.meeting_body
         self.basic = BasicScraper()
         self.progress_callback = None
         self.cutoff = (datetime.now(timezone.utc) - timedelta(days=365)).date()
@@ -542,7 +525,7 @@ class HHRSDRecordingsCrawler:
             try:
                 soup = self.basic.fetch_page(url)
             except Exception as e:
-                logger.warning(f"HHRSD recordings page failed: {e}")
+                logger.warning(f"{self.source_name} page failed: {e}")
                 continue
             if not soup:
                 continue
@@ -556,7 +539,7 @@ class HHRSDRecordingsCrawler:
                     continue
                 seen_ids.add(yt_id)
 
-                anchor_text = link.get_text(strip=True) or f"HHRSD BOE Meeting {yt_id}"
+                anchor_text = link.get_text(strip=True) or f"{self.name_prefix} Meeting {yt_id}"
                 meeting_date = _parse_meeting_date(anchor_text)
                 if meeting_date:
                     d = datetime.strptime(meeting_date, "%Y-%m-%d").date()
@@ -570,52 +553,20 @@ class HHRSDRecordingsCrawler:
                     "title": anchor_text,
                     "source_page": url,
                     "doc_type": self.config["doc_type"],
-                    "category": "school",
+                    "category": self.category,
+                    "name_prefix": self.name_prefix,
                     "recording": {
                         "platform": "youtube",
-                        "meeting_body": "HHRSD Board of Education",
+                        "meeting_body": self.meeting_body,
                         "meeting_date": meeting_date,
                         "youtube_id": yt_id,
                     },
                 })
 
         if all_docs:
-            logger.info(f"  HHRSD recordings: {len(all_docs)} YouTube videos")
+            logger.info(f"  {self.source_name}: {len(all_docs)} YouTube videos")
             if self.progress_callback:
                 self.progress_callback(len(all_docs))
-        return _deduplicate_docs(all_docs)
-
-    def _cleanup(self):
-        pass
-
-
-class CountyCrawler:
-    """Crawler for Monmouth County records."""
-
-    def __init__(self):
-        self.source_name = "county"
-        self.config = SOURCES.get("county", {})
-        self.basic = BasicScraper()
-
-    def find_documents(self) -> list[dict]:
-        all_docs = []
-        for url in self.config.get("pages_to_crawl", []):
-            try:
-                soup = self.basic.fetch_page(url)
-                if soup:
-                    docs = self.basic.find_document_links(soup, url)
-                    all_docs.extend(docs)
-                    # Also follow subpages
-                    subpages = self.basic.find_subpage_links(soup, url, same_domain=True)
-                    for sub in subpages[:15]:
-                        sub_soup = self.basic.fetch_page(sub)
-                        if sub_soup:
-                            sub_docs = self.basic.find_document_links(sub_soup, sub)
-                            all_docs.extend(sub_docs)
-                    if docs:
-                        logger.info(f"  County: found {len(docs)} documents on {url}")
-            except Exception as e:
-                logger.warning(f"County scrape failed for {url}: {e}")
         return _deduplicate_docs(all_docs)
 
     def _cleanup(self):
@@ -625,18 +576,22 @@ class CountyCrawler:
 class CensusCrawler:
     """Fetches Census ACS data via API and saves as a JSON document."""
 
-    def __init__(self):
-        self.source_name = "census"
-        self.config = SOURCES.get("census", {})
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
 
     def find_documents(self) -> list[dict]:
         api_config = self.config.get("api_config", {})
         if not api_config:
             return []
 
+        census = getattr(TOWN, "census", None) or {}
         variables = api_config.get("variables", [])
-        state = api_config.get("state_fips", "34")
-        place = api_config.get("place_fips", "01960")
+        state = api_config.get("state_fips") or census.get("state_fips")
+        place = api_config.get("place_fips") or census.get("place_fips")
+        if not (state and place):
+            logger.warning("Census: no state_fips/place_fips in the source or the profile")
+            return []
 
         try:
             import requests, json
@@ -649,13 +604,13 @@ class CensusCrawler:
                 from pathlib import Path
                 out_dir = Path(__file__).parent.parent.parent / "storage" / "census"
                 out_dir.mkdir(parents=True, exist_ok=True)
-                out_file = out_dir / "atlantic_highlands_acs_2022.json"
+                out_file = out_dir / f"{entity_for_source(self.source_name)}_acs_2022.json"
                 with open(out_file, "w") as f:
                     json.dump({"source": "Census ACS 5-Year 2022", "raw": data, "variables": variables}, f, indent=2)
                 logger.info(f"  Census: saved ACS data to {out_file}")
                 return [{
                     "url": str(out_file),
-                    "title": "Atlantic Highlands Census ACS 2022 Demographics",
+                    "title": f"{TOWN.name} Census ACS 2022 Demographics",
                     "source_page": url,
                     "category": "census",
                 }]
@@ -667,39 +622,16 @@ class CensusCrawler:
         pass
 
 
-class NJStateCrawler:
-    """Downloads direct PDF links from NJ state sources, court opinions, and key documents."""
+class EdlioCrawler:
+    """Crawler for an Edlio-hosted school district site (/apps/pages/...),
+    plus its member schools' subdomains (school_sites, school_pages)."""
 
-    def __init__(self):
-        self.source_name = "nj_state"
-        self.config = SOURCES["nj_state"]
-        self.basic = BasicScraper()
-
-    def find_documents(self) -> list[dict]:
-        all_docs = []
-        for url in self.config.get("direct_downloads", []):
-            filename = url.split("/")[-1]
-            if not filename or "." not in filename:
-                filename = url.split("/")[-2] + ".pdf"
-            all_docs.append({
-                "url": url,
-                "title": filename,
-                "source_page": url,
-                "category": "nj_state",
-            })
-            logger.info(f"  Queued direct download: {filename}")
-        return _deduplicate_docs(all_docs)
-
-    def _cleanup(self):
-        pass
-
-
-class TriDistrictCrawler:
-    """Crawler for tridistrict.org (School District)."""
-
-    def __init__(self):
-        self.source_name = "tridistrict"
-        self.config = SOURCES["tridistrict"]
+    def __init__(self, source_name: str):
+        self.source_name = source_name
+        self.config = _source_config(source_name)
+        # Stay on the district's domain and its school subdomains.
+        host = urlparse(self.config["base_url"]).netloc.lower()
+        self.domain = host[4:] if host.startswith("www.") else host
         self.basic = BasicScraper()
         self.selenium = None
 
@@ -709,7 +641,7 @@ class TriDistrictCrawler:
                 self.selenium = SeleniumScraper()
                 self.selenium._ensure_driver()
             except Exception:
-                logger.warning("Selenium not available for tridistrict — using basic scraper")
+                logger.warning(f"Selenium not available for {self.source_name} — using basic scraper")
                 self.selenium = False
         return self.selenium if self.selenium else self.basic
 
@@ -772,7 +704,7 @@ class TriDistrictCrawler:
                 for subpage in subpages:
                     if subpage not in visited and self._is_crawlable(subpage):
                         host = urlparse(subpage).netloc
-                        if "tridistrict.org" in host:
+                        if self.domain in host:
                             next_round.append(subpage)
 
             to_crawl = next_round
@@ -785,3 +717,19 @@ class TriDistrictCrawler:
     def _cleanup(self):
         if self.selenium and self.selenium is not False:
             self.selenium.close()
+
+
+# `crawler` values a source in sources.json can name. Sources without one get
+# the generic two-level site crawl.
+CRAWLERS = {
+    "site": SiteCrawler,
+    "pages": PagesCrawler,
+    "ecode360": ECode360Crawler,
+    "edlio": EdlioCrawler,
+    "municode_meetings": MunicodeMeetingsCrawler,
+    "opramachine": OPRACrawler,
+    "census": CensusCrawler,
+    "folder_recordings": FolderRecordingsCrawler,
+    "youtube_links": YouTubeLinksCrawler,
+}
+DEFAULT_CRAWLER = "site"

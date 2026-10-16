@@ -1,6 +1,6 @@
 #!/bin/bash
-# Sync local Atlantic Highlands data to AWS
-# Run from: cd atlantic-highlands && bash sync_to_aws.sh
+# Sync local data to AWS
+# Run from the repo root: bash sync_to_aws.sh
 #
 # Credentials are sourced from AWS Secrets Manager (bank-processor-api-secrets)
 # or, as a fallback, from the local environment. The previous version of this
@@ -8,11 +8,17 @@
 
 set -e
 
-RDS_HOST="atlantic-highlands-db.c4xoyiqaey7u.us-east-1.rds.amazonaws.com"
-RDS_USER="ahAdmin"
-RDS_DB="atlantic_highlands"
-S3_BUCKET="atlantic-highlands-documents-738265942536"
-EC2_INSTANCE="i-06424a799368c7d6d"
+# Deployment targets. Defaults are the original Atlantic Highlands
+# deployment; override via env for another town.
+RDS_HOST="${RDS_HOST:-atlantic-highlands-db.c4xoyiqaey7u.us-east-1.rds.amazonaws.com}"
+RDS_USER="${RDS_USER:-ahAdmin}"
+RDS_DB="${RDS_DB:-atlantic_highlands}"
+LOCAL_DB="${LOCAL_DB:-atlantic_highlands}"
+S3_BUCKET="${S3_BUCKET:-atlantic-highlands-documents-738265942536}"
+EC2_INSTANCE="${EC2_INSTANCE:-i-06424a799368c7d6d}"
+APP_DIR="${APP_DIR:-/opt/atlantic-highlands}"
+FRONTEND_URL="${FRONTEND_URL:-https://ahnj.info}"
+BACKEND_URL="${BACKEND_URL:-http://35.173.239.249}"
 SECRET_ID="${AH_RDS_SECRET_ID:-atlantic-highlands/production}"
 SECRET_KEY="${AH_RDS_SECRET_KEY:-RDS_PASSWORD}"
 
@@ -30,7 +36,7 @@ if [ -z "${RDS_PASS:-}" ]; then
   exit 1
 fi
 
-echo "=== Atlantic Highlands AWS Sync ==="
+echo "=== AWS Sync ==="
 
 # 1. Sync documents to S3
 echo "[1/4] Syncing documents to S3..."
@@ -39,7 +45,7 @@ echo "  Done."
 
 # 2. Dump local database
 echo "[2/4] Dumping local database..."
-pg_dump -h localhost -U postgres -d atlantic_highlands --no-owner --no-privileges -F c -f /tmp/ah_sync.backup
+pg_dump -h localhost -U postgres -d "${LOCAL_DB}"--no-owner --no-privileges -F c -f /tmp/ah_sync.backup
 echo "  Done: $(du -sh /tmp/ah_sync.backup | cut -f1)"
 
 # 3. Restore to RDS (drop and recreate)
@@ -52,11 +58,11 @@ echo "[4/4] Restarting production API..."
 aws ssm send-command \
   --instance-ids "${EC2_INSTANCE}" \
   --document-name "AWS-RunShellScript" \
-  --parameters 'commands=["cd /opt/atlantic-highlands && git pull && systemctl restart ah-api"]' \
+  --parameters "commands=[\"cd ${APP_DIR} && git pull && systemctl restart ah-api\"]" \
   --query 'Command.CommandId' --output text
 echo "  Done."
 
 echo ""
 echo "=== Sync complete! ==="
-echo "  Frontend: https://ahnj.info"
-echo "  Backend:  http://35.173.239.249"
+echo "  Frontend: ${FRONTEND_URL}"
+echo "  Backend:  ${BACKEND_URL}"

@@ -23,6 +23,8 @@ from typing import Dict, Tuple
 
 from sqlalchemy.orm import Session
 
+from municipality import profile
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,9 +40,11 @@ _METADATA_PATTERNS = [
     re.compile(r"\bestimated\s+(net\s+taxable|equalized)\s+valuation\b", re.I),
     re.compile(r"\bper[\s-]+pupil\b", re.I),
     re.compile(r"^\s*total\s+budgetary\s+(comparative\s+)?per[\s-]+pupil\b", re.I),
-    re.compile(r"^\s*atlantic\s+highlands\s*$", re.I),  # constituent-district breakouts
-    re.compile(r"^\s*highlands\s*$", re.I),
-    re.compile(r"^\s*sea\s+bright\s*$", re.I),
+    # constituent-district breakouts (one line per member town)
+    *[
+        re.compile(r"^\s*" + r"\s+".join(re.escape(w) for w in town.split()) + r"\s*$", re.I)
+        for town in profile().get("school_constituent_towns", [])
+    ],
     re.compile(r"\bclassroom-?\s*salaries\b", re.I),  # already in Personnel
     re.compile(r"^\s*total\s+(classroom|support|administrative|operations|extracurricular)\b", re.I),
     re.compile(r"\benrollment\b", re.I),

@@ -1,4 +1,10 @@
+# Worker name kept as deployed; another town can rename it.
 name = "ahnj-proxy"
 main = "worker.js"
 compatibility_date = "2025-01-01"
 workers_dev = true
+
+[vars]
+# Hosts the proxy will fetch (comma-separated): the hosts of the sources
+# marked "proxy": true in municipalities/<slug>/sources.json.
+ALLOWED_HOSTS = "www.ahnj.com,ahnj.com,highlands-nj.municodemeetings.com"

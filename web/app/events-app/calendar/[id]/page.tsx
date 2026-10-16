@@ -1,4 +1,5 @@
 "use client";
+import { EVENTS_URL } from "@/lib/municipality";
 
 // /calendar/[id] — full detail page for a single event with one-tap
 // check-in. For music events also embeds the band guide enrichment
@@ -156,7 +157,7 @@ export default function EventDetailPage({
   // Public URL used by Share buttons. SSR-safe (window only on client).
   const eventUrl = typeof window !== "undefined"
     ? `${window.location.origin}/calendar/${id}`
-    : `https://events.ahnj.info/calendar/${id}`;
+    : `${EVENTS_URL}/calendar/${id}`;
   const shareSubject = `${ev.title} — ${fmtLongDate(ev.date)}${venueName ? ` @ ${venueName}` : ""}`;
   const shareBody = `${ev.title}\n${fmtLongDate(ev.date)}${ev.time ? ` · ${ev.time}` : ""}${venueName ? `\n${venueName}` : ""}\n\n${eventUrl}`;
   const mailtoUrl = `mailto:?subject=${encodeURIComponent(shareSubject)}&body=${encodeURIComponent(shareBody)}`;

@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, PLACE } from "@/lib/municipality";
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -25,11 +26,11 @@ import {
   ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 // NJ MOD-IV property classes (the codes the borough assessor files with the
 // county). Vacant/residential/commercial/exempt are the only ones that show
-// up in Atlantic Highlands; included a few extras for forward compatibility.
+// up in this town; included a few extras for forward compatibility.
 const CLASS_LABELS: Record<string, string> = {
   "1": "Vacant land",
   "2": "Residential",
@@ -82,20 +83,20 @@ function fmtNum(n: number | null | undefined, digits = 2): string {
  */
 function zillowUrl(address: string | null) {
   if (!address) return null;
-  const q = `${address}, Atlantic Highlands, NJ`.replace(/\s+/g, "-");
+  const q = `${address}, ${PLACE}`.replace(/\s+/g, "-");
   return `https://www.zillow.com/homes/${encodeURIComponent(q)}_rb/`;
 }
 function realtorUrl(address: string | null) {
   if (!address) return null;
-  return `https://www.realtor.com/realestateandhomes-search/${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}`;
+  return `https://www.realtor.com/realestateandhomes-search/${encodeURIComponent(`${address}, ${PLACE}`)}`;
 }
 function googleMapsUrl(address: string | null) {
   if (!address) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${address}, ${PLACE}`)}`;
 }
 function googleStreetViewUrl(address: string | null) {
   if (!address) return null;
-  return `https://www.google.com/maps?layer=c&q=${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}`;
+  return `https://www.google.com/maps?layer=c&q=${encodeURIComponent(`${address}, ${PLACE}`)}`;
 }
 /**
  * Unkeyed Maps embed. `layer=c` overlays the Street View pegman so the user
@@ -104,7 +105,7 @@ function googleStreetViewUrl(address: string | null) {
  */
 function googleMapsEmbedUrl(address: string | null) {
   if (!address) return null;
-  return `https://maps.google.com/maps?q=${encodeURIComponent(`${address}, Atlantic Highlands, NJ`)}&z=17&layer=c&output=embed`;
+  return `https://maps.google.com/maps?q=${encodeURIComponent(`${address}, ${PLACE}`)}&z=17&layer=c&output=embed`;
 }
 
 interface SortableHeaderProps {
@@ -219,7 +220,7 @@ export default function ParcelsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Property &amp; Tax Records</h1>
           <p className="text-sm text-gray-500 mt-1">
-            NJ MOD-IV parcels for Atlantic Highlands borough
+            NJ MOD-IV parcels for {TOWN.name} {TOWN.kind}
             {countData ? (
               <>
                 {" "}— <span className="font-medium">{countData.count.toLocaleString()}</span> parcels

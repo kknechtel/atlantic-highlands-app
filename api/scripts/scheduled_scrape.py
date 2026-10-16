@@ -3,13 +3,13 @@
 Runs in three steps each tick, each isolated so a failure can't take
 out the next:
 
-  1. Document scrape — `run_scraper(historical=True)` across all 13 crawlers.
+  1. Document scrape — `run_scraper(historical=True)` across every source
+     in the municipality's sources.json.
      Tags the scraper_runs row with triggered_by="schedule".
-  2. Borough event calendar — `run_events_scrape()` against
-     ahnj.com/Upcoming Events for current month + 12 ahead.
+  2. Town event calendar — `run_events_scrape()` against the source's
+     events_calendar page for current month + 12 ahead.
   3. Live-music scrape — `run_music_scrape()` iterates the venue registry
-     (Squarespace + WordPress Tribe Events adapters) across Atlantic
-     Highlands / Highlands / Sea Bright music venues.
+     (Squarespace + WordPress Tribe Events adapters).
 
 Wire-up on EC2:
   /etc/systemd/system/ah-scraper.service   (oneshot)
@@ -23,7 +23,7 @@ import logging
 import os
 import sys
 
-sys.path.insert(0, "/opt/atlantic-highlands/api")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,13 +44,13 @@ async def main() -> int:
         return 0
 
     logger.info("Starting scheduled scrape (historical=True, all sources).")
-    # historical=True crawls the 2005-2013 AHNJ archives too. Per-doc dedup
+    # historical=True crawls each source's historical_pages too. Per-doc dedup
     # in the runner means re-crawling those archives every night is wasted
     # bandwidth, not duplicate data — but it's the simplest way to
     # guarantee "everything available" is in the index.
     await run_scraper(
-        sites=None,           # default: all 13 crawlers
-        historical=True,      # full crawl, including 2005-2013 archives
+        sites=None,           # default: every configured source
+        historical=True,      # full crawl, including historical_pages
         triggered_by="schedule",
     )
     final = get_scraper_status()
@@ -61,16 +61,16 @@ async def main() -> int:
         len(final["errors"]),
     )
 
-    # Step 2 — borough event calendar. Imported lazily so a bug here can't
+    # Step 2 — town event calendar. Imported lazily so a bug here can't
     # break the doc scrape's import-time path.
     try:
         from scripts.scrape_events import run_events_scrape
         events_summary = run_events_scrape(months_ahead=12)
-        logger.info("Borough events scrape done: %s", events_summary)
+        logger.info("Town events scrape done: %s", events_summary)
     except Exception as exc:
-        logger.exception("borough events scrape failed: %s", exc)
+        logger.exception("town events scrape failed: %s", exc)
 
-    # Step 3 — live-music venue scrape across all three towns.
+    # Step 3 — live-music venue scrape.
     try:
         from services.event_scrapers import run_music_scrape
         music_summary = run_music_scrape()

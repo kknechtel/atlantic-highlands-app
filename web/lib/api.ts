@@ -1,5 +1,5 @@
 /**
- * Atlantic Highlands API Client
+ * Civic research API client
  */
 
 // In browser: use relative URLs so Next.js rewrites proxy to backend (avoids mixed content)
@@ -747,9 +747,9 @@ export async function generateReport(reportType: string, entityType?: string, cu
 //   event_type='govt'       — town business (council, planning, BOE, etc.)
 //                             → only surfaced on the civic app's /calendar
 //   event_type='community'  — borough fun: parades, fireworks, holidays
-//                             → only surfaced on events.ahnj.info
+//                             → only surfaced on the events app
 //   event_type='live_music' — venue-scraped shows (Proving Ground, etc.)
-//                             → only surfaced on events.ahnj.info
+//                             → only surfaced on the events app
 //   event_type='general'    — legacy, pre-classification. Backfill in
 //                             database.py reclassifies these on next API restart.
 
@@ -1092,6 +1092,26 @@ export async function createInvite(email?: string, expiresHours: number = 72) {
 export async function getInvites() { return request<Invite[]>("/api/admin/invites"); }
 export async function deleteInvite(inviteId: string) { return request(`/api/admin/invites/${inviteId}`, { method: "DELETE" }); }
 
+// ─── Admin: settings (API keys) ───────────────────────────────────────
+
+export interface AppSettingView {
+  key: string;
+  label: string;
+  help: string;
+  secret: boolean;
+  source: "app" | "environment" | null;
+  value: string | null;
+}
+export async function getAppSettings() {
+  return request<{ settings: AppSettingView[] }>("/api/admin/settings");
+}
+export async function saveAppSetting(key: string, value: string) {
+  return request<AppSettingView>(`/api/admin/settings/${key}`, { method: "PUT", body: JSON.stringify({ value }) });
+}
+export async function clearAppSetting(key: string) {
+  return request<AppSettingView>(`/api/admin/settings/${key}`, { method: "DELETE" });
+}
+
 // ─── Admin: corpus health ─────────────────────────────────────────────
 
 export interface AdminDocumentRow {
@@ -1200,7 +1220,7 @@ export async function getUsageRows(params: {
 }
 
 // ─── Parcels ──────────────────────────────────────────────────────────
-// NJ MOD-IV property records for Atlantic Highlands borough. Owner identity
+// NJ MOD-IV property records for the town. Owner identity
 // fields are omitted under NJ Daniel's Law (P.L. 2020 c.125) — all bulk
 // MOD-IV feeds dropped OWNER_NAME on 2023-01-01. The list endpoint returns
 // the trimmed ParcelListItem; getParcel(id) returns the full ParcelDetail.
@@ -1373,7 +1393,7 @@ export async function createCheckin(payload: {
 }
 
 // ─── Community Chat ───────────────────────────────────────────────────
-// Single global feed for events.ahnj.info. Polling-based (~10s).
+// Single global feed for the events app. Polling-based (~10s).
 
 export type CommunityRefKind = "event" | "checkin";
 

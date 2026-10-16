@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useState } from 'react';
 import { Plus, Minus, Save, X } from 'lucide-react';
@@ -11,7 +12,7 @@ interface Props {
   brandColor?: string;
 }
 
-export default function TableBlock({ section, editable, onSave, brandColor = '#385854' }: Props) {
+export default function TableBlock({ section, editable, onSave, brandColor = TOWN.brand_color }: Props) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(section.title || '');
   const [caption, setCaption] = useState(section.caption || '');

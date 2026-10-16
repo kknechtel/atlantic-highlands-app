@@ -17,10 +17,10 @@ import logging
 import os
 
 import numpy as np
+from config import api_key
 
 log = logging.getLogger(__name__)
 
-VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 # voyage-3 is 1024-dim (matches database.py:EMBEDDING_DIM and the
 # vector(1024) columns). voyage-3-lite is 512-dim — DO NOT use without
 # also changing the column type, or every UPDATE rejects with
@@ -31,11 +31,11 @@ EMBEDDING_DIM = 1024
 
 def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[float]]:
     import requests
-    if not VOYAGE_API_KEY:
+    if not api_key("VOYAGE_API_KEY"):
         raise RuntimeError("VOYAGE_API_KEY not configured")
     resp = requests.post(
         "https://api.voyageai.com/v1/embeddings",
-        headers={"Authorization": f"Bearer {VOYAGE_API_KEY}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {api_key('VOYAGE_API_KEY')}", "Content-Type": "application/json"},
         json={"model": EMBEDDING_MODEL, "input": texts, "input_type": input_type},
         timeout=30,
     )
@@ -95,7 +95,7 @@ def _hash_embed(text: str) -> list[float]:
 
 def embed_document(text: str) -> Optional[list[float]]:
     truncated = text[:32000]
-    if VOYAGE_API_KEY:
+    if api_key("VOYAGE_API_KEY"):
         try:
             return _voyage_embed([truncated], input_type="document")[0]
         except Exception as exc:
@@ -108,7 +108,7 @@ def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[Option
     out: list[Optional[list[float]]] = []
     for i in range(0, len(texts), batch_size):
         batch = [t[:32000] for t in texts[i:i + batch_size]]
-        if VOYAGE_API_KEY:
+        if api_key("VOYAGE_API_KEY"):
             try:
                 out.extend(_voyage_embed(batch, input_type="document"))
             except Exception as exc:
@@ -121,7 +121,7 @@ def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[Option
 
 def embed_query(query: str) -> list[float]:
     """Raises when Voyage is configured but fails — callers fall back to keyword search."""
-    if VOYAGE_API_KEY:
+    if api_key("VOYAGE_API_KEY"):
         return _voyage_embed([query], input_type="query")[0]
     return _hash_embed(query)
 

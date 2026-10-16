@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
@@ -18,7 +19,7 @@ interface Props {
   brandColor?: string;
 }
 
-export default function ReactComponentBlock({ section, editable, onSave, brandColor = '#385854' }: Props) {
+export default function ReactComponentBlock({ section, editable, onSave, brandColor = TOWN.brand_color }: Props) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(section.title || '');
   const [tsx, setTsx] = useState(section.tsx || '');
@@ -61,7 +62,7 @@ export default function ReactComponentBlock({ section, editable, onSave, brandCo
       />
       <div className="text-[10px] text-gray-500">
         Available scope: React + hooks · Recharts (BarChart, LineChart, PieChart, …) · lucide icons (TrendingUp, …) ·
-        AH primitives (KPICard, Callout, Stat, Section) · BRAND color constant. No window/fetch/document.
+        {TOWN.short_name} primitives (KPICard, Callout, Stat, Section) · BRAND color constant. No window/fetch/document.
       </div>
       <div className="border border-gray-200 rounded p-2 bg-gray-50">
         <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Live preview</div>

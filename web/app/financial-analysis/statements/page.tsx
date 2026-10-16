@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ import {
 } from "recharts";
 
 const API_BASE = "";
-const COLORS = ["#2563eb", "#385854", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
+const COLORS = ["#2563eb", TOWN.brand_color, "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
 const fmt = (n: number | null | undefined) => n != null ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "-";
 const fmtShort = (n: number) => {
   if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
@@ -141,7 +142,7 @@ export default function StatementsPage() {
                 <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => fmt(v as number)} />
                 <Legend />
-                <Bar dataKey="Revenue" fill="#385854" />
+                <Bar dataKey="Revenue" fill={TOWN.brand_color} />
                 <Bar dataKey="Expenditures" fill="#ef4444" />
               </BarChart>
             </ResponsiveContainer>

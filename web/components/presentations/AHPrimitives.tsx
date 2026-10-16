@@ -1,14 +1,15 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 /**
- * AH-branded primitives Claude can use inside `propose_react_component`
+ * Site-branded primitives Claude can use inside `propose_react_component`
  * TSX. Hand-written + trusted; Claude only invokes them, never defines
  * new ones. Each component is also matched by a Tier-2 PPTX rasterizer
  * in `api/services/document_builder.py` so PPTX/DOCX exports look right
  * even without headless Chromium.
  *
  * Visual language:
- *   - White surfaces, AH teal #385854 accents
+ *   - White surfaces, brand-color (TOWN.brand_color) accents
  *   - Bold sans for titles, system sans for body
  *   - Thin teal underlines on headings (matches the deck section style)
  */
@@ -17,7 +18,7 @@ import {
   TrendingUp, TrendingDown, AlertCircle, AlertTriangle, CheckCircle2, XCircle,
 } from 'lucide-react';
 
-const BRAND = '#385854';
+const BRAND = TOWN.brand_color;
 
 // ── KPICard ─────────────────────────────────────────────────────────────
 // Single stat block. Wrap several in a flex row for a stat strip.
@@ -61,7 +62,7 @@ interface CalloutProps {
 }
 
 export function Callout({ kind = 'info', title, children }: CalloutProps) {
-  // Tolerate both AH ('info'/'warn'/'success') and bank-processor
+  // Tolerate both this app's ('info'/'warn'/'success') and bank-processor
   // ('insight'/'warning'/'risk'/'note') vocabularies — same component
   // is fed by both AI prompts during the migration.
   const k = kind === 'warn' ? 'warning'

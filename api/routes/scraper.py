@@ -10,16 +10,17 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from auth import get_current_user
+from municipality import sources
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 class ScrapeRequest(BaseModel):
-    sites: List[str] | None = None  # ["ahnj", "ecode", "tri"]
+    sites: List[str] | None = None  # source names from sources.json; None = all
     project_id: str | None = None
     dry_run: bool = False
-    historical: bool = True  # False = recent-only (skips AHNJ 2005-2013 archives)
+    historical: bool = True  # False = recent-only (skips historical archive sources)
 
 
 class SiteStats(BaseModel):
@@ -95,7 +96,7 @@ async def start_scraper(
 
     return {
         "detail": "Scraper started",
-        "sites": req.sites or ["ahnj", "ecode", "tri"],
+        "sites": req.sites or list(sources().get("documents", {})),
         "mode": "recent_only" if not req.historical else "all",
     }
 

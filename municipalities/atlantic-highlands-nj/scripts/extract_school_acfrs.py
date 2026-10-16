@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+Specific to Atlantic Highlands, NJ.
+
 Extract financial data from the 21 NJ DOE school ACFRs (AHSD/0130, HHRS/2120,
 HSD/2160 x FY18-24) into financial_statements + financial_line_items.
 
@@ -18,17 +20,18 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_API = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "api"))
+sys.path.insert(0, _API)
+os.chdir(_API)
 
 from google import genai
 from google.genai import types
-from config import GEMINI_API_KEY
+from config import api_key
 from database import SessionLocal
 from models.document import Document
 from models.financial import FinancialStatement, FinancialLineItem
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
 cfg = types.GenerateContentConfig(
     temperature=0.1,
     max_output_tokens=65000,

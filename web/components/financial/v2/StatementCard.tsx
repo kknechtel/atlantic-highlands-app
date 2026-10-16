@@ -1,4 +1,5 @@
 "use client";
+import { COUNTY_SHORT } from "@/lib/municipality";
 
 import { type FinancialStatement, type AnomalyFlag, getDocumentViewUrl } from "@/lib/api";
 import { CheckCircleIcon, ExclamationTriangleIcon, BoltIcon, DocumentTextIcon } from "@heroicons/react/24/outline";
@@ -30,7 +31,7 @@ function budgetVariant(stmt: FinancialStatement): string | null {
   if (stmt.statement_type !== "budget") return null;
   if (name.includes("advertised") || name.includes("tentative")) return "Advertised";
   if (name.includes("adopted") || name.includes("final")) return "Adopted";
-  if (name.includes("monmouth")) return "DLGS / Monmouth Filing";
+  if (COUNTY_SHORT && name.includes(COUNTY_SHORT.toLowerCase())) return `DLGS / ${COUNTY_SHORT} Filing`;
   return null;
 }
 

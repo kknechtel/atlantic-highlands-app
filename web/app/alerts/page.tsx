@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SCHOOL_ABBR } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +12,7 @@ import {
   type SavedAlert, type AlertKind, type DigestFrequency,
 } from "@/lib/api";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 const KIND_LABEL: Record<AlertKind, string> = {
   keyword: "Keyword search",
@@ -25,11 +26,11 @@ const KIND_ICON: Record<AlertKind, React.ComponentType<{ className?: string }>> 
   new_document: DocumentTextIcon,
 };
 
-const MEETING_BODIES = ["Council", "Planning", "Harbor", "HHRSD"] as const;
+const MEETING_BODIES = ["Council", "Planning", "Harbor", SCHOOL_ABBR];
 const DOC_CATEGORIES = [
   { value: "", label: "All categories" },
   { value: "town", label: "Town" },
-  { value: "school", label: "School (HHRSD)" },
+  { value: "school", label: `School (${SCHOOL_ABBR})` },
 ];
 
 function fmtDate(s: string | null): string {

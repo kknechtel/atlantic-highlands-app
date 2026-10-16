@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Trash2, X, Check } from 'lucide-react';
@@ -22,7 +23,7 @@ export interface ShareDialogProps {
   removeShare: (id: string, userId: string) => Promise<unknown>;
 }
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 export function ShareDialog({
   resourceType,

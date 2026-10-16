@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useState, use } from 'react';
 import { Lock, Loader2 } from 'lucide-react';
@@ -12,7 +13,7 @@ import PresentationViewer from '@/components/presentations/PresentationViewer';
 // unwrap with React.use(); server components await directly.
 interface PageProps { params: Promise<{ slug: string }> }
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 /**
  * Public presentation viewer. No auth required. If the deck has a password,

@@ -98,7 +98,7 @@ async def reextract_one(
     db.commit()
     db.refresh(doc)
 
-    # OCR is free (text layer + Tesseract) but still tracked at zero so the
+    # Page OCR records its own Gemini cost per call; this row is tracked at zero so the
     # admin sees coverage of the corpus.
     try:
         from services.usage import record_usage

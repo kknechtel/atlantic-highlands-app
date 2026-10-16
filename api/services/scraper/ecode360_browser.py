@@ -79,7 +79,7 @@ class BrowserPages:
             # Listings can render after load (or after a throttled first paint):
             # wait for document links, but return what's there if none appear.
             try:
-                self._page.wait_for_selector("a[href*='/document/']", timeout=20000)
+                self._page.wait_for_selector("a[href*='/document/']", timeout=8000)
                 # Long lists render in batches: wait until the count stops growing.
                 last, stable = -1, 0
                 for _ in range(30):

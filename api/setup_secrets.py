@@ -14,9 +14,9 @@ Usage:
     RDS_PASSWORD='<new-value>' python setup_secrets.py
 
 The RDS password is NEVER hardcoded here. It must come from RDS_PASSWORD env
-or already exist in the secret. The historical value AH-Docs-2026! was
+or already exist in the secret. The historical value that was
 committed in this file (commit c578467) and must be considered burned —
-rotate it in the RDS console before running this.
+rotate it with infra/security/rotate_db_password.py --rotate.
 """
 import json
 import os

@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from typing import Literal, Optional
 
-from config import GEMINI_API_KEY
+from config import api_key
 from services.opra_pdf import render_opra_pdf, AGENCY_INFO as PDF_AGENCY_INFO
 
 logger = logging.getLogger(__name__)
@@ -561,7 +561,7 @@ The letter should be professional, legally precise, and ready to submit or paste
 GovPilot online form at the Atlantic Highlands portal.
 """
 
-    if not GEMINI_API_KEY:
+    if not api_key("GEMINI_API_KEY"):
         async def no_key():
             yield f"data: {json.dumps({'type': 'delta', 'content': 'Error: GEMINI_API_KEY is not configured. Please set it in the environment.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -571,7 +571,7 @@ GovPilot online form at the Atlantic Highlands portal.
         try:
             from google import genai
             from google.genai import types
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
             config = types.GenerateContentConfig(temperature=0.2, max_output_tokens=8000)
 
             loop = asyncio.get_event_loop()
@@ -626,7 +626,7 @@ async def fact_check_opra_request(req: OPRAFactCheckRequest):
     Fact-check an OPRA request using Gemini with grounded search.
     Validates all statutory citations, legal claims, and procedural assertions.
     """
-    if not GEMINI_API_KEY:
+    if not api_key("GEMINI_API_KEY"):
         return {"error": "GEMINI_API_KEY is not configured"}
 
     prompt = f"""{OPRA_REGULATIONS}
@@ -681,7 +681,7 @@ Be meticulous - every citation must be verified against the actual statute text.
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
 
         # Use grounded search for fact-checking
         google_search_tool = types.Tool(

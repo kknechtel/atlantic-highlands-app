@@ -12,7 +12,7 @@ from models.document import Document
 from models.financial import FinancialStatement
 from models.user import User
 from auth import get_current_user
-from config import GEMINI_API_KEY
+from config import api_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -99,7 +99,7 @@ Documents:
 
     prompt = prompts.get(req.report_type, req.custom_prompt or "Write a financial report.")
 
-    if not GEMINI_API_KEY:
+    if not api_key("GEMINI_API_KEY"):
         async def no_key():
             yield f"data: {json.dumps({'type': 'delta', 'content': 'Configure GEMINI_API_KEY to generate reports.'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -110,7 +110,7 @@ Documents:
     async def stream_report():
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
         config = types.GenerateContentConfig(temperature=0.3, max_output_tokens=16000)
 
         loop = asyncio.get_event_loop()

@@ -7,7 +7,7 @@ import json
 import asyncio
 from typing import Dict, List, Optional
 
-from config import GEMINI_API_KEY, ANTHROPIC_API_KEY
+from config import api_key
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +156,14 @@ async def pdf_to_markdown(content: bytes) -> Optional[str]:
 async def call_extraction_llm(prompt: str) -> Optional[Dict]:
     """Call Gemini or Claude to extract structured financial data."""
     # Try Gemini first
-    if GEMINI_API_KEY:
+    if api_key("GEMINI_API_KEY"):
         try:
             return await _call_gemini(prompt)
         except Exception as e:
             logger.warning(f"Gemini extraction failed, falling back to Claude: {e}")
 
     # Fallback to Claude
-    if ANTHROPIC_API_KEY:
+    if api_key("ANTHROPIC_API_KEY"):
         try:
             return await _call_claude(prompt)
         except Exception as e:
@@ -195,7 +195,7 @@ async def _call_gemini(prompt: str) -> Optional[Dict]:
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
     config = types.GenerateContentConfig(
         temperature=0.1,
         max_output_tokens=65000,
@@ -230,7 +230,7 @@ async def _call_claude(prompt: str) -> Optional[Dict]:
     """Extract using Claude."""
     import anthropic
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
 
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(

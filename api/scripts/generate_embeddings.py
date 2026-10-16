@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 from database import SessionLocal
 from models.document import Document
 from sqlalchemy import text as sql_text
-from config import GEMINI_API_KEY
+from config import api_key
 
 
 def embed_text(text: str) -> list[float]:
     """Generate embedding using Google Gemini embedding API."""
     from google import genai
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
     # Truncate to ~8000 tokens worth of text
     truncated = text[:30000]
     result = client.models.embed_content(

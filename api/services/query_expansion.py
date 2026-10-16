@@ -22,6 +22,7 @@ import logging
 import os
 import re
 from functools import lru_cache
+from config import api_key
 
 log = logging.getLogger(__name__)
 
@@ -183,8 +184,8 @@ def _llm_paraphrase(query: str) -> list[str]:
     Cached at the module level (via expand's lru_cache) so a repeated user
     query doesn't re-pay the round-trip.
     """
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
+    key = api_key("GEMINI_API_KEY")
+    if not key:
         return []
 
     prompt = (
@@ -201,7 +202,7 @@ def _llm_paraphrase(query: str) -> list[str]:
     try:
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=key)
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,

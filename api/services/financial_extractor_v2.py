@@ -21,7 +21,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from config import GEMINI_API_KEY, ANTHROPIC_API_KEY
+from config import api_key
 
 logger = logging.getLogger(__name__)
 
@@ -349,13 +349,13 @@ def _record_extractor_usage(model: str, in_t: int, out_t: int) -> None:
 
 
 async def _call_gemini(prompt: str, max_output: int = 65000) -> Optional[Dict]:
-    if not GEMINI_API_KEY:
+    if not api_key("GEMINI_API_KEY"):
         return None
     try:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=api_key("GEMINI_API_KEY"))
         cfg_kwargs = dict(temperature=0.0, max_output_tokens=max_output)
         try:
             cfg_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
@@ -385,11 +385,11 @@ async def _call_gemini(prompt: str, max_output: int = 65000) -> Optional[Dict]:
 
 
 async def _call_claude(prompt: str, max_output: int = 16000) -> Optional[Dict]:
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         return None
     try:
         import anthropic
-        client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        client = anthropic.AsyncAnthropic(api_key=api_key("ANTHROPIC_API_KEY"))
         # Use streaming unconditionally — non-streaming .create() rejects
         # max_tokens above the 10-minute estimate threshold.
         text_parts: list[str] = []

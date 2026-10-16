@@ -603,7 +603,7 @@ def bulk_import(
     registers .ref pointers to every file it finds. A non-admin user could
     use it to enumerate and (via download_file) read anything the API
     process can read. In practice this is a dev-only convenience for
-    ingesting a local Box folder; production should not call it.
+    ingesting a local folder; production should not call it.
     """
     directory = req.directory
     if not os.path.isdir(directory):
@@ -616,11 +616,11 @@ def bulk_import(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
     else:
-        project = db.query(Project).filter(Project.name == "Knechtel Documents").first()
+        project = db.query(Project).filter(Project.name == "Imported Documents").first()
         if not project:
             project = Project(
-                name="Knechtel Documents",
-                description="Bulk imported from local Box folder",
+                name="Imported Documents",
+                description="Bulk imported from a local folder",
                 entity_type="general",
                 created_by=user.id,
             )

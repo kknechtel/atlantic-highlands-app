@@ -15,7 +15,7 @@ from typing import Optional
 import anthropic
 from sqlalchemy.orm import Session
 
-from config import ANTHROPIC_API_KEY
+from config import api_key
 from models.document import Document
 
 log = logging.getLogger(__name__)
@@ -101,10 +101,10 @@ def fact_check_presentation(
     presentation_id: Optional[str] = None,
 ) -> dict:
     """Fact-check every citation in every narrative section."""
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         return {"error": "anthropic_api_key_not_configured"}
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
     results: list[dict] = []
     summary = {"supported": 0, "partial": 0, "unsupported": 0, "unresolved": 0, "no_source": 0}
     total_in = total_out = 0
@@ -181,7 +181,7 @@ def fact_check_presentation_stream(
         {"type": "complete", "ran_at": str, "summary": dict, "results": [...]}
         {"type": "error", "message": str}         (on failure)
     """
-    if not ANTHROPIC_API_KEY:
+    if not api_key("ANTHROPIC_API_KEY"):
         yield {"type": "error", "message": "anthropic_api_key_not_configured"}
         return
 
@@ -195,7 +195,7 @@ def fact_check_presentation_stream(
             total += 1
     yield {"type": "start", "total": total}
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
     results: list[dict] = []
     summary = {"supported": 0, "partial": 0, "unsupported": 0, "unresolved": 0, "no_source": 0}
     total_in = total_out = 0

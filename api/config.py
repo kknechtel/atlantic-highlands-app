@@ -57,10 +57,14 @@ AWS_ACCESS_KEY_ID = _get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = _get("AWS_SECRET_ACCESS_KEY")
 S3_BUCKET = _get("S3_BUCKET", "atlantic-highlands-documents")
 
-# AI / LLM
-ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
-GEMINI_API_KEY = _get("GEMINI_API_KEY")
-VOYAGE_API_KEY = _get("VOYAGE_API_KEY")  # for semantic embeddings; falls back to hash if missing
+# AI / LLM keys and Google Sign-In are read with api_key() at call time, so a
+# value an admin saves on the Settings screen takes effect without a restart.
+# The environment (or AWS Secrets Manager) is the fallback.
+def api_key(name: str) -> str:
+    """Live value of an admin-settable key: Settings screen > env > ""."""
+    from services.app_settings import saved
+
+    return (saved().get(name) or _get(name) or "").strip()
 
 # Auth
 JWT_SECRET = _get("JWT_SECRET", SECRET_KEY)
@@ -84,8 +88,5 @@ DIGEST_FROM_EMAIL = _get("DIGEST_FROM_EMAIL", "")
 DIGEST_REPLY_TO = _get("DIGEST_REPLY_TO", "")
 PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", "https://ahnj.info")
 
-# Google Sign-In. Client ID from Google Cloud Console > APIs & Services >
-# Credentials > OAuth 2.0 Client ID (Web application type). When blank,
-# /api/auth/google returns 503 — local dev without GSI configured can
-# still use password login.
-GOOGLE_OAUTH_CLIENT_ID = _get("GOOGLE_OAUTH_CLIENT_ID", "")
+# Google Sign-In: api_key("GOOGLE_OAUTH_CLIENT_ID"). When blank,
+# /api/auth/google returns 503 and password login still works.

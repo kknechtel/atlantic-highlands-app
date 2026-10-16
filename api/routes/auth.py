@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from config import GOOGLE_OAUTH_CLIENT_ID
+from config import api_key
 from database import get_db
 from models.user import User, InviteToken
 from auth import (
@@ -182,13 +182,13 @@ def login_google(req: GoogleLoginRequest, db: Session = Depends(get_db)):
       3. Else create a new user (active=True; Google-verified email is
          enough trust for events.ahnj.info — civic-app gates are unchanged)
     """
-    if not GOOGLE_OAUTH_CLIENT_ID:
+    if not api_key("GOOGLE_OAUTH_CLIENT_ID"):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Google Sign-In not configured on this server",
         )
 
-    identity = verify_google_id_token(req.id_token, GOOGLE_OAUTH_CLIENT_ID)
+    identity = verify_google_id_token(req.id_token, api_key("GOOGLE_OAUTH_CLIENT_ID"))
     if not identity or not identity.get("email") or not identity.get("sub"):
         raise HTTPException(status_code=401, detail="Invalid Google ID token")
 

@@ -1,13 +1,15 @@
 """
-PDF → markdown, page by page, at zero API cost.
+PDF → markdown, page by page, for the search index.
 
 For each page:
   1. PyMuPDF text layer (instant, free).
   2. If the page has almost no text, or its text layer is garbled
-     (see services/text_quality.py), OCR just that page with Tesseract.
+     (see services/text_quality.py), OCR just that page: Gemini
+     (services/gemini_ocr.py, off this box, as Techbrig does), or local
+     Tesseract when no Gemini key is configured.
 
-No paid Vision fallback: pages Tesseract can't read are marked
-"[page N: unreadable]" so the gap is visible instead of silently empty.
+Pages nothing can read are marked "[page N: unreadable]" so the gap is
+visible instead of silently empty.
 Output uses "## Page N" headers, which chunking parses for page numbers.
 """
 from __future__ import annotations
@@ -27,7 +29,7 @@ PROGRESS_CB = Callable[[int, int], Awaitable[None]]
 
 # A page with fewer chars than this in its text layer is treated as scanned.
 MIN_PAGE_CHARS = 100
-# Cap on pages sent to Tesseract per document. Text-layer pages are uncapped.
+# Cap on pages sent to OCR per document. Text-layer pages are uncapped.
 MAX_OCR_PAGES = int(os.environ.get("MAX_OCR_PAGES", "120"))
 
 
@@ -36,7 +38,7 @@ class OCRResult:
     success: bool
     markdown: str = ""
     page_count: int = 0
-    tier: str = ""              # "text_layer" | "tesseract" | "mixed" | "none"
+    tier: str = ""              # "text_layer" | "gemini" | "tesseract" | "mixed" | "none"
     processing_time_ms: float = 0
     estimated_cost: float = 0.0
     error: Optional[str] = None
@@ -59,13 +61,20 @@ def _extract_sync(pdf_bytes: bytes, filename: str) -> OCRResult:
     to_ocr = needs_ocr[:MAX_OCR_PAGES]
 
     ocr_text: dict[int, str] = {}
+    engine = ""
     if to_ocr:
-        from services.tesseract_ocr import is_tesseract_available, ocr_pages
-        if is_tesseract_available():
-            ocr_text = ocr_pages(pdf_bytes, to_ocr)
+        from services import gemini_ocr
+        if gemini_ocr.enabled():
+            engine = "gemini"
+            ocr_text = gemini_ocr.ocr_pages(pdf_bytes, to_ocr, filename)
         else:
-            logger.warning("[OCR:%s] %d pages need OCR but tesseract is not installed",
-                           filename, len(to_ocr))
+            from services.tesseract_ocr import is_tesseract_available, ocr_pages
+            if is_tesseract_available():
+                engine = "tesseract"
+                ocr_text = ocr_pages(pdf_bytes, to_ocr)
+            else:
+                logger.warning("[OCR:%s] %d pages need OCR but neither Gemini nor "
+                               "tesseract is available", filename, len(to_ocr))
 
     parts: list[str] = []
     unreadable: list[int] = []
@@ -85,7 +94,7 @@ def _extract_sync(pdf_bytes: bytes, filename: str) -> OCRResult:
     readable_pages = page_count - len(unreadable)
     tier = ("none" if readable_pages == 0 else
             "text_layer" if not ocr_text else
-            "tesseract" if len(ocr_text) == page_count else "mixed")
+            engine if len(ocr_text) == page_count else "mixed")
     elapsed = (time.time() - start) * 1000
     logger.info("[OCR:%s] %d pages, %d OCR'd, %d unreadable%s, %.0fms",
                 filename, page_count, len(ocr_text), len(unreadable),
@@ -108,7 +117,7 @@ async def extract_pdf_to_markdown(
     filename: str = "",
     progress_callback: Optional[PROGRESS_CB] = None,
 ) -> OCRResult:
-    """Extract a PDF to "## Page N" markdown using the text layer + Tesseract."""
+    """Extract a PDF to "## Page N" markdown: text layer, OCR where it fails."""
     try:
         return await asyncio.to_thread(_extract_sync, pdf_bytes, filename)
     except Exception as exc:

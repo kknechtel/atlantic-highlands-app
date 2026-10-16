@@ -5,7 +5,7 @@ Runs services.title_extractor.derive() over every document and writes the
 result back. Idempotent: skips docs whose title is already set unless
 --all is passed. Safe to run on prod via SSM.
 
-Usage (on the EC2 box, from /opt/atlantic-highlands/api):
+Usage (on the server, from the api/ directory):
     python scripts/backfill_titles.py                # missing titles only
     python scripts/backfill_titles.py --all          # everything
     python scripts/backfill_titles.py --limit 100    # first N only

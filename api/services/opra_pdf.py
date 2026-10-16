@@ -2,8 +2,7 @@
 OPRA Request PDF generator.
 
 Produces a 1-3 page PDF that mirrors the layout of the NJ DCA model OPRA
-request form (the same form Atlantic Highlands and Henry Hudson Regional
-School District publish):
+request form (the same form NJ towns and school districts publish):
 
   Page 1 — Form face. Header with the agency name/address/phone, "Important
            Notice" strip, requestor info on the left, payment info on the
@@ -22,11 +21,10 @@ School District publish):
            response forms. Reproduced verbatim from the NJ DCA model form.
 
 Two entities are supported via `entity`:
-  - "borough"  → Borough of Atlantic Highlands (Michelle Clark, Clerk)
-  - "school"   → Henry Hudson Regional School District (Janet Sherlock,
-                  School Business Administrator)
+  - "borough"  → the town's records custodian (usually the Municipal Clerk)
+  - "school"   → the school district's custodian (usually the Business Administrator)
 
-Add a new entity by extending AGENCY_INFO.
+Agency names and contacts come from opra.agencies in the municipality profile.
 """
 
 from __future__ import annotations
@@ -44,40 +42,23 @@ from reportlab.platypus import (
     KeepTogether,
 )
 
+from municipality import TOWN, profile
+
 
 # ── Agency definitions ───────────────────────────────────────────────────────
 
+# Agencies come from the municipality profile (opra.agencies), keyed by the
+# entity value the API accepts ("borough", "school").
+_AGENCY_FIELDS = (
+    "agency_name", "address_line", "phone", "email",
+    "custodian_name", "custodian_title", "submission_note",
+)
 AGENCY_INFO = {
-    "borough": {
-        "agency_name": "Borough of Atlantic Highlands",
+    key: {
         "form_title": "OPEN PUBLIC RECORDS ACT REQUEST FORM",
-        "address_line": "100 First Ave, Atlantic Highlands, NJ 07716",
-        "phone": "(732) 291-1444",
-        "email": "clerk@ahnj.com",
-        "custodian_name": "Michelle Clark",
-        "custodian_title": "Municipal Clerk",
-        "submission_note": (
-            "Submit by email to clerk@ahnj.com, by mail/in person at 100 First "
-            "Ave, Atlantic Highlands, NJ 07716, or via the Borough's GovPilot "
-            "OPRA portal."
-        ),
-    },
-    "school": {
-        "agency_name": "Henry Hudson Regional School District",
-        "form_title": "OPEN PUBLIC RECORDS ACT REQUEST FORM",
-        "address_line": "1 Grand Tour, Highlands, NJ 07732",
-        "phone": "(732) 872-0900 ext. 4001",
-        "email": "jsherlock@henryhudsonreg.k12.nj.us",
-        "custodian_name": "Janet Sherlock",
-        "custodian_title": "School Business Administrator / Board Secretary",
-        "submission_note": (
-            "Email the completed form to Janet Sherlock, School Business "
-            "Administrator, at jsherlock@henryhudsonreg.k12.nj.us. Mail or "
-            "fax (732-872-1315) also accepted. The district consolidated on "
-            "July 1, 2024 — predecessor districts (Atlantic Highlands SD, "
-            "Highlands SD, HHR HS) no longer maintain separate custodians."
-        ),
-    },
+        **{f: agency.get(f, "") for f in _AGENCY_FIELDS},
+    }
+    for key, agency in profile().get("opra", {}).get("agencies", {}).items()
 }
 
 
@@ -187,7 +168,7 @@ def _build_header(info: dict):
         [Paragraph(info["form_title"], TITLE)],
         [Paragraph(info["address_line"], AGENCY)],
         [Paragraph(info["phone"], AGENCY)],
-        [Paragraph(f'<a href="mailto:{info["email"]}"><font color="#385854">{info["email"]}</font></a>', AGENCY)],
+        [Paragraph(f'<a href="mailto:{info["email"]}"><font color="{TOWN.brand_color}">{info["email"]}</font></a>', AGENCY)],
         [Paragraph(f'{info["custodian_name"]}, {info["custodian_title"]}', AGENCY)],
     ]
     t = Table(rows, colWidths=[7.5 * inch])

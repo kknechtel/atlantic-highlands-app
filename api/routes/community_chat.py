@@ -1,4 +1,4 @@
-"""Community chat — one global feed for events.ahnj.info.
+"""Community chat — one global feed for the events app.
 
 Endpoints (mounted at /api/community/chat):
   GET    /messages                list newest N (default 50), or after a cursor

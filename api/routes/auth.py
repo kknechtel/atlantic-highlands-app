@@ -180,7 +180,7 @@ def login_google(req: GoogleLoginRequest, db: Session = Depends(get_db)):
       1. Match by google_id  → existing OAuth user, refresh picture + last_login
       2. Else match by email → link Google to an existing password account
       3. Else create a new user (active=True; Google-verified email is
-         enough trust for events.ahnj.info — civic-app gates are unchanged)
+         enough trust for the events app — civic-app gates are unchanged)
     """
     if not api_key("GOOGLE_OAUTH_CLIENT_ID"):
         raise HTTPException(

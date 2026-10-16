@@ -3,7 +3,7 @@
  *
  * A "meeting" is a Document with doc_type starting with `recording_`. The
  * detail endpoint adds a presigned audio_url (for town audio) or a
- * youtube_id (for HHRSD videos), plus the stored transcript + summary.
+ * youtube_id (for school board videos), plus the stored transcript + summary.
  */
 import { getAuthToken } from "./api";
 

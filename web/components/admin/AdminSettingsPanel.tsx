@@ -1,10 +1,11 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearAppSetting, getAppSettings, saveAppSetting, type AppSettingView } from "@/lib/api";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 function SourceBadge({ s }: { s: AppSettingView }) {
   if (s.source === "app")

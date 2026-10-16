@@ -28,6 +28,8 @@ from typing import Any, Iterable, Optional
 
 from sqlalchemy.orm import Session
 
+from config import S3_BUCKET
+
 from models.document import Document
 from models.presentation import Presentation
 from models.presentation_version import PresentationVersion
@@ -56,7 +58,7 @@ def _strings_in(blob: Any) -> Iterable[str]:
 
 def _collect_doc_ids(sections: list[dict]) -> set[str]:
     """Find every [DOC:id] token referenced anywhere in section content
-    (or top-level section keys — AH sections store narrative bodies at
+    (or top-level section keys — deck sections store narrative bodies at
     section.body, not section.content.body)."""
     out: set[str] = set()
     for s in sections or []:
@@ -153,9 +155,9 @@ def publish_new_version(
         except Exception as e:
             log.warning("version snapshot: boto3 unavailable, skipping doc copies: %s", e)
             s3 = None
-        # AH uses one bucket per document row — use the doc's s3_bucket
+        # Each document row records its bucket — use the doc's s3_bucket
         # when copying. Fall back to env in case of missing values.
-        default_bucket = os.environ.get("S3_BUCKET") or "atlantic-highlands-docs"
+        default_bucket = os.environ.get("S3_BUCKET") or S3_BUCKET
         for raw_id in doc_ids:
             doc = _resolve_document(db, raw_id)
             if not doc or not doc.s3_key:

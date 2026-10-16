@@ -1,5 +1,5 @@
 """
-Atlantic Highlands AI Chat — Claude Sonnet 4.6 with hybrid pgvector RAG,
+Town AI Chat — Claude Sonnet 4.6 with hybrid pgvector RAG,
 extended thinking, agentic tool loop, and SSE streaming.
 
 Replaces the prior single-shot tsvector-only retrieval. Claude can now
@@ -41,6 +41,7 @@ from config import api_key
 from database import SessionLocal, get_db
 from models.financial import FinancialStatement
 from models.user import User
+from municipality import TOWN, context, entities, entity_ids
 from services.rag_search import (
     get_document_excerpt,
     list_recent_documents,
@@ -77,35 +78,33 @@ class ChatRequest(BaseModel):
 
 # ─── System prompts ──────────────────────────────────────────────────────────
 
-BACKGROUND = """You are the Atlantic Highlands AI Expert — a deeply knowledgeable municipal analyst specializing in the Borough of Atlantic Highlands, NJ and its school districts.
+BACKGROUND = (
+    f"You are the {TOWN.name} AI Expert — a deeply knowledgeable municipal analyst "
+    f"specializing in the {TOWN.official_name}, {TOWN.state} and its school districts.\n\n"
+    + context()
+)
 
-BOROUGH FACTS:
-- Atlantic Highlands is a borough in Monmouth County, NJ (pop ~4,318, 2025 est)
-- Borough form (weak mayor / strong council) under New Jersey's Faulkner Act
-- Mayor: Lori Hohenleitner (D, term ends Dec 2027). 6-member council, staggered 3-year terms
-- Borough Hall: 100 First Avenue. ZIP: 07716. Bayshore Region on Raritan Bay
-- Notable: Mount Mitchill (highest point on eastern seaboard south of Maine), SeaStreak ferry to Manhattan
-- Municipal harbor: 715 watercraft capacity, largest on East Coast
-- Key boards: Planning, Zoning, Environmental Commission, Historic Preservation, Harbor Commission
-- Volunteer Fire: Hook & Ladder Co. No. 1, AH Hose Co. No. 1, Robert B. Mantell Hose Co. No. 2
 
-SCHOOL DISTRICT (major restructuring 2022-2024):
-- Pre-July 2024 "Tri-District": AH School District (AHES, PreK-6), Highlands SD (PreK-6), Henry Hudson Regional HS (7-12). Shared superintendent since June 2021.
-- January 2022: Governor Murphy signed S-3488. Kean University feasibility estimated $270K one-time savings.
-- September 2023: AH and Highlands voters approved consolidation referendum.
-- July 1, 2024: New Henry Hudson Regional School District operational (PreK-12).
-- Schools: AHES (282), Highlands Elementary (153), HHRS (278). ~725 students total, 8.4:1 ratio.
-- Superintendent: Dr. Tara Beams. Business Admin: Janet Sherlock. 9-member board (5 Highlands, 4 AH).
-- Sea Bright dispute (2024-present): Sea Bright seeking to leave Oceanport/Shore Regional and join Henry Hudson. NJ Supreme Court ruled Sea Bright has standing.
+def _which_town() -> str:
+    ids = ", ".join(entity_ids())
+    lines = [
+        f"Results are tagged with `municipality` ({ids}). When the user asks about one "
+        f"town, pass the `municipality` filter to search_chunks."
+    ]
+    for e in entities():
+        if e.get("note"):
+            lines.append(f"- \"{e['short']}\" ({e['label']}): {e['note']}")
+    return "\n".join(lines)
 
-KEY HISTORICAL EVENTS IN DOCUMENTS:
-- 2012-2018: Superstorm Sandy — AH received $17.2M in federal aid (largest of any NJ municipality). FEMA STEP, RREM grants.
-- 2022-2024: School regionalization — S-3488, Kean study, voter referendum, district consolidation.
-- 2024 election: $500K wrongdoing allegations investigated and found unfounded (Two River Times).
-- Waterfront development: Brant Point project (16 upscale homes, starting $2.8M).
-- 2024 tax rate: 1.665 general rate. Municipal rate decreased 2020-2024 while property values rose.
 
-DOCUMENT LIBRARY: 5,000+ indexed documents (2004-present): budgets, audits, financial statements, council minutes/agendas, ordinances, resolutions, school board minutes, CAFRs, legal documents."""
+def _municipality_param_description() -> str:
+    parts = []
+    for e in entities():
+        part = f"{e['id']} = {e['label']}"
+        if e.get("note"):
+            part += f" ({e['note']})"
+        parts.append(part)
+    return "; ".join(parts) + "."
 
 
 WORKING_INSTRUCTIONS = """## How to answer
@@ -116,7 +115,7 @@ You have powerful tools. USE THEM. Do not say "I cannot find" without calling at
 
 EVERY factual claim — every dollar amount, date, vote count, name, ordinance number — MUST be followed by `[source: filename.pdf]` using the EXACT `filename` field returned by your search/read tools. The frontend renders these as clickable buttons that open the source document. A response without citations is broken. Examples:
 
-  - "Hawkswood is the second most expensive placement at $142,388 [source: 2026-2027 Advertised Budget - Henry Hudson Regional.pdf]."
+  - "The second most expensive out-of-district placement is $142,388 [source: 2026-2027 Advertised School Budget.pdf]."
   - "The board approved the resolution 5-0 [source: January 24, 2024 Regular BOE Meeting Minutes.pdf]."
 
 If a fact came from multiple sources, cite each one separately: `[source: a.pdf] [source: b.pdf]`.
@@ -125,7 +124,7 @@ Search results also carry a human-readable `title`, `doc_date`, and `municipalit
 
 ## WHICH TOWN
 
-"Highlands" (Borough of Highlands) is a DIFFERENT town from Atlantic Highlands. Results are tagged with `municipality` (atlantic_highlands, highlands, hhrsd, regional, state). When the user asks about one town, pass the `municipality` filter to search_chunks, and never attribute a Highlands record to Atlantic Highlands.
+__WHICH_TOWN__
 
 ## STOP NARRATING — JUST DO THE WORK
 
@@ -137,7 +136,7 @@ On EVERY user turn, before any other tool call, you MUST call the `share_plan` t
   - `steps`: an ordered list of short imperative actions you'll take next (1-8 items).
     Examples:
       "Search for FY24 budget passages"
-      "Read the AHES audit and pull instructional spend"
+      "Read the school district audit and pull instructional spend"
       "Compare YoY enrollment 2020-2024"
       "Draft executive summary"
   - `rationale`: 1-2 sentences on why this plan answers the question.
@@ -158,12 +157,7 @@ For every non-trivial question:
    - To surface FINANCIAL CONCERNS proactively, call `get_anomalies` — pre-computed rule-based flags.
 4. For VENDOR / CONTRACT questions, call `search_contracts` and/or `get_vendor_summary`.
 5. MEETING RECORDINGS — `search_chunks` already covers them. They show up as `doc_type=recording_council`, `recording_planning`, `recording_harbor`, or `recording_school_board`. Each chunk's text is prefixed with `[HH:MM:SS]` markers from the transcript. When citing a moment from a meeting, INCLUDE the timestamp in your answer (e.g. "At [01:23:45] the council voted 5-0…"). The frontend turns these into seek-to links on the meeting page. Use `read_document` to scroll the full transcript when you need broader context than the chunks give.
-6. NJ-SPECIFIC AWARENESS:
-   - NJ schools use GAAP/GASB; NJ municipalities use REGULATORY BASIS — they are NOT directly comparable.
-   - Atlantic Highlands borough = calendar year; Henry Hudson Regional School District = July-June school year.
-   - HHRSD is a 7/1/2024 consolidation of three predecessor districts (AHSD, HSD, HHRS-HS). Pre-7/1/2024 figures are from the predecessors and CANNOT be summed naively.
-   - NJ school surplus is statutorily capped at greater of 2% of expenditures or $250K (N.J.S.A. 18A:7F-7) — do NOT apply GFOA's 16% benchmark to schools.
-   - For FY26+, CMPTRA is FULLY consolidated into ETR for municipalities — expect $0 CMPTRA, not a decline.
+6. Apply the ANALYSIS NOTES from the background (accounting basis, fiscal years, predecessor entities, statutory caps) before comparing or summing figures.
 7. Cite every fact with `[source: filename.pdf]` — these become clickable links.
 
 ## Output style
@@ -173,14 +167,16 @@ For every non-trivial question:
 - When presenting numerical data with 3+ data points, embed a chart in this exact format:
 
   ```chart
-  {"type":"bar","data":{"labels":["FY2022","FY2023","FY2024"],"datasets":[{"label":"Revenue","data":[100,200,300],"backgroundColor":"#385854"}]},"options":{"responsive":true}}
+  {"type":"bar","data":{"labels":["FY2022","FY2023","FY2024"],"datasets":[{"label":"Revenue","data":[100,200,300],"backgroundColor":"__BRAND_COLOR__"}]},"options":{"responsive":true}}
   ```
 
-  Supported types: bar, line, pie. Use `#385854` (AH brand) for the primary series.
+  Supported types: bar, line, pie. Use `__BRAND_COLOR__` (__SHORT_NAME__ brand) for the primary series.
 - For tabular data, use proper markdown tables.
 - Reference specific resolutions, ordinances, meeting dates.
 - If you genuinely cannot find something after searching, say so plainly and suggest which doc types might contain it.
-"""
+""".replace("__WHICH_TOWN__", _which_town()).replace(
+    "__BRAND_COLOR__", TOWN.brand_color
+).replace("__SHORT_NAME__", TOWN.short_name)
 
 
 REPORT_MODE_SUFFIX = """
@@ -244,7 +240,7 @@ def _tool_defs() -> list[dict]:
                         "maxItems": 8,
                         "description": (
                             "Ordered list of short imperative phrases describing what you'll do. "
-                            "Examples: 'Search for FY24 budget passages', 'Read the AHES audit', "
+                            "Examples: 'Search for FY24 budget passages', 'Read the school district audit', "
                             "'Compare YoY enrollment'."
                         ),
                     },
@@ -277,8 +273,8 @@ def _tool_defs() -> list[dict]:
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "municipality": {"type": "string", "enum": ["atlantic_highlands", "highlands", "hhrsd", "regional", "state"],
-                                     "description": "atlantic_highlands = Borough of Atlantic Highlands; highlands = neighboring Borough of Highlands (a different town); hhrsd = Henry Hudson Regional School District."},
+                    "municipality": {"type": "string", "enum": entity_ids(),
+                                     "description": _municipality_param_description()},
                     "doc_type": {"type": "string", "description": "e.g. minutes, agenda, budget, audit, ordinance, resolution, bill_list, planning"},
                     "department": {"type": "string"},
                     "fiscal_year": {"type": "string"},

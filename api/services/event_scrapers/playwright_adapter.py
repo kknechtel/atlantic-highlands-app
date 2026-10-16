@@ -22,11 +22,11 @@ Playwright, hands the rendered HTML to the parser, and normalizes the
 output into our standard event dict.
 
 Install on prod:
-    /opt/atlantic-highlands/api/venv/bin/playwright install --with-deps chromium
+    /opt/<app-dir>/api/venv/bin/playwright install --with-deps chromium
 
 That step is idempotent. The browser binary lives in
 ~/.cache/ms-playwright on the host running it (so under the
-ah-scraper systemd user's HOME).
+scraper's systemd user's HOME).
 """
 from __future__ import annotations
 

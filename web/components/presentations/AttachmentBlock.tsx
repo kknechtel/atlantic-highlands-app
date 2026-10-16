@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React from 'react';
 import { Paperclip, Eye } from 'lucide-react';
@@ -11,7 +12,7 @@ interface Props {
   brandColor?: string;
 }
 
-export default function AttachmentBlock({ section, attachments, onPreview, brandColor = '#385854' }: Props) {
+export default function AttachmentBlock({ section, attachments, onPreview, brandColor = TOWN.brand_color }: Props) {
   const att = attachments.find((a) => a.id === section.attachment_id);
   if (!att) {
     return <div className="text-sm text-gray-400 italic">Attachment not found ({section.attachment_id})</div>;

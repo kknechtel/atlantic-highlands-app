@@ -11,7 +11,7 @@ Usage (locally):
     DATABASE_URL=...  python -m scripts.backfill_daniels_law_redaction
 
 Usage (prod, via SSM):
-    sudo -u atlantic-highlands /opt/atlantic-highlands/venv/bin/python \\
+    sudo -u <app user> <install dir>/venv/bin/python \\
         -m scripts.backfill_daniels_law_redaction
 """
 import logging

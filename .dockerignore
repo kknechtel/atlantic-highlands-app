@@ -1,0 +1,7 @@
+# Root build context is used only by web/Dockerfile (the api builds from ./api).
+.git
+api
+**/node_modules
+**/.next
+web/.env*
+tmp

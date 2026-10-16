@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -67,7 +68,7 @@ export default function ExtractModal({ onClose }: Props) {
               onChange={(e) => setEntityType(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
-              <option value="town">Town (Borough of Atlantic Highlands)</option>
+              <option value="town">Town ({TOWN.official_name})</option>
               <option value="school">School District</option>
             </select>
           </div>

@@ -25,11 +25,13 @@ from typing import Callable, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from municipality import TOWN
+
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 20
 _HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; ah-events-scraper/1.0; +https://ahnj.info)",
+    "User-Agent": f"Mozilla/5.0 (compatible; town-events-scraper/1.0; +{TOWN.site_url})",
     "Accept": "text/html,application/json,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }

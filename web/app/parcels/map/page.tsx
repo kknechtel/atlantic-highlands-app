@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +14,7 @@ import {
 import { getAuthToken } from "@/lib/api";
 import "leaflet/dist/leaflet.css";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 // react-leaflet touches the DOM at import time (Leaflet looks for window /
 // document); rendering it server-side throws. Dynamic-import the wrapper

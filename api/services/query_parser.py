@@ -23,6 +23,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from municipality import TOWN, entities, profile
+
 # Recognize 4-digit years 1990–2099. We don't bother with 2-digit years —
 # too ambiguous in a small corpus.
 _YEAR_RE = re.compile(r"\b((?:19|20)\d{2})\b")
@@ -49,9 +51,15 @@ _DOLLAR_RE = re.compile(
 # Category hints — only when the token appears in a clear "of/about/for X"
 # position or as a standalone word. We avoid grabbing "school" if it's
 # part of "high school" since a high-school doc might still be borough-related.
+def _words(names) -> str:
+    return "".join("|" + r"\s+".join(re.escape(w) for w in n.lower().split()) for n in names if n)
+
+
+_DEPT_ALIASES = profile().get("department_aliases", {})
+_SCHOOL_ABBRS = [e.get("abbr") for e in entities() if e.get("kind") == "school"]
 _CATEGORY_PATTERNS = [
-    (re.compile(r"\b(school|district|hhrsd|board\s+of\s+education|boe)\b", re.IGNORECASE), "school"),
-    (re.compile(r"\b(town|borough|municipal|council|atlantic\s+highlands)\b", re.IGNORECASE), "town"),
+    (re.compile(r"\b(school|district" + _words(_SCHOOL_ABBRS) + r"|board\s+of\s+education|boe)\b", re.IGNORECASE), "school"),
+    (re.compile(r"\b(town|borough|municipal|council" + _words([TOWN.name]) + r")\b", re.IGNORECASE), "town"),
 ]
 
 # Doc type hints — same conservative approach. Only fire on the unambiguous
@@ -82,8 +90,8 @@ _DEPT_PATTERNS = [
     (re.compile(r"\b(environmental\s+commission)\b", re.IGNORECASE), "Environmental Commission"),
     (re.compile(r"\b(historic\s+preservation\s+commission|historic\s+preservation)\b", re.IGNORECASE), "Historic Preservation Commission"),
     (re.compile(r"\b(public\s+works|dpw)\b", re.IGNORECASE), "Public Works"),
-    (re.compile(r"\b(police\s+department|police|ahpd)\b", re.IGNORECASE), "Police"),
-    (re.compile(r"\b(fire\s+department|fire\s+company|ahvfd|fire)\b", re.IGNORECASE), "Fire"),
+    (re.compile(r"\b(police\s+department|police" + _words(_DEPT_ALIASES.get("Police", [])) + r")\b", re.IGNORECASE), "Police"),
+    (re.compile(r"\b(fire\s+department|fire\s+company" + _words(_DEPT_ALIASES.get("Fire", [])) + r"|fire)\b", re.IGNORECASE), "Fire"),
     (re.compile(r"\b(first\s+aid|ems|emergency\s+medical|ambulance)\b", re.IGNORECASE), "EMS"),
     (re.compile(r"\b(municipal\s+court|court)\b", re.IGNORECASE), "Municipal Court"),
     (re.compile(r"\b(tax\s+assessor|assessor)\b", re.IGNORECASE), "Tax Assessor"),

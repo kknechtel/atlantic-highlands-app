@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, text as sql_text
 from sqlalchemy.orm import Session
 
+from config import PUBLIC_WEB_ORIGIN
 from database import get_db
 from models.user import User, InviteToken
 from models.document import Document, Project
@@ -210,7 +211,7 @@ def create_invite(
     db.commit()
 
     # Build the invite URL — frontend will read the ?invite= param
-    base_url = "https://ahnj.info"
+    base_url = PUBLIC_WEB_ORIGIN
     invite_url = f"{base_url}?invite={token}"
 
     return InviteResponse(

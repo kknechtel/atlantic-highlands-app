@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SITE_HOST, EVENTS_URL } from "@/lib/municipality";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -13,7 +14,7 @@ import {
   MicrophoneIcon, HomeModernIcon, BellIcon, ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: ChartBarIcon },
@@ -55,11 +56,11 @@ export default function Sidebar() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/events-logo.png"
-                alt="ahnj.info"
+                alt={SITE_HOST}
                 className="w-10 h-10 object-contain flex-shrink-0"
               />
               <div>
-                <h1 className="text-sm font-semibold text-gray-900 leading-tight">Atlantic Highlands</h1>
+                <h1 className="text-sm font-semibold text-gray-900 leading-tight">{TOWN.name}</h1>
                 <p className="text-[10px] text-gray-500">Document Intelligence</p>
               </div>
             </div>
@@ -123,7 +124,7 @@ export default function Sidebar() {
       {!collapsed && (
         <div className="px-2 pb-2">
           <a
-            href="https://events.ahnj.info"
+            href={EVENTS_URL}
             target="_blank"
             rel="noopener"
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-600 hover:bg-gray-50 border border-gray-200"

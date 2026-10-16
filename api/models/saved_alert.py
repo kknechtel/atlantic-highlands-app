@@ -8,7 +8,7 @@ Three subscription kinds, all flowing through the same digest job:
 
 `filters` is a JSONB bag whose shape depends on `kind`:
   - keyword:       {"category"?: "town"|"school", "department"?: "Council"|..., "doc_type"?: "..."}
-  - new_meeting:   {"body"?: "Council"|"Planning"|"Harbor"|"HHRSD"}
+  - new_meeting:   {"body"?: "Council"|"Planning"|"Harbor"|"<school abbr>"}
   - new_document:  {"category"?: "town"|"school", "doc_type"?: "..."}
 
 `last_run_at` is the high-water mark — content with created_at > last_run_at

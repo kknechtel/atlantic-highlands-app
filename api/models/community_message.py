@@ -1,4 +1,4 @@
-"""Community chat messages — one global feed for events.ahnj.info.
+"""Community chat messages — one global feed for the events app.
 
 Intentionally simple: a single global room, no DMs, no per-venue rooms,
 no per-event threads. Each message can OPTIONALLY reference one external

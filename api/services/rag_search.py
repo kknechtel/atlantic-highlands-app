@@ -63,7 +63,7 @@ def search_chunks(
       - project_id: restrict to docs in a project
       - use_websearch: parse `query` with websearch_to_tsquery — enables
         "quoted phrases", OR, -exclude. Falls back to plainto on malformed.
-      - municipality: atlantic_highlands | highlands | hhrsd | regional | state
+      - municipality: an entity id from the municipality profile
       - embed_text: text to embed for the semantic side when `query` carries
         keyword syntax (OR-expansions, operators) that would muddy the vector.
 

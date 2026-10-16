@@ -12,8 +12,10 @@ import sys
 import boto3
 from pathlib import Path
 
+from config import S3_BUCKET
+
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), "storage")
-BUCKET = "atlantic-highlands-documents-738265942536"
+BUCKET = S3_BUCKET  # S3_BUCKET env / secret, else the profile default
 REGION = "us-east-1"
 
 s3 = boto3.client("s3", region_name=REGION)

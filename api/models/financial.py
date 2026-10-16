@@ -34,9 +34,9 @@ class FinancialStatement(Base):
     # NJ municipal AFS uses regulatory basis; NJ schools use GAAP/GASB.
     # Health metrics, fund balance rules, and salary ratios differ between the two.
     accounting_basis = Column(String, nullable=True)  # "gaap" (schools/ACFR) or "nj_regulatory" (NJ municipal AFS)
-    # AH borough is calendar year; HHRSD is school year (July-June).
+    # Towns follow the profile's fiscal_year; school districts run July-June.
     fiscal_calendar = Column(String, nullable=True)  # "calendar_year" / "school_year" / "sfy"
-    # For HHRSD pre-7/1/2024 data, identify which predecessor (AHSD / HSD / HHRS-HS) — values can't be summed.
+    # For a consolidated district's pre-consolidation data, identify which predecessor — values can't be summed.
     predecessor_entity = Column(String, nullable=True)
 
     # Summary figures

@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Subdomain router.
 //
-// `ahnj.info`            → civic-research app (existing pages at /, /document-library, …)
-// `events.ahnj.info`     → community app (rewrites /* → /events-app/*)
+// `<site>`               → civic-research app (existing pages at /, /document-library, …)
+// `events.<site>`        → community app (rewrites /* → /events-app/*)
 //
 // The URL the user sees in the address bar stays clean
-// (`events.ahnj.info/checkin`), but Next renders the page at
+// (`events.<site>/checkin`), but Next renders the page at
 // `app/events-app/checkin/page.tsx`.
 //
 // On the main domain we redirect any direct hit on /events-app/* back to

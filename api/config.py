@@ -1,11 +1,13 @@
 """
-Atlantic Highlands - Configuration
+Configuration
 Loads from AWS Secrets Manager in production, falls back to env vars / .env for local dev.
 """
 import os
 import json
 import logging
 from dotenv import load_dotenv
+
+from municipality import TOWN, profile
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ def _get(key: str, default: str = "") -> str:
 
 # ── Application ──────────────────────────────────────────────────────────────
 
-APP_NAME = "Atlantic Highlands"
+APP_NAME = TOWN.site_name
 DEBUG = _get("DEBUG", "false").lower() == "true"
 SECRET_KEY = _get("SECRET_KEY", "change-me-in-production")
 ALLOWED_ORIGINS = _get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -48,14 +50,15 @@ ALLOWED_ORIGINS = _get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 # Database
 DATABASE_URL = _get(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5433/atlantic_highlands"
+    "postgresql://postgres:postgres@localhost:5433/"
+    + (profile().get("db_name") or TOWN.slug.replace("-", "_"))
 )
 
 # AWS
 AWS_REGION = _get("AWS_REGION", "us-east-1")
 AWS_ACCESS_KEY_ID = _get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = _get("AWS_SECRET_ACCESS_KEY")
-S3_BUCKET = _get("S3_BUCKET", "atlantic-highlands-documents")
+S3_BUCKET = _get("S3_BUCKET", profile().get("s3_bucket") or f"{TOWN.slug}-documents")
 
 # AI / LLM keys and Google Sign-In are read with api_key() at call time, so a
 # value an admin saves on the Settings screen takes effect without a restart.
@@ -86,7 +89,7 @@ if JWT_SECRET in ("", "change-me-in-production") or len(JWT_SECRET) < 32:
 # silently dropped (useful for local dev where no SES identity is verified).
 DIGEST_FROM_EMAIL = _get("DIGEST_FROM_EMAIL", "")
 DIGEST_REPLY_TO = _get("DIGEST_REPLY_TO", "")
-PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", "https://ahnj.info")
+PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", TOWN.site_url)
 
 # Google Sign-In: api_key("GOOGLE_OAUTH_CLIENT_ID"). When blank,
 # /api/auth/google returns 503 and password login still works.

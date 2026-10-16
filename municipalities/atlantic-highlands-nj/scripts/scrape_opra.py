@@ -1,12 +1,14 @@
 """
+Specific to Atlantic Highlands, NJ.
+
 Scrape OPRA requests from GovPilot and OPRAmachine using Selenium.
-Run: python scripts/scrape_opra.py
+Run: python municipalities/atlantic-highlands-nj/scripts/scrape_opra.py
 """
 import sys, os, re, json, time, uuid, logging
 from pathlib import Path
 from datetime import datetime
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "api"))  # repo-root/api
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 

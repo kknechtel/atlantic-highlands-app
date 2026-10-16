@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SITE_HOST } from "@/lib/municipality";
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
@@ -11,7 +12,7 @@ import GlobalChat from "@/components/GlobalChat";
 import LoginForm from "@/components/LoginForm";
 import { changePassword, getMe } from "@/lib/api";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 // Shared badge logo for the change-password / pending-approval screens.
 // Same logo across both civic and events apps.
@@ -19,7 +20,7 @@ function BrandLogo({ size = 12 }: { size?: 12 | 14 }) {
   const sizeCls = size === 14 ? "w-16 h-16" : "w-14 h-14";
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
-    <img src="/events-logo.png" alt="ahnj.info" className={`${sizeCls} object-contain`} />
+    <img src="/events-logo.png" alt={SITE_HOST} className={`${sizeCls} object-contain`} />
   );
 }
 
@@ -158,7 +159,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Events-app subdomain (events.ahnj.info) — served from this same Next.js
+  // Events-app subdomain (events.<site host>) — served from this same Next.js
   // app via middleware rewrite to /events-app/*. It brings its own layout
   // so we skip the civic sidebar + GlobalChat. Auth is still required and
   // reuses the same JWT/user model.
@@ -177,7 +178,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 rounded-full animate-spin"
-              style={{ borderColor: "#38585440", borderTopColor: brandColor }} />
+              style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }} />
             <span className="text-sm text-gray-600">Loading...</span>
           </div>
         </div>
@@ -198,7 +199,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3">
           <div
             className="w-5 h-5 border-2 rounded-full animate-spin"
-            style={{ borderColor: "#38585440", borderTopColor: brandColor }}
+            style={{ borderColor: `${brandColor}40`, borderTopColor: brandColor }}
           />
           <span className="text-sm text-gray-600">Loading...</span>
         </div>

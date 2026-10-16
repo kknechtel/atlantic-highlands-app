@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, PLACE, FILE_PREFIX, EVENTS_AREA, listPhrase } from "@/lib/municipality";
 
 import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -24,7 +25,7 @@ import {
   BuildingStorefrontIcon,
 } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 const EVENT_ICONS: Record<string, any> = {
   "fireworks": FireIcon, "movies": FilmIcon, "music": MusicalNoteIcon,
@@ -174,12 +175,12 @@ export default function EventsPage() {
       "BEGIN:VCALENDAR", "VERSION:2.0", "BEGIN:VEVENT",
       `DTSTART;VALUE=DATE:${dateStr}`,
       `SUMMARY:${event.title}${event.time ? " " + event.time : ""}`,
-      `LOCATION:${(event as any).location || "Atlantic Highlands, NJ"}`,
+      `LOCATION:${(event as any).location || PLACE}`,
       "END:VEVENT", "END:VCALENDAR",
     ].join("\r\n");
     const blob = new Blob([ics], { type: "text/calendar" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `ah-event-${event.date}.ics`; a.click();
+    a.download = `${FILE_PREFIX}-event-${event.date}.ics`; a.click();
   };
 
   return (
@@ -190,8 +191,8 @@ export default function EventsPage() {
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Events &amp; Entertainment</h1>
           <p className="text-xs md:text-sm text-gray-500 mt-0.5">
             {filter === "music"
-              ? "Live music across Atlantic Highlands, Highlands, and Sea Bright"
-              : "What's happening in Atlantic Highlands"}
+              ? `Live music across ${listPhrase(EVENTS_AREA)}`
+              : `What's happening in ${TOWN.name}`}
           </p>
         </div>
         <Link href="/places" className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 self-start sm:self-auto">

@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily run of the Atlantic Highlands alert digest
+Description=Daily run of the municipal hub alert digest
 
 [Timer]
 # 11:30 UTC = 7:30am ET — 30 min after ah-scraper.timer, so the digest

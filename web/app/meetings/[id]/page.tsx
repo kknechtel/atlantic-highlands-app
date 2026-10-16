@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -13,7 +14,7 @@ import {
   type MeetingDetail, type TranscriptSegment,
 } from "@/lib/meetingsApi";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 function fmtTime(secs: number): string {
   if (!isFinite(secs) || secs < 0) return "0:00";

@@ -1,4 +1,5 @@
 "use client";
+import { SITE_HOST } from "@/lib/municipality";
 
 // /signup — events-app self-service signup. Creates an account with
 // is_active=false. Admin approval is required before any auth-gated
@@ -61,7 +62,7 @@ export default function SignupPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/events-logo.png"
-              alt="ahnj.info"
+              alt={SITE_HOST}
               className="w-16 h-16 object-contain"
             />
           </div>

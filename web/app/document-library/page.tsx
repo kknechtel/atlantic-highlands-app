@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, PRIMARY_ENTITY, SCHOOL_ENTITY, type MunicipalityEntity } from "@/lib/municipality";
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -43,23 +44,27 @@ import {
   FolderIcon,
 } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
+
+const KIND_ICONS: Record<string, any> = { town: BuildingOfficeIcon, school: AcademicCapIcon };
+
+// Display order: this town, its school district, other towns, county, state.
+const kindRank = (e: MunicipalityEntity) =>
+  e.primary ? 0 : ({ school: 1, town: 2, regional: 3, state: 4 } as Record<string, number>)[e.kind] ?? 5;
 
 // Top-level library groups, in display order. Keyed by documents.municipality.
-const ENTITIES: Record<string, { label: string; short: string; icon: any }> = {
-  atlantic_highlands: { label: "Borough of Atlantic Highlands", short: "Atlantic Highlands", icon: BuildingOfficeIcon },
-  hhrsd: { label: "Henry Hudson Regional School District", short: "School District", icon: AcademicCapIcon },
-  highlands: { label: "Borough of Highlands", short: "Highlands", icon: BuildingOfficeIcon },
-  regional: { label: "Monmouth County", short: "County", icon: FolderIcon },
-  state: { label: "State of New Jersey", short: "State", icon: FolderIcon },
-  general: { label: "General / Uncategorized", short: "Other", icon: FolderIcon },
-};
+const ENTITIES: Record<string, { label: string; short: string; icon: any }> = Object.fromEntries([
+  ...[...(TOWN.entities ?? [])]
+    .sort((a, b) => kindRank(a) - kindRank(b))
+    .map((e) => [e.id, { label: e.label, short: e.short, icon: KIND_ICONS[e.kind] ?? FolderIcon }]),
+  ["general", { label: "General / Uncategorized", short: "Other", icon: FolderIcon }],
+]);
 
 /** Municipality group for a doc; falls back to the legacy category for unmigrated rows. */
 function entityOf(doc: Document): string {
   if (doc.municipality && ENTITIES[doc.municipality]) return doc.municipality;
-  if (doc.category === "school") return "hhrsd";
-  if (doc.category === "town") return "atlantic_highlands";
+  if (doc.category === "school") return SCHOOL_ENTITY.id;
+  if (doc.category === "town") return PRIMARY_ENTITY.id;
   return "general";
 }
 

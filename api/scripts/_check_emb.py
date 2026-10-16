@@ -1,5 +1,5 @@
 """One-off probe: report ingestion + embedding coverage.
-Run from /opt/atlantic-highlands/api dir so `database` resolves."""
+Run from the api/ directory so `database` resolves."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import SessionLocal

@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useMemo } from 'react';
 import dynamic from 'next/dynamic';
@@ -30,7 +31,7 @@ interface Props {
   publishedAt?: string | null;
 }
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 /** Walk every narrative section body and pull out unique cited filenames.
  *  Used to render an always-visible Sources panel at the bottom — guarantees
@@ -67,7 +68,7 @@ function collectCitedFilenames(sections: DeckSection[]): string[] {
  *      content...
  *
  *   ─────────────── (footer rule)
- *      Atlantic Highlands
+ *      <town name>
  */
 export default function PresentationViewer({
   title, sections, attachments, mode = 'auth', publicSlug, publicAttachmentBase, publishedAt,
@@ -90,7 +91,7 @@ export default function PresentationViewer({
         <div className="ah-deck-cover">
           <div className="ah-cover-eyebrow flex items-center gap-1.5">
             <Globe className="w-3 h-3" />
-            <span>Atlantic Highlands</span>
+            <span>{TOWN.name}</span>
           </div>
           <div className="ah-cover-title">{title || 'Untitled presentation'}</div>
           {subtitle && <div className="ah-cover-subtitle">{subtitle}</div>}
@@ -153,7 +154,7 @@ export default function PresentationViewer({
 
           {/* Single deck-level footer */}
           <div className="ah-deck-footer">
-            <div className="ah-deck-wordmark">Atlantic Highlands</div>
+            <div className="ah-deck-wordmark">{TOWN.name}</div>
             <div className="ah-deck-meta">
               {publishedAt
                 ? `Published ${new Date(publishedAt).toLocaleDateString()}`

@@ -419,7 +419,7 @@ def _download_youtube_audio(video_id: str) -> tuple[bytes, str]:
     one that produces a stream wins. Each retry takes ~1s when refused
     so total overhead is bounded.
 
-    Optional: if /opt/atlantic-highlands/yt-cookies.txt exists (Netscape-
+    Optional: if YT_COOKIES_PATH or <app root>/yt-cookies.txt exists (Netscape-
     format YouTube cookies exported from a logged-in browser), yt-dlp
     uses it. That sidesteps the bot challenge entirely but rotates with
     the user's YouTube session, so it's a fallback for cases where the
@@ -430,7 +430,9 @@ def _download_youtube_audio(video_id: str) -> tuple[bytes, str]:
     except ImportError as e:
         raise RuntimeError(f"yt-dlp not installed: {e}")
 
-    cookies_path = "/opt/atlantic-highlands/yt-cookies.txt"
+    cookies_path = os.environ.get("YT_COOKIES_PATH") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "yt-cookies.txt"
+    )
     has_cookies = os.path.exists(cookies_path)
 
     # Order matters: ios + tv_embedded historically dodge the bot check.

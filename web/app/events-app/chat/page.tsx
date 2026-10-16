@@ -1,7 +1,7 @@
 "use client";
 
-// /chat — single global community feed for events.ahnj.info.
-// Polling (~10s) instead of WebSocket; borough scale (~4500 residents)
+// /chat — single global community feed for the events app.
+// Polling (~10s) instead of WebSocket; small-town scale
 // makes this plenty.
 //
 // Compose toolbar offers two "tag" buttons:

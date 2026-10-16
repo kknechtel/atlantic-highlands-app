@@ -1,4 +1,5 @@
 'use client';
+import { TOWN, OFFICIAL_HOST } from "@/lib/municipality";
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Globe, Loader2, X, ShieldAlert } from 'lucide-react';
@@ -29,7 +30,7 @@ const NO_IFRAME_HOSTS = [
     'state.nj.us',
     'nj.gov',
     'monmouthcountynj.gov',
-    'ahnj.com',
+    ...(OFFICIAL_HOST ? [OFFICIAL_HOST] : []),
     // News / paywall hosts
     'nytimes.com',
     'wsj.com',
@@ -60,7 +61,7 @@ function looksUnembeddable(url: string): boolean {
     }
 }
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 export default function WebReferencePreview() {
     const [item, setItem] = useState<{ url: string; title?: string } | null>(null);

@@ -1,13 +1,13 @@
 """
 PPTX + DOCX export for presentations.
 
-Direct python-pptx / python-docx generation, scoped to AHNJ's section types
+Direct python-pptx / python-docx generation, scoped to this app's section types
 (narrative / table / attachment / react_component). For react_component
 sections we emit a placeholder note since we can't render TSX server-side
 without a headless browser.
 
 Adapted from the bank-processor's document_builder approach but slimmed
-down to the section types AHNJ actually uses.
+down to the section types this app actually uses.
 """
 from __future__ import annotations
 
@@ -19,10 +19,12 @@ import tempfile
 import uuid
 from typing import Any, Optional
 
+from municipality import TOWN
+
 logger = logging.getLogger(__name__)
 
-# Brand color matches the rest of the app (`#385854`).
-AH_BRAND_RGB = (56, 88, 84)
+# Brand color matches the rest of the app (profile brand_color).
+BRAND_RGB = tuple(int(TOWN.brand_color.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
 
 
 # ─── Markdown → text segments (lightweight, pptx/docx-friendly) ───────────
@@ -92,7 +94,7 @@ def export_docx(presentation) -> tuple[bytes, str]:
     # Title page
     title = doc.add_heading(presentation.title or "Untitled Presentation", level=0)
     for run in title.runs:
-        run.font.color.rgb = RGBColor(*AH_BRAND_RGB)
+        run.font.color.rgb = RGBColor(*BRAND_RGB)
     if presentation.published_at:
         p = doc.add_paragraph(f"Published {presentation.published_at.strftime('%B %d, %Y')}")
         for run in p.runs:
@@ -106,7 +108,7 @@ def export_docx(presentation) -> tuple[bytes, str]:
         if title_text:
             h = doc.add_heading(title_text, level=1)
             for run in h.runs:
-                run.font.color.rgb = RGBColor(*AH_BRAND_RGB)
+                run.font.color.rgb = RGBColor(*BRAND_RGB)
 
         if kind == "narrative":
             for blk_kind, text, level in _markdown_blocks(section.get("body") or ""):
@@ -228,7 +230,7 @@ def _add_narrative_slides(deck, section: dict, layout):
             run.font.size = Pt(28)
             run.font.bold = True
             from pptx.dml.color import RGBColor
-            run.font.color.rgb = RGBColor(*AH_BRAND_RGB)
+            run.font.color.rgb = RGBColor(*BRAND_RGB)
 
         body_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.3), Inches(12), Inches(5.5))
         tf = body_box.text_frame
@@ -266,7 +268,7 @@ def _add_table_slide(deck, section: dict, layout):
         run = p.add_run()
         run.text = title
         run.font.size = Pt(28); run.font.bold = True
-        run.font.color.rgb = RGBColor(*AH_BRAND_RGB)
+        run.font.color.rgb = RGBColor(*BRAND_RGB)
 
     headers = section.get("headers") or []
     rows = section.get("rows") or []
@@ -321,7 +323,7 @@ def _add_attachment_slide(deck, section: dict, attachments: list, layout):
         run = p.add_run()
         run.text = section["title"]
         run.font.size = Pt(28); run.font.bold = True
-        run.font.color.rgb = RGBColor(*AH_BRAND_RGB)
+        run.font.color.rgb = RGBColor(*BRAND_RGB)
 
     body = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12), Inches(4))
     tf = body.text_frame
@@ -352,7 +354,7 @@ def _add_react_placeholder_slide(deck, section: dict, layout):
         run = p.add_run()
         run.text = section["title"]
         run.font.size = Pt(28); run.font.bold = True
-        run.font.color.rgb = RGBColor(*AH_BRAND_RGB)
+        run.font.color.rgb = RGBColor(*BRAND_RGB)
     body = slide.shapes.add_textbox(Inches(0.5), Inches(2), Inches(12), Inches(2))
     p = body.text_frame.paragraphs[0]
     run = p.add_run()

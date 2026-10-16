@@ -359,7 +359,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
 
             {!isCompact && (
               <button onClick={openInNewTab}
-                className="px-3 py-2 bg-[#385854] text-white rounded-lg hover:opacity-90 transition-colors flex items-center gap-2">
+                className="px-3 py-2 bg-[var(--brand)] text-white rounded-lg hover:opacity-90 transition-colors flex items-center gap-2">
                 <ExternalLink className="w-4 h-4" /> Open PDF
               </button>
             )}
@@ -399,7 +399,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-[#385854]" />
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-[var(--brand)]" />
               <p className="text-gray-600">Loading PDF…</p>
             </div>
           </div>
@@ -418,7 +418,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 void fitToWidth();
               }}
               onLoadError={(err) => { if (!numPages) setError('Failed to load PDF document'); console.error(err); }}
-              loading={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-[#385854]" /></div>}
+              loading={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-[var(--brand)]" /></div>}
               error={<div className="text-center p-8"><p className="text-red-600">Failed to load PDF</p></div>}
               options={pdfOptions}
             >
@@ -428,7 +428,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 renderTextLayer
                 renderAnnotationLayer
                 customTextRenderer={highlightRegex ? customTextRenderer : undefined}
-                loading={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-[#385854]" /></div>}
+                loading={<div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-[var(--brand)]" /></div>}
                 error={<div className="text-center p-8"><p className="text-red-600">Failed to load page</p></div>}
                 className="shadow-lg"
               />
@@ -441,7 +441,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
               <p className="text-gray-600 mb-4">Unable to display PDF</p>
               <p className="text-sm text-gray-500 mb-4">{error}</p>
               <div className="space-x-2">
-                <button onClick={openInNewTab} className="px-4 py-2 bg-[#385854] text-white rounded-lg hover:opacity-90">Open in New Tab</button>
+                <button onClick={openInNewTab} className="px-4 py-2 bg-[var(--brand)] text-white rounded-lg hover:opacity-90">Open in New Tab</button>
                 <button onClick={downloadFile} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Download PDF</button>
               </div>
             </div>

@@ -94,7 +94,7 @@ VENUES = [
     #                               the site no longer publishes a schedule
     #                               anywhere — the replacement "Happening
     #                               @OTD" page is a single flyer image. This
-    #                               is our only AH venue, so it's the best
+    #                               is our only home-town venue, so it's the best
     #                               candidate for the calendar-image ingest
     #                               (services/calendar_image_extract.py).
     # Off the Hook                  Squarespace events collection empty

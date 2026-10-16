@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useMemo, useState } from "react";
 import { type Document, type FinancialStatement } from "@/lib/api";
@@ -84,7 +85,7 @@ export default function FinancialDashboard({ townDocs, schoolDocs, statements }:
               <BuildingOfficeIcon className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">Borough of Atlantic Highlands</h2>
+              <h2 className="font-semibold text-gray-900">{TOWN.official_name}</h2>
               <p className="text-xs text-gray-500">Municipal Financial Records</p>
             </div>
           </div>

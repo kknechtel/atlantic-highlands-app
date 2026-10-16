@@ -22,6 +22,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import api_key
+from municipality import TOWN
 
 logger = logging.getLogger(__name__)
 
@@ -752,11 +753,11 @@ def _infer_accounting_basis(entity_type: Optional[str], statement_type: Optional
 
 
 def _infer_fiscal_calendar(entity_type: Optional[str]) -> str:
-    """Atlantic Highlands borough = calendar year (Jan-Dec).
-    Henry Hudson Regional School District = school year (Jul-Jun)."""
+    """Schools run on the school year (Jul-Jun). Towns follow the profile's
+    fiscal_year: calendar year, else the July-June state fiscal year."""
     if (entity_type or "").lower() == "school":
         return "school_year"
-    return "calendar_year"
+    return "calendar_year" if "calendar" in (TOWN.fiscal_year or "calendar").lower() else "sfy"
 
 
 def _num(v: Any) -> Optional[float]:

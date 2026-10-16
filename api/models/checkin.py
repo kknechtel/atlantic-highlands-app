@@ -1,4 +1,4 @@
-"""Check-ins — "I'm at X right now" markers for the events.ahnj.info app.
+"""Check-ins — "I'm at X right now" markers for the events app.
 
 A check-in is intentionally lightweight:
   - venue_name + city are FREE TEXT (no FK to a venues table — we don't
@@ -31,6 +31,6 @@ class Checkin(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     venue_name = Column(String, nullable=False)
-    city = Column(String, nullable=True)  # 'Atlantic Highlands' | 'Highlands' | 'Sea Bright' | other
+    city = Column(String, nullable=True)  # usually one of the profile's events_area towns, or other
     message = Column(String, nullable=True)  # capped to 200 chars in the route
     checked_in_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)

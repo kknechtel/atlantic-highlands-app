@@ -44,8 +44,8 @@ class Document(Base):
     doc_type = Column(String, nullable=True)  # "financial_statement", "budget", "audit", "minutes", etc.
     category = Column(String, nullable=True)  # "town", "school"
     # Which government the record belongs to — "town" alone can't tell
-    # Atlantic Highlands from neighboring Highlands Borough.
-    # atlantic_highlands | highlands | hhrsd | regional | state
+    # the town from a similarly named neighbor.
+    # An entity id from the municipality profile (municipality.entity_ids()).
     municipality = Column(String, nullable=True)
     department = Column(String, nullable=True)
     fiscal_year = Column(String, nullable=True)

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Ingest Atlantic Highlands parcel records from NJ MOD-IV (Parcels Composite of NJ).
+Ingest the town's parcel records from NJ MOD-IV (Parcels Composite of NJ).
+New Jersey towns only; the county and MUN_NAME filters default from the
+municipality profile (e.g. MONMOUTH / ATLANTIC HIGHLANDS BORO).
 
 Source: ArcGIS Online "Parcels and MOD-IV Composite of NJ, Web Mercator"
         item id 533599bbfbaa4748bf39faf1375a8a9c
         feature service https://services2.arcgis.com/XVOqAjTOJ5P6ngMu/arcgis/rest/services/Parcels_Composite_NJ_WM/FeatureServer/0
 
-Filter: county_code="13" AND muni_code="1303"  (Atlantic Highlands borough, Monmouth)
+Filter: COUNTY=<county> AND MUN_NAME=<muni name> (see fetch_features)
 
 Field mapping is best-effort; the raw feature attributes are also stored in
 parcels.raw_attrs (JSONB) so any field we don't surface is still queryable.
@@ -14,7 +16,7 @@ parcels.raw_attrs (JSONB) so any field we don't surface is still queryable.
 Usage:
     DATABASE_URL=...  python -m scripts.ingest_parcels
     # or with explicit muni filter
-    python -m scripts.ingest_parcels --county 13 --muni 1303
+    python -m scripts.ingest_parcels --county BERGEN --muni-name "FORT LEE BORO"
 
 Idempotent — uses ON CONFLICT (county, muni, block, lot, qual) DO UPDATE.
 """
@@ -33,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
 from models.parcel import Parcel
+from municipality import TOWN
 
 logger = logging.getLogger("ingest_parcels")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -123,6 +126,23 @@ def _to_date(v) -> Optional[date]:
         return None
 
 
+# NJGIN MUN_NAME suffix per form of government.
+_NJ_KIND_SUFFIX = {"borough": "BORO", "township": "TWP", "city": "CITY", "town": "TOWN", "village": "VILLAGE"}
+
+
+def default_county() -> str:
+    """NJGIN COUNTY value for the town, e.g. 'Monmouth County' -> 'MONMOUTH'."""
+    county = (getattr(TOWN, "county", "") or "").upper()
+    return county[: -len(" COUNTY")] if county.endswith(" COUNTY") else county
+
+
+def default_muni_name() -> str:
+    """NJGIN MUN_NAME for the town, e.g. 'ATLANTIC HIGHLANDS BORO'."""
+    kind = (getattr(TOWN, "kind", "") or "").lower()
+    suffix = _NJ_KIND_SUFFIX.get(kind, kind.upper())
+    return f"{TOWN.name.upper()} {suffix}".strip()
+
+
 def fetch_features(county: str, muni_name: str, page_size: int = 2000) -> Iterator[dict]:
     """Yield feature attribute dicts for the muni filter, paginated.
 
@@ -134,7 +154,7 @@ def fetch_features(county: str, muni_name: str, page_size: int = 2000) -> Iterat
         where = f"COUNTY='{county}' AND " + where
     offset = 0
     sess = requests.Session()
-    sess.headers["User-Agent"] = "ah-app/parcels-ingest"
+    sess.headers["User-Agent"] = f"{TOWN.slug}-app/parcels-ingest"
 
     while True:
         params = {
@@ -230,9 +250,9 @@ def upsert_parcel(db, attrs: dict, source_label: str) -> bool:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--county", default="MONMOUTH",
+    p.add_argument("--county", default=default_county(),
                    help="NJ county name string (NJGIN uses uppercase: MONMOUTH, BERGEN, etc.)")
-    p.add_argument("--muni-name", default="ATLANTIC HIGHLANDS BORO",
+    p.add_argument("--muni-name", default=default_muni_name(),
                    help="NJ MUN_NAME string (case-sensitive in the NJGIN feature)")
     p.add_argument("--source-label", default=f"NJGIN_MOD-IV_{datetime.utcnow():%Y-%m}",
                    help="String stored in parcels.data_source")

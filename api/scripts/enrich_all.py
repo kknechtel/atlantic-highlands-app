@@ -7,7 +7,7 @@ changes nothing.
     python -m scripts.enrich_all --limit 50                 # dry run → CSV for review
     python -m scripts.enrich_all --apply --limit 500
     python -m scripts.enrich_all --apply --max-usd 5        # the rest, with a spend cap
-    python -m scripts.enrich_all --apply --municipality highlands --reextract
+    python -m scripts.enrich_all --apply --municipality <entity id> --reextract
 
 Selects docs not yet enriched at the current ENRICH_VERSION (newest first).
 """

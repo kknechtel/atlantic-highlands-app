@@ -77,7 +77,7 @@ export default function XlsxSheetViewer({ fileUrl, filename, noAuth, maxRows = 5
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-[#385854]" />
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-[var(--brand)]" />
           <p className="text-sm text-gray-600">Loading {filename}…</p>
         </div>
       </div>
@@ -92,7 +92,7 @@ export default function XlsxSheetViewer({ fileUrl, filename, noAuth, maxRows = 5
             <button
               key={s.name}
               onClick={() => setActive(i)}
-              className={`px-3 py-1 text-xs rounded ${i === active ? 'bg-[#385854] text-white' : 'text-gray-700 hover:bg-gray-200'}`}
+              className={`px-3 py-1 text-xs rounded ${i === active ? 'bg-[var(--brand)] text-white' : 'text-gray-700 hover:bg-gray-200'}`}
             >
               {s.name}
             </button>

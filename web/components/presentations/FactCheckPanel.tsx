@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useMemo, useState } from 'react';
 import {
@@ -36,7 +37,7 @@ const VERDICTS: Record<Verdict, { label: string; color: string; bg: string; bord
   no_source:   { label: 'No source',   color: 'text-gray-500',    bg: 'bg-gray-50',    border: 'border-gray-200',    Icon: FileQuestion },
 };
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 /**
  * Fact-check side panel. Streams per-citation verdicts from the

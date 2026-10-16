@@ -1,3 +1,4 @@
+import { SITE_HOST, EVENTS_HOST } from "@/lib/municipality";
 // Build "Add to Calendar" deep-links for Google, Outlook, Apple/.ics.
 //
 // Each provider has its own URL/format. We try to parse the event's
@@ -6,7 +7,7 @@
 // we treat it as an all-day event.
 //
 // All providers below take WALL-CLOCK times without a timezone — the
-// venue is in America/New_York and the user is almost certainly in
+// venue is in the town's timezone and the user is almost certainly in
 // the same TZ. We deliberately don't try to UTC-convert because the
 // venue and the user agree on what "8pm" means; UTC conversion would
 // just confuse cross-DST display.
@@ -91,7 +92,7 @@ function descriptionOf(ev: EventForCalendar): string {
   const parts: string[] = [];
   if (ev.description) parts.push(ev.description);
   if (ev.ticket_url) parts.push(`Info: ${ev.ticket_url}`);
-  parts.push("Via events.ahnj.info");
+  parts.push(`Via ${EVENTS_HOST}`);
   return parts.join("\n\n");
 }
 
@@ -149,7 +150,7 @@ export function yahooCalendarUrl(ev: EventForCalendar): string {
  *  Outlook desktop pick it up. */
 export function buildIcs(ev: EventForCalendar): string {
   const { start, end, allDay } = eventStartEnd(ev);
-  const uid = `${ev.date}-${ev.title.toLowerCase().replace(/\s+/g, "-")}@ahnj.info`;
+  const uid = `${ev.date}-${ev.title.toLowerCase().replace(/\s+/g, "-")}@${SITE_HOST}`;
   const esc = (s: string) =>
     s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
   const dtFmt = (d: Date) =>
@@ -159,7 +160,7 @@ export function buildIcs(ev: EventForCalendar): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Around Town AHNJ//EN",
+    `PRODID:-//Around Town ${SITE_HOST.split(".")[0].toUpperCase()}//EN`,
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${toCompactNoTz(new Date())}`,

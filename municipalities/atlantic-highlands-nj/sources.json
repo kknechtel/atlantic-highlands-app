@@ -1,0 +1,328 @@
+{
+  "documents": {
+    "ahnj": {
+      "base_url": "https://www.ahnj.com",
+      "description": "Borough of Atlantic Highlands Official Site",
+      "pages_to_crawl": [
+        "/ahnj/Government",
+        "/ahnj/Government/Budget%20Information/",
+        "/ahnj/Government/Borough%20Ordinances/",
+        "/ahnj/Government/Government%20Records/",
+        "/ahnj/Government/Government%20Records/Most%20Referenced%20Ordinances/",
+        "/ahnj/Meetings%20and%20Agendas/",
+        "/ahnj/Agendas/",
+        "/ahnj/Departments/Planning%20Board/",
+        "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/",
+        "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2024/",
+        "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2025/",
+        "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2026/",
+        "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/",
+        "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2024/",
+        "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2025/",
+        "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/2026/",
+        "/ahnj/Departments",
+        "/ahnj/Departments/Building%20Department/",
+        "/ahnj/Departments/Finance%20Department/",
+        "/ahnj/Departments/Zoning%20Office/",
+        "/ahnj/Departments/Affordable%20Housing/",
+        "/ahnj/Departments/Tax%20Assessor/",
+        "/ahnj/Departments/Tax%20Collector/",
+        "/ahnj/Departments/Police%20Department/",
+        "/ahnj/Departments/Fire%20Department/",
+        "/ahnj/Community",
+        "/ahnj/Court",
+        "/ahnj/Emergency",
+        "/ahnj/Events/",
+        "/ahnj/Recreation/",
+        "/ahnj/Forms/",
+        "/ahnj/Forms/Planning%20and%20Zoning/",
+        "/ahnj/Other%20Links/BIDS%20and%20RFPs/",
+        "/ahnj/Announcements/",
+        "/ahnj/Upcoming%20Events/",
+        "/ahnj/Upcoming%20Events/#gsc.tab=0",
+        "/ahnj/Events/Community%20Events/"
+      ],
+      "historical_pages": [
+        "/ahnj/Agendas/Archives/",
+        "/ahnj/Agendas/Archives/2005/",
+        "/ahnj/Agendas/Archives/2006/",
+        "/ahnj/Agendas/Archives/2007/",
+        "/ahnj/Agendas/Archives/2008/",
+        "/ahnj/Agendas/Archives/2009/",
+        "/ahnj/Agendas/Archives/2010/",
+        "/ahnj/Agendas/Archives/2011/",
+        "/ahnj/Agendas/Archives/2012/",
+        "/ahnj/Agendas/Archives/2013/",
+        "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2022/",
+        "/ahnj/Departments/Planning%20Board/Agendas%2C%20Minutes%2C%20Resolutions%2C%20Recordings%20and%20Annual%20Reports/2023/",
+        "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/Archives/"
+      ],
+      "entity": "atlantic_highlands",
+      "crawler": "site",
+      "proxy": true,
+      "path_prefixes": [
+        "ahnj"
+      ],
+      "events_calendar": "/ahnj/Upcoming%20Events/",
+      "summary": "Borough website — Planning Board, Council Archives, Budgets, Ordinances, Annual Audits"
+    },
+    "ecode360": {
+      "base_url": "https://ecode360.com",
+      "description": "Atlantic Highlands Document Repository (Agendas, Minutes, Codes)",
+      "pages_to_crawl": [
+        "/AT0153/documents/Agendas",
+        "/AT0153/documents/Budgets",
+        "/AT0153/documents/Comprehensive_Plans",
+        "/AT0153/documents/Legislation",
+        "/AT0153/documents/Minutes",
+        "/AT0153/documents/Misc._Documents",
+        "/AT0153/documents/Resolutions",
+        "/AT0153"
+      ],
+      "entity": "atlantic_highlands",
+      "crawler": "ecode360",
+      "site_key": "ecode",
+      "path_prefixes": [
+        "AT0153"
+      ],
+      "summary": "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets",
+      "note": "Cloudflare Turnstile protected — requires a browser. Currently skipped on the server (no Chrome installed); results will show 0 found.",
+      "needs_browser": true
+    },
+    "tridistrict": {
+      "base_url": "https://www.tridistrict.org",
+      "description": "Henry Hudson Regional School District (Tri-District)",
+      "pages_to_crawl": [
+        "/",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2675269",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593279",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593280",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2432532",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593229",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593225",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593533",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593278",
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2580048",
+        "/apps/pages/index.jsp?uREC_ID=3733525&type=d&pREC_ID=2432536",
+        "/apps/pages/index.jsp?uREC_ID=3733531&type=d&pREC_ID=2432534",
+        "/apps/pages/index.jsp?uREC_ID=3733531&type=d"
+      ],
+      "school_sites": [
+        "https://ahes.tridistrict.org",
+        "https://hes.tridistrict.org",
+        "https://hhrs.tridistrict.org"
+      ],
+      "school_pages": [
+        "https://hhrs.tridistrict.org/apps/pages/index.jsp?uREC_ID=3758135&type=d&pREC_ID=2439311",
+        "https://ahes.tridistrict.org/apps/pages/index.jsp?uREC_ID=3733534&type=d&pREC_ID=2432548",
+        "https://hes.tridistrict.org/apps/pages/index.jsp?uREC_ID=3763022&type=d&pREC_ID=2440904"
+      ],
+      "entity": "hhrsd",
+      "crawler": "edlio",
+      "site_key": "tri",
+      "summary": "HHRSD + AHES + HES + HHRS — BOE Agendas/Minutes, Budget, Curriculum, Performance Reports"
+    },
+    "highlands_borough": {
+      "base_url": "https://highlandsnj.gov",
+      "description": "Borough of Highlands NJ (HHRSD constituent town)",
+      "pages_to_crawl": [
+        "/",
+        "/regionalization-survey/",
+        "/category/council-agendas/"
+      ],
+      "direct_downloads": [
+        "https://highlandsnj.gov/wp-content/uploads/2024/12/Public-Letter-on-Regionalization.pdf",
+        "https://highlandsnj.gov/wp-content/uploads/2025/06/Decision-on-Sea-Bright-Amended-Petition-June-2025-2.pdf"
+      ],
+      "entity": "highlands",
+      "crawler": "pages",
+      "summary": "Borough of Highlands — regionalization, council letters, public docs"
+    },
+    "highlands_meetings": {
+      "base_url": "https://highlands-nj.municodemeetings.com",
+      "description": "Highlands Borough Council — Municode meeting portal (agendas/packets)",
+      "pages_to_crawl": [
+        "/"
+      ],
+      "entity": "highlands",
+      "crawler": "municode_meetings",
+      "proxy": true,
+      "ui_name": "Highlands Council (Municode)",
+      "summary": "Highlands Borough Council meeting agendas + packets"
+    },
+    "opra": {
+      "base_url": "https://opramachine.com",
+      "description": "OPRAmachine - Crowdsourced OPRA Requests for Atlantic Highlands",
+      "api_url": "https://opramachine.com/body/atlantic_highlands.json",
+      "pages_to_crawl": [
+        "/body/atlantic_highlands"
+      ],
+      "entity": "atlantic_highlands",
+      "crawler": "opramachine",
+      "label": "OPRAmachine",
+      "summary": "Crowdsourced OPRA public records requests for Atlantic Highlands",
+      "note": "Cloudflare protected — requires a browser. Currently skipped on the server (no Chrome installed).",
+      "needs_browser": true
+    },
+    "police": {
+      "base_url": "https://spotcrime.com",
+      "description": "Police/Crime Data - SpotCrime, CrimeMapping, Nixle",
+      "pages_to_crawl": [
+        "https://spotcrime.com/nj/atlantic+highlands",
+        "https://www.crimemapping.com/map/nj/atlantichighlands",
+        "https://www.nixle.com/atlantic-highlands-police-department/",
+        "https://www.ahnj.com/ahnj/Departments/Police%20Department/"
+      ],
+      "entity": "atlantic_highlands",
+      "crawler": "pages",
+      "label": "Police/Crime Data",
+      "ui_name": "Police / Crime",
+      "summary": "SpotCrime, CrimeMapping, Nixle, AHPD page",
+      "note": "Limited — these are mostly interactive maps, not document repositories."
+    },
+    "fire": {
+      "base_url": "https://web.pulsepoint.org",
+      "description": "Fire/EMS Data - PulsePoint, Monmouth County OEM",
+      "pages_to_crawl": [
+        "https://web.pulsepoint.org/",
+        "https://www.ahnj.com/ahnj/Departments/Fire%20Department/",
+        "https://www.co.monmouth.nj.us/page.aspx?ID=2434"
+      ],
+      "entity": "atlantic_highlands",
+      "crawler": "pages",
+      "label": "Fire/EMS Data",
+      "ui_name": "Fire / EMS",
+      "summary": "PulsePoint, Monmouth County OEM, Fire Dept reports",
+      "note": "Limited — interactive feeds."
+    },
+    "county": {
+      "base_url": "https://www.monmouthcountyclerk.com",
+      "description": "Monmouth County Property Records, Tax Data, Clerk Archives",
+      "pages_to_crawl": [
+        "https://www.monmouthcountyclerk.gov/archives/record-groups/municipal-records/atlantic-highlands/",
+        "https://oprs.co.monmouth.nj.us/oprs/clerk/clerkhome.aspx?op=basic"
+      ],
+      "entity": "regional",
+      "crawler": "pages",
+      "label": "Monmouth County",
+      "follow_subpages": 15,
+      "summary": "County clerk archives, property records, tax data"
+    },
+    "census": {
+      "base_url": "https://api.census.gov",
+      "description": "US Census ACS Data for Atlantic Highlands",
+      "api_config": {
+        "state_fips": "34",
+        "county_fips": "025",
+        "place_fips": "01960",
+        "full_fips": "3402501960",
+        "variables": [
+          "B01003_001E",
+          "B19013_001E",
+          "B25077_001E",
+          "B17001_002E",
+          "B01002_001E",
+          "B25001_001E",
+          "B25003_002E",
+          "B25003_003E"
+        ]
+      },
+      "entity": "atlantic_highlands",
+      "crawler": "census",
+      "label": "Census ACS Data",
+      "ui_name": "Census ACS",
+      "summary": "Demographics, income, housing, poverty data via Census API"
+    },
+    "nj_state": {
+      "base_url": "https://www.nj.gov",
+      "description": "NJ State Data Sources (ACFR, DLGS, Court Opinions)",
+      "direct_downloads": [
+        "https://www.nj.gov/education/finance/fp/acfr/search/18/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/19/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/20/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/21/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/22/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/23/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/24/0130.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/18/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/19/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/20/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/21/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/22/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/23/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/24/2120.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/18/2160.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/19/2160.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/20/2160.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/21/2160.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/22/2160.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/23/2160.pdf",
+        "https://www.nj.gov/education/finance/fp/acfr/search/24/2160.pdf",
+        "https://www.nj.gov/dca/dlgs/programs/mc_budget_docs/UFB%20Database%20-%20FINAL.xlsm",
+        "https://www.njcourts.gov/system/files/court-opinions/2024/a0716-23.pdf",
+        "https://www.njcourts.gov/system/files/court-opinions/2025/a_68_24.pdf",
+        "https://www.ahnj.com/ahnj/Announcements/LettertoCommnity-SeaBrightDecision.pdf",
+        "https://highlandsnj.gov/wp-content/uploads/2024/12/Public-Letter-on-Regionalization.pdf",
+        "https://highlandsnj.gov/wp-content/uploads/2025/06/Decision-on-Sea-Bright-Amended-Petition-June-2025-2.pdf",
+        "https://www.ahnj.com/ahnj/Departments/Planning%20Board/Master%20Plan%20(Adopted%202019).pdf",
+        "https://www.ahnj.com/ahnj/Departments/Planning%20Board/Zoning%20Map.pdf",
+        "https://www.ahnj.com/ahnj/_zumu_user_doc_cache/Housing_Plan_Element_and_Fair_Share_Plan___Atlantic_Highlands___Adopted_June_12_2025.pdf"
+      ],
+      "entity": "state",
+      "crawler": "pages",
+      "label": "NJ State / Courts",
+      "summary": "ACFR school finance (0130, 2120, 2160), Sea Bright court opinions, Master Plan, DCA UFB"
+    }
+  },
+  "recordings": {
+    "ah_recordings": {
+      "base_url": "https://www.ahnj.com",
+      "description": "Atlantic Highlands meeting recordings (Council, Planning, Harbor)",
+      "bodies": [
+        {
+          "name": "Borough Council",
+          "path": "/ahnj/Administration/Council%20Recordings/",
+          "doc_type": "recording_council"
+        },
+        {
+          "name": "Planning Board",
+          "path": "/ahnj/Departments/Planning%20Board/_Agendas%20and%20Minutes/",
+          "doc_type": "recording_planning",
+          "year_subfolders": true
+        },
+        {
+          "name": "Harbor Commission",
+          "path": "/ahnj/AH%20Harbor/Harbor%20Meeting%20Recordings/",
+          "doc_type": "recording_harbor",
+          "year_subfolders": true
+        }
+      ],
+      "entity": "atlantic_highlands",
+      "crawler": "folder_recordings",
+      "label": "AH meeting recordings (audio)",
+      "proxy": true,
+      "path_prefixes": [
+        "ahnj"
+      ],
+      "ui_name": "AH Meeting Recordings (audio)",
+      "summary": "Atlantic Highlands Council, Planning Board, and Harbor Commission audio recordings (.wma/.wav)",
+      "note": "Last 12 months only. Files are uploaded to S3; transcribe + summarize via the Meetings page."
+    },
+    "hhrsd_recordings": {
+      "base_url": "https://www.tridistrict.org",
+      "description": "Henry Hudson Regional School District BOE meeting recordings (YouTube)",
+      "pages_to_crawl": [
+        "/apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2596745"
+      ],
+      "doc_type": "recording_school_board",
+      "entity": "hhrsd",
+      "crawler": "youtube_links",
+      "label": "HHRSD BOE recordings (YouTube)",
+      "meeting_body": "HHRSD Board of Education",
+      "name_prefix": "HHRSD BOE",
+      "ui_name": "HHRSD BOE Recordings (YouTube)",
+      "summary": "Henry Hudson Regional School District board meeting videos from tridistrict.org",
+      "note": "Metadata-only ingest. Player + transcript come from YouTube embed + auto-captions on the Meetings page."
+    }
+  }
+}

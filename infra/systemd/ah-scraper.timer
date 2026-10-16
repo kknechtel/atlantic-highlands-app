@@ -1,5 +1,5 @@
 [Unit]
-Description=Nightly full scrape of all Atlantic Highlands sources
+Description=Nightly full scrape of all municipal sources
 
 [Timer]
 # Midnight ET — runs the full historical+recent crawl every night so the

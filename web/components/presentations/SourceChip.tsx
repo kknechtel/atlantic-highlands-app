@@ -7,7 +7,7 @@
  * Reads three optional fields from the section:
  *   - source_label: short chip text (e.g. "FY2024 ACFR", "TRD")
  *   - source_url:   external URL (state DOE page, news article, etc.)
- *   - source_filename: filename of an indexed AH document — clicking
+ *   - source_filename: filename of an indexed document — clicking
  *                      opens it in the CitationPreview side panel via
  *                      the `ah:open-citation` event.
  *

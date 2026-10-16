@@ -1,5 +1,5 @@
 """
-Atlantic Highlands - Main FastAPI Application
+Main FastAPI Application
 Document library + financial analysis for town and school district.
 """
 import logging

@@ -5,10 +5,14 @@ For NJ school district ACFRs (AHSD/0130, HHRS/2120, HSD/2160), prefer
 scripts/extract_school_acfrs.py — this generic script handles the town
 case and any single-entity school case, but its entity_name inference is
 weaker and its priority dedup is less surgical.
+
+
+Specific to Atlantic Highlands, NJ.
 """
 import os, sys, json, time
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_API = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "api"))
+sys.path.insert(0, _API)
+os.chdir(_API)
 
 from google import genai
 from google.genai import types

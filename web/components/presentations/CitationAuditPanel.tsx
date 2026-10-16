@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 /**
  * CitationAuditPanel — slide-in side panel that lists every [DOC:id]
@@ -61,7 +62,7 @@ interface Props {
 }
 
 export default function CitationAuditPanel({
-  presentationId, open, onClose, onAfterApply, brandColor = '#385854',
+  presentationId, open, onClose, onAfterApply, brandColor = TOWN.brand_color,
 }: Props) {
   const [audit, setAudit] = useState<CitationAuditResponse | null>(null);
   const [loading, setLoading] = useState(false);

@@ -445,6 +445,10 @@ async def run_scraper(
             # corrected single-extension name.
             collapsed = re.sub(r"(\.[a-z0-9]{2,4})\1$", r"\1", fn.lower())
             existing_filenames.add(collapsed)
+        # End the read transaction now: the crawl runs for hours, and an open
+        # transaction holds locks that block every ALTER TABLE (migrations on
+        # API restart) for that long.
+        db.commit()
 
         # ── Crawl each site ───────────────────────────────────────
         crawlers = site_crawlers()

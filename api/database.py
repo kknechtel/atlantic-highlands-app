@@ -201,6 +201,10 @@ def _migrate():
     """
     new_columns = [
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Which embedding model produced each vector; semantic search only
+        # compares vectors from the current model (services.embeddings).
+        ("documents", "embedding_model", "VARCHAR"),
+        ("document_chunks", "embedding_model", "VARCHAR"),
         # Document titles — added 2026-05-19. Populated by
         # services.title_extractor (also runnable as a one-shot via
         # POST /api/documents/backfill-titles). The filename column is the
@@ -246,6 +250,11 @@ def _migrate():
     ]
 
     with engine.connect() as conn:
+        # Every boot runs this while other processes (scraper, workers) may hold
+        # open transactions. DDL waiting on their locks also blocks every new
+        # query behind it, so fail a contended statement fast instead.
+        conn.execute(text("SET lock_timeout = '10s'"))
+
         def _table_exists(t: str) -> bool:
             return bool(conn.execute(text(
                 "SELECT 1 FROM information_schema.tables "
@@ -262,8 +271,12 @@ def _migrate():
                 "WHERE table_name = :table AND column_name = :column"
             ), {"table": table, "column": column}).fetchone()
             if not exists:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
-                logger.info(f"Added column {table}.{column}")
+                try:
+                    with conn.begin_nested():
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                    logger.info(f"Added column {table}.{column}")
+                except Exception as e:
+                    logger.warning(f"Failed to add {table}.{column} (retried next boot): {e}")
 
         # 1b. Seed documents.municipality for rows that predate the column.
         # Mirrors services.scraper.utils.source_to_municipality; no-op once set.
@@ -330,14 +343,45 @@ def _migrate():
                 # Most likely pgvector wasn't installable — keep the keyword-only path working
                 logger.warning(f"Failed to add {table}.{column}: {e}")
 
+        # 3b. Vectors from the old SHA-512 "hash" fallback are all zeros and
+        # untagged: clear them so search never ranks on them. Real untagged
+        # vectors are voyage-3, the only provider that ever wrote these columns.
+        for table in ("document_chunks", "documents"):
+            try:
+                with conn.begin_nested():
+                    n = conn.execute(text(
+                        f"UPDATE {table} SET embedding = NULL WHERE embedding IS NOT NULL "
+                        f"AND embedding_model IS NULL AND vector_norm(embedding) = 0")).rowcount
+                    if n:
+                        logger.info(f"Cleared {n} non-semantic vectors from {table}")
+                    conn.execute(text(
+                        f"UPDATE {table} SET embedding_model = 'voyage-3' WHERE embedding IS NOT NULL "
+                        f"AND embedding_model IS NULL"))
+            except Exception as e:
+                logger.warning(f"vector cleanup skipped for {table}: {e}")
+
+        # 4a. Replace legacy IVFFlat vector indexes with HNSW (see below).
+        for idx in ("ix_documents_vec", "ix_chunks_vec"):
+            try:
+                with conn.begin_nested():
+                    legacy = conn.execute(text(
+                        "SELECT 1 FROM pg_indexes WHERE indexname = :i AND indexdef ILIKE '%ivfflat%'"), {"i": idx}).fetchone()
+                    if legacy:
+                        conn.execute(text(f"DROP INDEX {idx}"))
+                        logger.info(f"Dropped legacy IVFFlat index {idx}; rebuilding as HNSW")
+            except Exception as e:
+                logger.warning(f"could not replace {idx}: {e}")
+
         # 4. Indexes for fast hybrid search
         rag_indexes = [
             # GIN over tsvector for keyword
             ("ix_documents_fts", "CREATE INDEX IF NOT EXISTS ix_documents_fts ON documents USING gin(fts_vector)"),
             ("ix_chunks_fts", "CREATE INDEX IF NOT EXISTS ix_chunks_fts ON document_chunks USING gin(fts_vector)"),
-            # IVFFLAT for vector cosine. Lists=100 is fine up to ~100K chunks; bump later.
-            ("ix_documents_vec", "CREATE INDEX IF NOT EXISTS ix_documents_vec ON documents USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"),
-            ("ix_chunks_vec", "CREATE INDEX IF NOT EXISTS ix_chunks_vec ON document_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"),
+            # HNSW, not IVFFlat: IVFFlat centroids are trained once at build
+            # time and it probes 1 of 100 lists by default, so it silently
+            # returned the wrong neighbours.
+            ("ix_documents_vec", "CREATE INDEX IF NOT EXISTS ix_documents_vec ON documents USING hnsw (embedding vector_cosine_ops)"),
+            ("ix_chunks_vec", "CREATE INDEX IF NOT EXISTS ix_chunks_vec ON document_chunks USING hnsw (embedding vector_cosine_ops)"),
             # Trigram index on filenames — powers "did you mean" via similarity().
             # gin_trgm_ops keeps query latency sub-5ms on the ~3k-doc corpus.
             ("ix_documents_filename_trgm", "CREATE INDEX IF NOT EXISTS ix_documents_filename_trgm ON documents USING gin (filename gin_trgm_ops)"),
@@ -377,10 +421,15 @@ def _migrate():
                         logger.info(f"Added column users.{col}")
                     except Exception as e:
                         logger.warning(f"users.{col} add skipped: {e}")
-            try:
-                conn.execute(text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL"))
-            except Exception:
-                pass  # already nullable
+            not_null = conn.execute(text(
+                "SELECT 1 FROM information_schema.columns WHERE table_name = 'users' "
+                "AND column_name = 'hashed_password' AND is_nullable = 'NO'")).fetchone()
+            if not_null:  # unconditional ALTER would take an exclusive lock on users every boot
+                try:
+                    with conn.begin_nested():
+                        conn.execute(text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL"))
+                except Exception as e:
+                    logger.warning(f"users.hashed_password DROP NOT NULL skipped: {e}")
             try:
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_google_id ON users(google_id)"))
             except Exception as e:

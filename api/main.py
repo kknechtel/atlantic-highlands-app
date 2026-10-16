@@ -27,6 +27,7 @@ app.add_middleware(
 
 # Import and register routes
 from routes.auth import router as auth_router
+from routes.integrity import router as integrity_router
 from routes.documents import router as documents_router
 from routes.projects import router as projects_router
 from routes.financial import router as financial_router
@@ -79,6 +80,7 @@ app.include_router(community_chat_router, prefix="/api/community/chat", tags=["c
 app.include_router(bands_router, prefix="/api/bands", tags=["bands"])
 app.include_router(event_submissions_router, prefix="/api/event-submissions", tags=["event-submissions"])
 app.include_router(event_ingest_router, prefix="/api/event-ingest", tags=["event-ingest"])
+app.include_router(integrity_router, prefix="/api/integrity", tags=["integrity"])
 
 
 @app.on_event("startup")

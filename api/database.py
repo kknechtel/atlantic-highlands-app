@@ -56,6 +56,7 @@ def _municipality_seed_sql() -> str:
 
 def init_db():
     """Create all tables and run inline migrations."""
+    import models  # noqa: F401 — registers every table on Base.metadata (scripts may not have imported routes)
     Base.metadata.create_all(bind=engine)
     _migrate()
     logger.info("Database initialized")

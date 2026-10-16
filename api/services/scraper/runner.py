@@ -147,6 +147,8 @@ def _process_site_blocking(
         crawler.progress_callback = _on_page_docs
 
         docs = crawler.find_documents()
+        # Crawlers that clear a bot challenge (ecode360) hand over their session.
+        downloader = getattr(crawler, "downloader", None) or downloader
 
         # Reconcile against deduped final count (live ticks counted raw).
         with _status_lock:

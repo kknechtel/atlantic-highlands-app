@@ -12,6 +12,7 @@ import {
   ChevronLeftIcon, ChevronRightIcon, UserIcon,
   ClipboardDocumentListIcon, PresentationChartLineIcon,
   MicrophoneIcon, HomeModernIcon, BellIcon, ArrowTopRightOnSquareIcon,
+  ShieldExclamationIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = TOWN.brand_color;
@@ -19,6 +20,7 @@ const brandColor = TOWN.brand_color;
 const navItems = [
   { name: "Dashboard", href: "/", icon: ChartBarIcon },
   { name: "Documents", href: "/document-library", icon: FolderIcon },
+  { name: "Integrity", href: "/integrity", icon: ShieldExclamationIcon },
   {
     name: "Financials",
     href: "/financial-analysis",

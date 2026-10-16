@@ -86,8 +86,7 @@
         "AT0153"
       ],
       "summary": "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets",
-      "note": "Cloudflare Turnstile protected — requires a browser. Currently skipped on the server (no Chrome installed); results will show 0 found.",
-      "needs_browser": true
+      "note": "Cloudflare Turnstile protected: crawled with headless Chromium (Playwright); downloads reuse its clearance cookie."
     },
     "tridistrict": {
       "base_url": "https://www.tridistrict.org",

@@ -1,14 +1,17 @@
 [Unit]
-Description=Atlantic Highlands scheduled document scraper
+Description=Municipal hub scheduled document scraper
 After=network-online.target ah-api.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/atlantic-highlands/api
-# Inherit ah-api's environment (DATABASE_URL, AWS creds, AHNJ_PROXY_*).
-# AHNJ_PROXY_SECRET in particular must be present or ahnj.com requests
-# return 403 from the Cloudflare Worker. Drop-in this service must have
+# Paths and the env file keep the original deployment's names
+# (/opt/atlantic-highlands); adjust them when installing for another town.
+# Inherit ah-api's environment (DATABASE_URL, AWS creds, AHNJ_PROXY_* /
+# SCRAPER_PROXY_*). The proxy secret in particular must be present or
+# requests to proxied hosts (sources with "proxy": true) return 403 from
+# the Cloudflare Worker. Drop-in this service must have
 # the same proxy override that ah-api uses:
 #   sudo mkdir -p /etc/systemd/system/ah-scraper.service.d/
 #   sudo cp /etc/systemd/system/ah-api.service.d/ahnj-proxy.conf \
@@ -16,6 +19,8 @@ WorkingDirectory=/opt/atlantic-highlands/api
 #   sudo systemctl daemon-reload
 # The drop-in file is not in version control (it carries the secret).
 EnvironmentFile=-/etc/atlantic-highlands.env
+# Which municipalities/<slug>/ profile this deployment serves.
+Environment=MUNICIPALITY=atlantic-highlands-nj
 # After scraping, new docs are OCR'd (text layer + Tesseract), titled and
 # summarized (flash-lite), and indexed. Tesseract must be on the host:
 #   sudo apt-get install -y tesseract-ocr tesseract-ocr-eng antiword

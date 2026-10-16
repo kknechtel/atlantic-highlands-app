@@ -11,7 +11,7 @@ best signal available, in order of preference:
      — Gemini already produced these during document analysis.
   2. Filename pattern parsing — for the `Departments - X - Y - Z.pdf` and
      `Agendas - Archives - YYYY - Month DD, Description.pdf` formats the
-     AH scraper uses, the filename itself encodes title + department.
+     scraper uses, the filename itself encodes title + department.
   3. First significant line of `extracted_text` — most municipal docs
      open with the title (e.g., "PLANNING BOARD MEETING MINUTES"). Skip
      filler like "Meeting came to order", page numbers, blank seal text.
@@ -26,6 +26,8 @@ import logging
 import re
 from datetime import datetime
 from typing import Optional
+
+from municipality import TOWN, profile
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +83,7 @@ def _parse_iso_date(s: str) -> Optional[str]:
     return None
 
 
-# Filename patterns the AH scraper uses. Group captures the parts we want.
+# Filename patterns the scraper uses. Group captures the parts we want.
 #
 #   Departments - Planning Board - Agendas and Minutes - {actual title}.pdf
 #   Departments - Shade Tree Commission - Minutes - September 2022.pdf
@@ -96,7 +98,7 @@ _DEPARTMENTS_RE = re.compile(r"^Departments\s+-\s+", re.IGNORECASE)
 #   Minutes - Archives - 2013 - February 27, Regular Meeting Minutes.pdf
 _ARCHIVES_RE = re.compile(r"^(Agendas|Minutes)\s+-\s+Archives\s+-\s+(\d{4})\s+-\s+", re.IGNORECASE)
 
-# Body-specific filename prefixes (the AH scraper sometimes outputs files
+# Body-specific filename prefixes (the scraper sometimes outputs files
 # like "PB_Meeting_Minutes_May_1__2025.pdf" or "February_6__2025_PB_Agenda.pdf").
 # The acronym can be at the start OR embedded between underscores anywhere
 # in the name, so we look for it as a free-standing token.
@@ -186,13 +188,14 @@ def _humanize_filename_stem(stem: str) -> str:
 
 # Canonical department names — same map as routes/search.py but defined here too
 # so the extractor doesn't depend on the route module. Keep in sync.
+_GOV = TOWN.kind.title()  # "Borough", "Township", ...
 _DEPT_CANONICAL: dict[str, str] = {
-    "police": "Police", "police department": "Police", "pd": "Police", "ahpd": "Police",
+    "police": "Police", "police department": "Police", "pd": "Police",
     "public works": "Public Works", "dpw": "Public Works",
-    "fire": "Fire", "fire department": "Fire", "fire company": "Fire", "ahvfd": "Fire",
+    "fire": "Fire", "fire department": "Fire", "fire company": "Fire",
     "ems": "EMS", "first aid": "EMS", "first aid squad": "EMS", "ambulance": "EMS",
-    "borough council": "Borough Council", "town council": "Borough Council",
-    "mayor and council": "Borough Council", "council": "Borough Council",
+    "borough council": f"{_GOV} Council", "town council": f"{_GOV} Council",
+    "mayor and council": f"{_GOV} Council", "council": f"{_GOV} Council",
     "board of education": "Board of Education", "boe": "Board of Education",
     "school board": "Board of Education",
     "planning board": "Planning Board", "planning": "Planning Board",
@@ -203,13 +206,16 @@ _DEPT_CANONICAL: dict[str, str] = {
     "environmental commission": "Environmental Commission",
     "historic preservation commission": "Historic Preservation Commission",
     "finance": "Finance", "finance department": "Finance",
-    "borough clerk": "Borough Clerk", "clerk": "Borough Clerk", "municipal clerk": "Borough Clerk",
+    "borough clerk": f"{_GOV} Clerk", "clerk": f"{_GOV} Clerk", "municipal clerk": f"{_GOV} Clerk",
     "tax assessor": "Tax Assessor", "assessor": "Tax Assessor",
     "tax collector": "Tax Collector", "collector": "Tax Collector",
     "building department": "Building Department",
     "recreation": "Recreation", "recreation department": "Recreation",
     "municipal court": "Municipal Court", "court": "Municipal Court",
 }
+for _canonical, _variants in profile().get("department_aliases", {}).items():
+    for _v in _variants:
+        _DEPT_CANONICAL[_v.casefold()] = _canonical
 
 
 def _canonical_dept(name: str) -> Optional[str]:
@@ -233,7 +239,7 @@ def _clean_filename_for_display(filename: str) -> str:
 
 
 def derive_from_filename(filename: str) -> dict:
-    """Extract structured info from filename patterns the AH scraper uses.
+    """Extract structured info from filename patterns the scraper uses.
 
     Returns a dict that may include:
       - title (str): a human-readable title
@@ -408,7 +414,7 @@ def derive(
       doc_date:   metadata > filename pattern > content
 
     Filename patterns win for title because they're the most structured signal
-    we have — the AH scraper encodes department/title directly in the path.
+    we have — the scraper encodes department/title directly in the path.
     """
     from_fn = derive_from_filename(filename)
     from_md = derive_from_metadata(metadata)

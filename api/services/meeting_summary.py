@@ -13,6 +13,7 @@ from typing import Optional
 import anthropic
 
 from config import api_key
+from municipality import TOWN, entities
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,12 @@ logger = logging.getLogger(__name__)
 # we don't fan out across models.
 MODEL = "claude-sonnet-4-6"
 
-SYSTEM_PROMPT = """You are a municipal-meeting analyst summarizing a recorded public meeting in Atlantic Highlands or HHRSD (Henry Hudson Regional School District).
+_BODIES = " or ".join(
+    [TOWN.name]
+    + [f"{e['abbr']} ({e['label']})" if e.get("abbr") else e["label"] for e in entities() if e.get("kind") == "school"]
+)
+
+SYSTEM_PROMPT = """You are a municipal-meeting analyst summarizing a recorded public meeting in __BODIES__.
 
 Output STRICT JSON only, matching this schema:
 {
@@ -36,7 +42,7 @@ Rules:
 - timestamp_seconds MUST be a float number of seconds from the start of the meeting, derived from the [HH:MM:SS] markers in the input. Never invent timestamps.
 - If a field has no content for this meeting, return an empty array (not omit).
 - Be terse. Decisions should be one line. Topics should each be 1-2 sentences max.
-- Do NOT include any text outside the JSON object."""
+- Do NOT include any text outside the JSON object.""".replace("__BODIES__", _BODIES)
 
 
 def _segments_to_prompt(segments: list[dict]) -> str:

@@ -18,7 +18,7 @@ body {
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #385854;
+  background: var(--brand);
 }
 
 /* Mobile-friendly adjustments */
@@ -56,7 +56,7 @@ body {
 .enhanced-markdown.prose h4 {
   margin-top: 1em;
   margin-bottom: 0.4em;
-  color: #385854;
+  color: var(--brand);
 }
 .enhanced-markdown.prose h1 { font-size: 1.25rem; }
 .enhanced-markdown.prose h2 { font-size: 1.1rem; }
@@ -93,7 +93,7 @@ body {
   color: #1f2937;
 }
 .enhanced-markdown.prose a {
-  color: #385854;
+  color: var(--brand);
   text-decoration: underline;
 }
 .enhanced-markdown.prose code {
@@ -111,7 +111,7 @@ body {
   font-size: 0.8rem;
 }
 .enhanced-markdown.prose blockquote {
-  border-left: 3px solid #385854;
+  border-left: 3px solid var(--brand);
   padding-left: 0.75em;
   color: #6b7280;
   margin: 0.5em 0;
@@ -142,7 +142,7 @@ body.ah-preview-open .ah-deck { padding-right: min(960px, 60vw); }
 
 /* Cover banner used by PresentationViewer */
 .ah-deck-cover {
-  background: linear-gradient(135deg, #385854 0%, #2f4d49 100%);
+  background: linear-gradient(135deg, var(--brand) 0%, color-mix(in srgb, var(--brand) 85%, black) 100%);
   color: white;
   border-radius: 12px 12px 0 0;
   padding: 2rem 2.5rem 2.25rem;
@@ -175,7 +175,7 @@ body.ah-preview-open .ah-deck { padding-right: min(960px, 60vw); }
   font-size: 1.25rem;
   font-weight: 700;
   color: #1f2937;
-  border-bottom: 2px solid #385854;
+  border-bottom: 2px solid var(--brand);
   padding-bottom: 0.4rem;
   margin: 0 0 1rem;
 }
@@ -191,7 +191,7 @@ body.ah-preview-open .ah-deck { padding-right: min(960px, 60vw); }
 }
 .ah-deck-wordmark {
   font-weight: 700;
-  color: #385854;
+  color: var(--brand);
   font-size: 0.875rem;
   margin-bottom: 0.25rem;
 }

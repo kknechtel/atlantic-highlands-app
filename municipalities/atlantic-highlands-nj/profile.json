@@ -1,0 +1,238 @@
+{
+  "slug": "atlantic-highlands-nj",
+  "name": "Atlantic Highlands",
+  "official_name": "Borough of Atlantic Highlands",
+  "short_name": "AH",
+  "kind": "borough",
+  "state": "NJ",
+  "state_name": "New Jersey",
+  "county": "Monmouth County",
+  "timezone": "America/New_York",
+  "site_name": "Atlantic Highlands Hub",
+  "site_url": "https://ahnj.info",
+  "contact_email": "karl@rkc.llc",
+  "official_site": "https://www.ahnj.com",
+  "town_hall": {
+    "name": "Atlantic Highlands Borough Hall",
+    "address": "100 First Ave, Atlantic Highlands, NJ 07716"
+  },
+  "map": {
+    "center": [
+      40.4117,
+      -74.0354
+    ],
+    "zoom": 14
+  },
+  "brand_color": "#385854",
+  "banner_alt": "Sunset over Raritan Bay from Atlantic Highlands",
+  "events_area": [
+    "Atlantic Highlands",
+    "Highlands",
+    "Sea Bright"
+  ],
+  "fiscal_year": "calendar year",
+  "about": {
+    "town": "Atlantic Highlands is a residential borough in Monmouth County, New Jersey with a population of approximately 4,400. The borough operates under a mayor-council form of government.",
+    "school": "The Atlantic Highlands Elementary School (AHES) serves pre-K through 8th grade. The district is part of the Henry Hudson Regional School District (Tri-District) which also includes Highlands Elementary and Henry Hudson Regional High School.",
+    "school_finance_note": "HHRSD is a 7/1/2024 consolidation — pre-consolidation figures from AHSD/HSD/HHRS-HS cannot be summed naively.",
+    "school_trend_note": "HHRSD pre-7/1/2024 figures are predecessor districts — not directly comparable."
+  },
+  "census": {
+    "state_fips": "34",
+    "county_fips": "025",
+    "place_fips": "01960"
+  },
+  "opra_body": "atlantic_highlands",
+  "s3_bucket": "atlantic-highlands-documents-738265942536",
+  "db_name": "atlantic_highlands",
+  "school_constituent_towns": [
+    "Atlantic Highlands",
+    "Highlands",
+    "Sea Bright"
+  ],
+  "department_aliases": {
+    "Police": [
+      "ahpd",
+      "atlantic highlands police",
+      "atlantic highlands police department"
+    ],
+    "Fire": [
+      "ahvfd",
+      "atlantic highlands fire",
+      "atlantic highlands volunteer fire"
+    ],
+    "HHRSD": [
+      "henry hudson regional school district",
+      "henry hudson regional",
+      "hhrsd"
+    ],
+    "AHES": [
+      "atlantic highlands elementary",
+      "atlantic highlands elementary school",
+      "ahes"
+    ]
+  },
+  "search_synonyms": {
+    "ahnj": [
+      "atlantic highlands",
+      "borough of atlantic highlands"
+    ],
+    "ah": [
+      "atlantic highlands"
+    ],
+    "hhrsd": [
+      "henry hudson regional school district",
+      "henry hudson"
+    ],
+    "ahes": [
+      "atlantic highlands elementary school"
+    ]
+  },
+  "finance": {
+    "population": 4318,
+    "school_enrollment": 725,
+    "school_budget": "~$15-20M",
+    "muni_revenue_notes": [
+      "Transitional Aid is NOT typical for Atlantic Highlands.",
+      "Highlands Protection Fund Aid is NOT for Atlantic Highlands; the name is coincidence."
+    ],
+    "muni_fund_balance_notes": [
+      "Atlantic Highlands operates a Water/Sewer Utility — that has SEPARATE fund balance (Utility Operating + Utility Capital) which should be analyzed separately."
+    ]
+  },
+  "opra": {
+    "portal_label": "GovPilot online form at the Atlantic Highlands portal",
+    "local_rules": [
+      "- Custodian: Municipal Clerk, Borough of Atlantic Highlands",
+      "  Contact: 732-291-1444 x3103",
+      "- Mailing address for envelopes: $0.25 per envelope plus postage",
+      "- Online submissions via GovPilot portal"
+    ],
+    "agencies": {
+      "borough": {
+        "agency_name": "Borough of Atlantic Highlands",
+        "abbr": "the Borough",
+        "address_line": "100 First Ave, Atlantic Highlands, NJ 07716",
+        "phone": "(732) 291-1444",
+        "email": "clerk@ahnj.com",
+        "custodian_name": "Michelle Clark",
+        "custodian_title": "Municipal Clerk",
+        "submission_note": "Submit by email to clerk@ahnj.com, by mail/in person at 100 First Ave, Atlantic Highlands, NJ 07716, or via the Borough's GovPilot OPRA portal.",
+        "govpilot_url": "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
+        "info": [
+          "=== ATLANTIC HIGHLANDS BOROUGH - OPRA SUBMISSION INFO ===",
+          "Municipality: Borough of Atlantic Highlands, Monmouth County, New Jersey",
+          "Records Custodian: Michelle Clark, Municipal Clerk",
+          "Phone: 732-291-1444",
+          "Email: clerk@ahnj.com",
+          "GovPilot Online Form: https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
+          "Physical Address: 100 First Avenue, Atlantic Highlands, NJ 07716",
+          "Fee Schedule:",
+          "  - Letter-size copies: $0.05/page (N.J.S.A. 47:1A-5)",
+          "  - Legal-size copies: $0.07/page (N.J.S.A. 47:1A-5)",
+          "  - Envelopes: $0.25 each plus postage",
+          "  - Electronic delivery: no charge for the medium"
+        ],
+        "fax": ""
+      },
+      "school": {
+        "agency_name": "Henry Hudson Regional School District",
+        "abbr": "HHRSD",
+        "address_line": "1 Grand Tour, Highlands, NJ 07732",
+        "phone": "(732) 872-0900 ext. 4001",
+        "email": "jsherlock@henryhudsonreg.k12.nj.us",
+        "custodian_name": "Janet Sherlock",
+        "custodian_title": "School Business Administrator / Board Secretary",
+        "submission_note": "Email the completed form to Janet Sherlock, School Business Administrator, at jsherlock@henryhudsonreg.k12.nj.us. Mail or fax (732-872-1315) also accepted. The district consolidated on July 1, 2024 — predecessor districts (Atlantic Highlands SD, Highlands SD, HHR HS) no longer maintain separate custodians.",
+        "form_url": "https://4.files.edl.io/56c6/01/28/25/200645-0bbdba1d-23de-4c56-aa11-c30d114ac3f7.pdf",
+        "info": [
+          "=== HENRY HUDSON REGIONAL SCHOOL DISTRICT - OPRA SUBMISSION INFO ===",
+          "District: Henry Hudson Regional School District (HHRSD)",
+          "Records Custodian: Janet Sherlock, School Business Administrator / Board Secretary",
+          "Phone: 732-872-0900 ext. 4001",
+          "Fax: 732-872-1315",
+          "Email: jsherlock@henryhudsonreg.k12.nj.us",
+          "Physical Address: 1 Grand Tour, Highlands, NJ 07732",
+          "District Website: https://www.tridistrict.org",
+          "Submission: email completed OPRA form to Janet Sherlock; mail or fax also accepted.",
+          "Note: Consolidated July 1, 2024 (predecessor districts AHSD, Highlands SD, HHR HS no longer",
+          "maintain separate records custodians).",
+          "Fee Schedule:",
+          "  - Letter-size copies: $0.05/page (N.J.S.A. 47:1A-5)",
+          "  - Legal-size copies: $0.07/page (N.J.S.A. 47:1A-5)",
+          "  - Electronic delivery: no charge for the medium"
+        ],
+        "fax": "732-872-1315"
+      }
+    }
+  },
+  "entities": [
+    {
+      "id": "atlantic_highlands",
+      "label": "Borough of Atlantic Highlands",
+      "short": "Atlantic Highlands",
+      "kind": "town",
+      "primary": true,
+      "index_hint": "Borough of Atlantic Highlands (council, planning board, harbor commission, zoning, police, DPW)",
+      "aliases": [
+        "atlantic highlands",
+        "borough of atlantic highlands",
+        "ah borough",
+        "ahnj"
+      ]
+    },
+    {
+      "id": "highlands",
+      "label": "Borough of Highlands",
+      "short": "Highlands",
+      "kind": "town",
+      "note": "A different, neighboring town. Never attribute its records to Atlantic Highlands.",
+      "index_hint": "Borough of Highlands — a DIFFERENT neighboring town (Navesink Ave, \"Borough of Highlands\", Highlands council)",
+      "aliases": [
+        "highlands borough",
+        "borough of highlands"
+      ]
+    },
+    {
+      "id": "hhrsd",
+      "label": "Henry Hudson Regional School District",
+      "short": "School District",
+      "kind": "school",
+      "abbr": "HHRSD",
+      "fiscal_year": "July-June school year",
+      "index_hint": "Henry Hudson Regional School District / Tri-District / AH Elementary / Highlands Elementary / Henry Hudson Regional HS",
+      "aliases": [
+        "henry hudson regional school district",
+        "henry hudson",
+        "hhrsd",
+        "tri-district",
+        "tridistrict",
+        "ahes",
+        "highlands elementary",
+        "hhrs",
+        "hhrpk"
+      ]
+    },
+    {
+      "id": "regional",
+      "label": "Monmouth County",
+      "short": "County",
+      "kind": "regional",
+      "index_hint": "Monmouth County or other regional bodies",
+      "aliases": [
+        "monmouth county"
+      ]
+    },
+    {
+      "id": "state",
+      "label": "State of New Jersey",
+      "short": "State",
+      "kind": "state",
+      "index_hint": "State of New Jersey agencies",
+      "aliases": [
+        "new jersey",
+        "nj"
+      ]
+    }
+  ]
+}

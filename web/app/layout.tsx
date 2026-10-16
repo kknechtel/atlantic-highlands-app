@@ -1,15 +1,16 @@
+import { TOWN } from "@/lib/municipality";
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Providers from "@/components/ProvidersClient";
 
 export const metadata: Metadata = {
-  title: "Atlantic Highlands",
+  title: TOWN.name,
   description: "Document Intelligence, Events & Local Business",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AH Town",
+    title: `${TOWN.short_name} Town`,
   },
 };
 
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 // separate `viewport` export. Pinch-zoom is left enabled (WCAG 1.4.4):
 // users need to magnify dense tables and PDFs on small screens.
 export const viewport: Viewport = {
-  themeColor: "#385854",
+  themeColor: TOWN.brand_color,
   width: "device-width",
   initialScale: 1,
 };
@@ -28,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" style={{ "--brand": TOWN.brand_color } as React.CSSProperties}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>

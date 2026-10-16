@@ -1,5 +1,9 @@
 """
-Scrape the borough events calendar from ahnj.com and store events in the database.
+Scrape the town's events calendar and store events in the database.
+
+The calendar is the source in sources.json with an `events_calendar` path
+(on its base_url); the parser below reads the month-grid markup of that
+CMS (?month=MM&year=YYYY). Towns without one skip this step.
 Run: python scripts/scrape_events.py
 """
 import sys, os, re, json, logging, time
@@ -14,8 +18,20 @@ from bs4 import BeautifulSoup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-CALENDAR_URL = "https://www.ahnj.com/ahnj/Upcoming%20Events/"
-MONTH_URL = "https://www.ahnj.com/ahnj/Upcoming%20Events/?month={month:02d}&year={year}"
+from municipality import sources as _sources
+
+
+def _calendar_source() -> tuple[str, str] | tuple[None, None]:
+    for name, cfg in _sources().get("documents", {}).items():
+        if cfg.get("events_calendar"):
+            return name, cfg["base_url"] + cfg["events_calendar"]
+    return None, None
+
+
+_CAL_SOURCE, CALENDAR_URL = _calendar_source()
+MONTH_URL = (CALENDAR_URL + "?month={month:02d}&year={year}") if CALENDAR_URL else None
+# Stored in calendar_events.source, e.g. "ahnj_calendar".
+EVENT_SOURCE = f"{_CAL_SOURCE}_calendar" if _CAL_SOURCE else "town_calendar"
 
 MONTH_NAMES = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
@@ -127,7 +143,7 @@ def scrape_month(year: int, month: int) -> list[dict]:
                     "date": date_str,
                     "title": event_title,
                     "time": event_time,
-                    "source": "ahnj_calendar",
+                    "source": EVENT_SOURCE,
                     "url": url,
                 })
 
@@ -178,7 +194,7 @@ def save_to_db(events: list[dict]):
         # end_time/ticket_url) added in 2026-05; the IF NOT EXISTS guards
         # make this idempotent on fresh installs, and the migration in
         # database.py picks them up on existing prod tables.
-        db.execute(sql_text("""
+        db.execute(sql_text(f"""
             CREATE TABLE IF NOT EXISTS calendar_events (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 date DATE NOT NULL,
@@ -186,7 +202,7 @@ def save_to_db(events: list[dict]):
                 time TEXT,
                 location TEXT,
                 description TEXT,
-                source TEXT DEFAULT 'ahnj_calendar',
+                source TEXT DEFAULT '{EVENT_SOURCE}',
                 source_url TEXT,
                 venue TEXT,
                 city TEXT,
@@ -213,7 +229,7 @@ def save_to_db(events: list[dict]):
                     "date": event["date"],
                     "title": event["title"],
                     "time": event.get("time"),
-                    "source": event.get("source", "ahnj_calendar"),
+                    "source": event.get("source", EVENT_SOURCE),
                     "url": event.get("url"),
                     "event_type": classify_borough_event(event["title"]),
                 })
@@ -243,6 +259,8 @@ def run_events_scrape(months_ahead: int = 12) -> dict:
     counts dict for the caller to log; never raises so a scrape failure
     can't cascade into the doc scrape it's chained off.
     """
+    if not MONTH_URL:
+        return {"scraped": 0, "ok": True, "skipped": "no events_calendar source"}
     try:
         now = datetime.utcnow()
         # Inclusive end month (now.month → now.month + months_ahead).

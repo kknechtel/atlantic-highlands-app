@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -50,7 +51,7 @@ const PANEL_WIDTH_MAX = 900;
 const MAX_ATTACH_SIZE = 10 * 1024 * 1024;   // 10 MB per file — Anthropic accepts up to ~30, we leave headroom
 
 export default function AskAIPanel({
-  presentationId, sections, brandColor = '#385854',
+  presentationId, sections, brandColor = TOWN.brand_color,
   onAcceptProposal, onClose, initialTargetSectionId = null,
 }: AskAIPanelProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);

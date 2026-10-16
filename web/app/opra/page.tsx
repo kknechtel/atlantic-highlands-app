@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SCHOOL_ENTITY } from "@/lib/municipality";
 
 import { useState, useRef, useEffect } from "react";
 import {
@@ -18,9 +19,12 @@ import {
 } from "@heroicons/react/24/outline";
 
 const API_BASE = "";
-const brandColor = "#385854";
-const GOVPILOT_URL =
-  "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1";
+const brandColor = TOWN.brand_color;
+// Custodians, addresses and portal links: the profile's opra block.
+const OPRA = TOWN.opra?.agencies;
+const GOVPILOT_URL = OPRA?.borough.govpilot_url || "";
+const custodian = (a?: { custodian_name: string; custodian_title: string }) =>
+  a ? `${a.custodian_name}, ${a.custodian_title.split(" / ")[0]}` : "";
 
 type EntityKey = "borough" | "school";
 
@@ -327,11 +331,11 @@ export default function OPRAPage() {
             <h1 className="text-xl md:text-2xl font-bold text-gray-900">OPRA Request Generator</h1>
             <p className="text-xs md:text-sm text-gray-500 truncate">
               Open Public Records Act &mdash;{" "}
-              {agency ? agency.agency_name : (entity === "school" ? "Henry Hudson Regional School District" : "Borough of Atlantic Highlands")}
+              {agency ? agency.agency_name : (entity === "school" ? SCHOOL_ENTITY.label : TOWN.official_name)}
             </p>
           </div>
         </div>
-        {entity === "borough" ? (
+        {entity === "borough" && GOVPILOT_URL ? (
           <a
             href={GOVPILOT_URL}
             target="_blank"
@@ -359,8 +363,8 @@ export default function OPRAPage() {
         <p className="text-sm font-medium text-gray-700 mb-2">Submitting to</p>
         <div className="grid grid-cols-2 gap-2">
           {([
-            { id: "borough", label: "Borough of Atlantic Highlands", sub: "Michelle Clark, Municipal Clerk", Icon: BuildingLibraryIcon },
-            { id: "school",  label: "Henry Hudson Regional School District", sub: "Janet Sherlock, School Business Administrator", Icon: AcademicCapIcon },
+            { id: "borough", label: TOWN.official_name, sub: custodian(OPRA?.borough), Icon: BuildingLibraryIcon },
+            { id: "school",  label: SCHOOL_ENTITY.label, sub: custodian(OPRA?.school), Icon: AcademicCapIcon },
           ] as const).map(({ id, label, sub, Icon }) => (
             <button
               key={id}
@@ -627,7 +631,7 @@ export default function OPRAPage() {
                 type="text"
                 value={requestorAddress}
                 onChange={(e) => setRequestorAddress(e.target.value)}
-                placeholder="123 Main St, Atlantic Highlands, NJ 07716"
+                placeholder={`123 Main St, ${TOWN.name}, ${TOWN.town_hall.address.split(", ").pop()}`}
                 autoComplete="street-address"
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
               />
@@ -638,7 +642,7 @@ export default function OPRAPage() {
                 type="tel"
                 value={requestorPhone}
                 onChange={(e) => setRequestorPhone(e.target.value)}
-                placeholder="(732) 555-0000"
+                placeholder="(555) 555-0000"
                 autoComplete="tel"
                 inputMode="tel"
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
@@ -759,7 +763,7 @@ export default function OPRAPage() {
                 <ArrowDownTrayIcon className="w-3.5 h-3.5" />
                 {isPdfBuilding ? "Building…" : "Form PDF"}
               </button>
-              {entity === "borough" ? (
+              {entity === "borough" && GOVPILOT_URL ? (
                 <a
                   href={GOVPILOT_URL}
                   target="_blank"
@@ -897,29 +901,32 @@ export default function OPRAPage() {
           <>
             <p className="text-sm text-gray-600 mb-3">
               Ready to submit? Download the prefilled <strong>Form PDF</strong> above
-              and email it to <a href="mailto:clerk@ahnj.com" className="underline" style={{ color: brandColor }}>clerk@ahnj.com</a>,
-              or paste the generated text into the GovPilot online form.
+              and email it to <a href={`mailto:${agency?.email || OPRA?.borough.email}`} className="underline" style={{ color: brandColor }}>{agency?.email || OPRA?.borough.email}</a>
+              {GOVPILOT_URL ? ", or paste the generated text into the GovPilot online form." : "."}
             </p>
-            <a
-              href={GOVPILOT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow-lg"
-              style={{ backgroundColor: brandColor }}
-            >
-              <ArrowTopRightOnSquareIcon className="w-5 h-5" />
-              Open Atlantic Highlands OPRA Form on GovPilot
-            </a>
+            {GOVPILOT_URL && (
+              <a
+                href={GOVPILOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 text-white rounded-lg hover:opacity-90 text-sm font-medium shadow-lg"
+                style={{ backgroundColor: brandColor }}
+              >
+                <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                Open {TOWN.name} OPRA Form on GovPilot
+              </a>
+            )}
           </>
         ) : (
           <>
             <p className="text-sm text-gray-600 mb-3">
               Ready to submit? Download the prefilled <strong>Form PDF</strong> above
               and email it to{" "}
-              <a href={`mailto:${agency?.email || "jsherlock@henryhudsonreg.k12.nj.us"}`} className="underline" style={{ color: brandColor }}>
-                {agency?.email || "jsherlock@henryhudsonreg.k12.nj.us"}
+              <a href={`mailto:${agency?.email || OPRA?.school.email}`} className="underline" style={{ color: brandColor }}>
+                {agency?.email || OPRA?.school.email}
               </a>
-              . Mail or fax (732-872-1315) to <strong>1 Grand Tour, Highlands, NJ 07732</strong> also accepted.
+              . {OPRA?.school.fax ? `Mail or fax (${OPRA.school.fax}) to ` : "Mail to "}
+              <strong>{OPRA?.school.address_line}</strong> also accepted.
             </p>
             {agency?.form_url && (
               <a
@@ -937,7 +944,7 @@ export default function OPRAPage() {
         )}
         <p className="text-xs text-gray-400 mt-3">
           N.J.S.A. 47:1A-1 et seq. | P.L. 2024, c.16 |{" "}
-          {entity === "school" ? "Henry Hudson Regional School District" : "Borough of Atlantic Highlands, Monmouth County, NJ"}
+          {entity === "school" ? SCHOOL_ENTITY.label : `${TOWN.official_name}, ${TOWN.county}, ${TOWN.state}`}
         </p>
       </div>
     </div>

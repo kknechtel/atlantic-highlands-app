@@ -1,7 +1,7 @@
 """Per-venue live-music scrapers.
 
-Two adapters cover the bulk of the live-music venues across Atlantic
-Highlands, Highlands, and Sea Bright:
+Two adapters cover the bulk of the live-music venues across the towns in
+the profile's events_area:
 
   - squarespace.fetch_events  — Squarespace events collection JSON
   - tribe_events.fetch_events  — WordPress "The Events Calendar" REST

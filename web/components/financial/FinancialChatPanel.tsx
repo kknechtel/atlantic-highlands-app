@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState, useRef, useEffect } from "react";
 import { type Document } from "@/lib/api";
@@ -26,7 +27,7 @@ const SUGGESTED_QUESTIONS = [
   "Compare town budget trends from 2020 to 2025",
   "What are the major expenditure categories for the school district?",
   "How has the town's fund balance changed over the last 5 years?",
-  "Summarize the 2024 audit findings for Atlantic Highlands",
+  `Summarize the 2024 audit findings for ${TOWN.name}`,
   "What is the total debt for the town vs school district?",
   "Are there any concerning financial trends?",
 ];
@@ -37,7 +38,7 @@ export default function FinancialChatPanel({ documents }: Props) {
       id: "welcome",
       role: "assistant",
       content:
-        "I can help analyze Atlantic Highlands financial documents. Ask me about budgets, audits, trends, or comparisons between the town and school district.\n\nI have access to financial documents going back to 2004.",
+        `I can help analyze ${TOWN.name} financial documents. Ask me about budgets, audits, trends, or comparisons between the town and school district.\n\nI have access to financial documents going back to 2004.`,
     },
   ]);
   const [input, setInput] = useState("");

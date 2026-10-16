@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React from 'react';
 import { CpuChipIcon } from '@heroicons/react/24/outline';
@@ -10,7 +11,7 @@ interface TypingIndicatorProps {
 }
 
 const TypingIndicator: React.FC<TypingIndicatorProps> = ({
-    brandColor = '#385854',
+    brandColor = TOWN.brand_color,
     message = 'AI is thinking...',
     isVisible = true
 }) => {

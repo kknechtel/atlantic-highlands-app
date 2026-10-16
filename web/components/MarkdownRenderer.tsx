@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
@@ -6,11 +7,11 @@ import DOMPurify from 'isomorphic-dompurify';
 export type FactCheckVerdict = 'supported' | 'partial' | 'unsupported' | 'unresolved' | 'no_source';
 
 export interface FactCheckResultItem {
-    /** AH cites by filename, but we keep a kind discriminator for symmetry
+    /** This app cites by filename, but we keep a kind discriminator for symmetry
      *  with the bank-processor shape so the same FactCheckPanel can run
      *  here unchanged. `kind: 'doc'` is the only one in use today. */
     kind: 'doc' | 'email';
-    /** For AH this is the filename (e.g. "AHES-performance report 22-23.pdf"). */
+    /** Here this is the filename (e.g. "performance report 22-23.pdf"). */
     id: string;
     verdict: FactCheckVerdict;
 }
@@ -33,11 +34,11 @@ const VERDICT_BADGE: Record<FactCheckVerdict, { glyph: string; cls: string; titl
 };
 
 /**
- * Markdown renderer used across AH chat + presentations. Lazily loads
+ * Markdown renderer used across chat + presentations. Lazily loads
  * marked + highlight.js + DOMPurify on the client; falls back to plain
  * text on failure.
  *
- * Recognised AH citation syntax: `[source: filename.pdf]` and
+ * Recognised citation syntax: `[source: filename.pdf]` and
  * `[source: a.pdf, b.pdf]` (comma / pipe / semicolon separated). Each
  * filename becomes a clickable pill that fires `onCitationClick` when
  * clicked, OR — when no callback is provided — dispatches an
@@ -49,7 +50,7 @@ const VERDICT_BADGE: Record<FactCheckVerdict, { glyph: string; cls: string; titl
  * the source documents.
  */
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
-    content, onCitationClick, factCheckResults, brandColor = '#385854',
+    content, onCitationClick, factCheckResults, brandColor = TOWN.brand_color,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [html, setHtml] = useState<string>('');
@@ -89,7 +90,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                     },
                 } as any);
 
-                // Pre-process AH citations BEFORE markdown so they don't get
+                // Pre-process citations BEFORE markdown so they don't get
                 // mangled by the markdown parser. tiptap-markdown sometimes
                 // backslash-escapes brackets — undo that first.
                 const unescaped = (content || '').replace(/\\([\[\]|])/g, '$1');

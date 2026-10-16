@@ -1,5 +1,5 @@
 """
-Set up / update AWS Secrets Manager for Atlantic Highlands production.
+Set up / update AWS Secrets Manager for a production deployment.
 
 Idempotent: reads the existing secret first and only overwrites keys you
 explicitly pass via env vars. Re-running with no env vars is a no-op (won't
@@ -24,17 +24,25 @@ import secrets
 import sys
 import boto3
 
-SECRET_NAME = "atlantic-highlands/production"
-REGION = "us-east-1"
-RDS_HOST = "atlantic-highlands-db.c4xoyiqaey7u.us-east-1.rds.amazonaws.com"
-RDS_USER = "ahAdmin"
-RDS_DB = "atlantic_highlands"
+# Deployment-specific names. Defaults are the original Atlantic Highlands
+# deployment; another town overrides them via env.
+SECRET_NAME = os.environ.get("SECRET_NAME", "atlantic-highlands/production")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
+RDS_HOST = os.environ.get("RDS_HOST", "atlantic-highlands-db.c4xoyiqaey7u.us-east-1.rds.amazonaws.com")
+RDS_USER = os.environ.get("RDS_USER", "ahAdmin")
+RDS_DB = os.environ.get("RDS_DB", "atlantic_highlands")
+ALLOWED_ORIGINS = os.environ.get(
+    "ALLOWED_ORIGINS",
+    "https://ahnj.info,https://www.ahnj.info,https://atlantic-highlands.amplifyapp.com,http://localhost:3000",
+)
+S3_BUCKET = os.environ.get("S3_BUCKET", "atlantic-highlands-documents-738265942536")
+INSTANCE_ID = os.environ.get("INSTANCE_ID", "i-06424a799368c7d6d")
 
 # Static (non-secret) config that's always safe to overwrite.
 STATIC = {
     "JWT_EXPIRATION_HOURS": "24",
-    "ALLOWED_ORIGINS": "https://ahnj.info,https://www.ahnj.info,https://atlantic-highlands.amplifyapp.com,http://localhost:3000",
-    "S3_BUCKET": "atlantic-highlands-documents-738265942536",
+    "ALLOWED_ORIGINS": ALLOWED_ORIGINS,
+    "S3_BUCKET": S3_BUCKET,
     "AWS_REGION": REGION,
     "DEBUG": "false",
 }
@@ -94,7 +102,7 @@ for key in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "VOYAGE_API_KEY", "OPENAI_API
 if creating:
     client.create_secret(
         Name=SECRET_NAME,
-        Description="Atlantic Highlands production configuration",
+        Description=f"{SECRET_NAME} configuration",
         SecretString=json.dumps(merged),
     )
     print(f"\nCreated secret: {SECRET_NAME}")
@@ -104,6 +112,6 @@ else:
 
 print(f"\nKeys present: {sorted(merged.keys())}")
 print(f"\nNext: restart the API so it picks up the new values:")
-print(f"  aws ssm send-command --instance-ids i-06424a799368c7d6d \\")
+print(f"  aws ssm send-command --instance-ids {INSTANCE_ID} \\")
 print(f"    --document-name AWS-RunShellScript \\")
 print(f"    --parameters 'commands=[\"systemctl restart ah-api\"]'")

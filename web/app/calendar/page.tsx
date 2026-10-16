@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, FILE_PREFIX } from "@/lib/municipality";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +14,7 @@ import {
   ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -26,7 +27,7 @@ export default function CalendarPage() {
   });
 
   // Borough calendar — govt meetings only. Concerts, fireworks, and other
-  // community events live on events.ahnj.info, not the civic-research calendar.
+  // community events live on the events subdomain, not the civic-research calendar.
   const { data: boroughEvents } = useQuery({
     queryKey: ["calendar-borough-events", "govt"],
     queryFn: () => getCalendarEvents(undefined, undefined, { event_type: "govt" }),
@@ -89,25 +90,25 @@ export default function CalendarPage() {
     const titles = docs.map(doc => extractMeetingTitle(doc.filename, doc.doc_type)).join(", ");
     const desc = docs.map(doc => `- ${doc.filename}${doc.notes ? ": " + doc.notes.slice(0, 200) : ""}`).join("\\n");
     const ics = [
-      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Atlantic Highlands//EN",
+      "BEGIN:VCALENDAR", "VERSION:2.0", `PRODID:-//${TOWN.name}//EN`,
       "BEGIN:VEVENT",
       `DTSTART;VALUE=DATE:${date.replace(/-/g, "")}`,
       `DTEND;VALUE=DATE:${date.replace(/-/g, "")}`,
       `SUMMARY:${titles}`,
       `DESCRIPTION:${desc}`,
-      `LOCATION:Atlantic Highlands Borough Hall`,
+      `LOCATION:${TOWN.town_hall.name}`,
       "END:VEVENT", "END:VCALENDAR",
     ].join("\r\n");
     const blob = new Blob([ics], { type: "text/calendar" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `ah-meeting-${date}.ics`; a.click();
+    a.download = `${FILE_PREFIX}-meeting-${date}.ics`; a.click();
   };
 
   const googleCalendarUrl = (date: string, docs: Document[]) => {
     const titles = docs.map(doc => extractMeetingTitle(doc.filename, doc.doc_type)).join(", ");
     const desc = docs.map(doc => doc.filename).join("\n");
     const dateStr = date.replace(/-/g, "");
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titles)}&dates=${dateStr}/${dateStr}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent("Atlantic Highlands Borough Hall, 100 First Ave, Atlantic Highlands, NJ")}`;
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titles)}&dates=${dateStr}/${dateStr}&details=${encodeURIComponent(desc)}&location=${encodeURIComponent(`${TOWN.town_hall.name}, ${TOWN.town_hall.address}`)}`;
   };
 
   return (

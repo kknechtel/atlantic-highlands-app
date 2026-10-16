@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SCHOOL_ENTITY, SCHOOL_ABBR, KIND_LABEL, FILE_PREFIX } from "@/lib/municipality";
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -19,12 +20,13 @@ import {
   EllipsisVerticalIcon, EyeSlashIcon, FunnelIcon,
 } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
+const EXPERT_NAME = `${TOWN.short_name} Expert`;
 // Non-streaming requests use the relative URL (Amplify proxy → backend).
 // Streaming SSE requests bypass Amplify and hit the FastAPI box directly via
 // the api.* HTTPS endpoint, because Amplify's SSR Compute has a hard 30s
 // response timeout that kills long Claude streams. NEXT_PUBLIC_API_DIRECT_URL
-// is set to https://api.ahnj.info in Amplify env (mirrors bank-processor's
+// is set to the api.* host in Amplify env (mirrors bank-processor's
 // API_DIRECT pattern).
 const API_BASE = "";
 const API_DIRECT =
@@ -64,9 +66,9 @@ interface ChatScope {
 }
 
 const SCOPE_PRESETS: ChatScope[] = [
-  { type: "all", label: "All Atlantic Highlands" },
-  { type: "entity", id: "town", label: "Borough only" },
-  { type: "entity", id: "school", label: "School (HHRSD) only" },
+  { type: "all", label: `All ${TOWN.name}` },
+  { type: "entity", id: "town", label: `${KIND_LABEL} only` },
+  { type: "entity", id: "school", label: `School (${SCHOOL_ABBR}) only` },
   { type: "fiscal_year", id: "2024", label: "FY 2024" },
   { type: "fiscal_year", id: "2023", label: "FY 2023" },
   { type: "fiscal_year", id: "2022", label: "FY 2022" },
@@ -85,8 +87,8 @@ function scopeHint(scope: ChatScope): string {
     case "all": return "";
     case "entity":
       return scope.id === "school"
-        ? "[Scope: Henry Hudson Regional School District (HHRSD) documents only — pass category='school' to search tools.]"
-        : "[Scope: Borough of Atlantic Highlands documents only — pass category='town' to search tools.]";
+        ? `[Scope: ${SCHOOL_ENTITY.label} (${SCHOOL_ABBR}) documents only — pass category='school' to search tools.]`
+        : `[Scope: ${TOWN.official_name} documents only — pass category='town' to search tools.]`;
     case "fiscal_year":
       return `[Scope: FY${scope.id} only — pass fiscal_year='${scope.id}' to search tools.]`;
     case "doc_type":
@@ -212,7 +214,7 @@ export default function GlobalChat() {
   // The backend already accepts scope_type/scope_id (saved with chat_history)
   // and Claude reads the appended scope hint in the user message to constrain
   // its search_chunks / search_documents tool calls.
-  const [chatScope, setChatScope] = useState<ChatScope>({ type: "all", label: "All Atlantic Highlands" });
+  const [chatScope, setChatScope] = useState<ChatScope>(SCOPE_PRESETS[0]);
   const [showScopePicker, setShowScopePicker] = useState(false);
   // Deck-mode slide picker — scoped to the active deck. Reset when the user
   // navigates to a different deck so a stale id doesn't get sent. Stored as
@@ -294,7 +296,7 @@ export default function GlobalChat() {
   const fireDoneNotification = (preview: string) => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
-    const n = new Notification("AH Expert response ready", {
+    const n = new Notification(`${EXPERT_NAME} response ready`, {
       body: preview.slice(0, 200),
       tag: "ah-chat-done",
       icon: "/icon-192.png",
@@ -323,20 +325,20 @@ export default function GlobalChat() {
     const text = messages.filter(m => m.role !== "error").map(m => `[${m.role.toUpperCase()}] ${m.content}`).join("\n\n---\n\n");
     const blob = new Blob([text], { type: "text/plain" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `ah-chat-${new Date().toISOString().slice(0, 10)}.txt`; a.click();
+    a.download = `${FILE_PREFIX}-chat-${new Date().toISOString().slice(0, 10)}.txt`; a.click();
   };
 
   const handleDownloadMessage = (content: string) => {
     const blob = new Blob([content], { type: "text/markdown" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `ah-response-${new Date().toISOString().slice(0, 16)}.md`; a.click();
+    a.download = `${FILE_PREFIX}-response-${new Date().toISOString().slice(0, 16)}.md`; a.click();
   };
 
   const handleNewSession = () => {
     setSessionId(`s_${Date.now()}`);
     setMessages([{
       id: "welcome", role: "assistant", timestamp: new Date(),
-      content: "New conversation started. Ask me anything about Atlantic Highlands.",
+      content: `New conversation started. Ask me anything about ${TOWN.name}.`,
     }]);
     setShowHistory(false);
   };
@@ -806,7 +808,7 @@ export default function GlobalChat() {
     <button onClick={() => setIsOpen(true)}
       className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white p-3.5 md:p-4 rounded-full shadow-xl hover:shadow-2xl transition-all hover:scale-105 group"
       style={{ backgroundColor: brandColor }}
-      aria-label={unread > 0 ? `${unread} new response ready` : "Open AH Expert"}>
+      aria-label={unread > 0 ? `${unread} new response ready` : `Open ${EXPERT_NAME}`}>
       <SparklesIcon className="w-5 h-5 md:w-6 md:h-6 group-hover:rotate-12 transition-transform" />
       {isStreaming && (
         <span className="absolute top-1 right-1 w-2 h-2 bg-white rounded-full animate-pulse"
@@ -825,7 +827,7 @@ export default function GlobalChat() {
   if (isMinimized) return (
     <div className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 text-white rounded-full shadow-xl flex items-center gap-2 px-4 py-2.5 md:px-5 md:py-3 cursor-pointer hover:shadow-2xl"
       style={{ backgroundColor: brandColor }} onClick={() => setIsMinimized(false)}>
-      <SparklesIcon className="w-4 h-4" /><span className="text-sm font-medium">AH Expert</span>
+      <SparklesIcon className="w-4 h-4" /><span className="text-sm font-medium">{EXPERT_NAME}</span>
       {isStreaming && <span className="w-2 h-2 bg-white rounded-full animate-pulse" title="Working…" />}
       {unread > 0 && (
         <span className="min-w-[18px] h-[18px] px-1 bg-amber-400 text-[#1a2e2c] text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -1026,7 +1028,7 @@ export default function GlobalChat() {
 
         {/* Controls bar — Deep / Report toggles + scope filters (matches bank-processor).
             flex-wrap so on a narrow phone width an active scope chip (e.g.
-            "School (HHRSD) only") wraps onto a second row instead of pushing
+            "School (...) only") wraps onto a second row instead of pushing
             the doc-scope button off-screen. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
           <label
@@ -1251,7 +1253,7 @@ export default function GlobalChat() {
                 selectedDoc ? `Ask about ${selectedDoc.filename}...`
                 : deepThinking ? "Ask a deep analytical question..."
                 : webSearchEnabled ? "Ask anything (+ web search)..."
-                : "Ask about AH documents..."
+                : `Ask about ${TOWN.short_name} documents...`
               }
               className={`flex-1 rounded-xl border border-gray-300 px-3 ${isMobile ? "py-2.5 text-base" : "py-2 text-sm"} focus:ring-2 focus:border-transparent`}
               style={{ "--tw-ring-color": brandColor } as React.CSSProperties}
@@ -1438,7 +1440,7 @@ function CopyChatButton({ messages }: { messages: ChatMessage[] }) {
     const text = messages
       .filter(m => m.role !== "error")
       .map(m => {
-        const role = m.role === "user" ? "USER" : "AH EXPERT";
+        const role = m.role === "user" ? "USER" : EXPERT_NAME.toUpperCase();
         return `[${role}]\n${m.content}`;
       })
       .join("\n\n---\n\n");

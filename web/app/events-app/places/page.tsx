@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 interface Business {
   name: string;
@@ -121,7 +122,7 @@ export default function LocalBusinessPage() {
       <div className="mb-4 md:mb-6">
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Local Businesses</h1>
         <p className="text-xs md:text-sm text-gray-500 mt-1">
-          {businesses.length} businesses in Atlantic Highlands
+          {businesses.length} businesses in {TOWN.name}
         </p>
       </div>
 

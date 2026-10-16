@@ -1,6 +1,6 @@
 """
 OPRA Request Generator - Generate legally compliant Open Public Records Act requests
-for the Borough of Atlantic Highlands and the Henry Hudson Regional School District, NJ.
+for the town and school district named in the municipality profile (opra.agencies).
 
 Legal basis: N.J.S.A. 47:1A-1 et seq., as amended by P.L. 2024, c.16 (eff. 9/3/2024).
 """
@@ -14,10 +14,24 @@ from pydantic import BaseModel
 from typing import Literal, Optional
 
 from config import api_key
+from municipality import TOWN, profile
 from services.opra_pdf import render_opra_pdf, AGENCY_INFO as PDF_AGENCY_INFO
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_OPRA = profile().get("opra", {})
+_AGENCIES = _OPRA.get("agencies", {})
+_GOV = TOWN.kind.title()  # "Borough", "Township", ...
+_SCHOOL = _AGENCIES.get("school", {}).get("abbr") or "the District"
+_GOVPILOT_URL = _AGENCIES.get("borough", {}).get("govpilot_url")
+
+
+def _local_rules() -> str:
+    rules = _OPRA.get("local_rules", [])
+    if not rules:
+        return ""
+    return f"{TOWN.name.upper()} SPECIFIC:\n" + "\n".join(rules) + "\n\n"
 
 # ── OPRA Regulatory Reference ────────────────────────────────────────────────
 # This is compiled from N.J.S.A. 47:1A-1 et seq. and P.L. 2024, c.16.
@@ -85,13 +99,7 @@ SECTION 5 - FEES (N.J.S.A. 47:1A-5)
     expenditure of time and effort (must be reasonable, based on actual direct cost)
 (e) Postage: actual cost of mailing
 
-ATLANTIC HIGHLANDS SPECIFIC:
-- Custodian: Municipal Clerk, Borough of Atlantic Highlands
-  Contact: 732-291-1444 x3103
-- Mailing address for envelopes: $0.25 per envelope plus postage
-- Online submissions via GovPilot portal
-
-SECTION 6 - IMMEDIATE ACCESS RECORDS (N.J.S.A. 47:1A-5)
+__LOCAL_RULES__SECTION 6 - IMMEDIATE ACCESS RECORDS (N.J.S.A. 47:1A-5)
 The following records are deemed immediately accessible and must be provided without delay:
 - Budgets
 - Bills
@@ -159,44 +167,16 @@ Records within 16 days of an election: 2-business-day response for voter activit
 SECTION 12 - PROTECTIVE ORDERS (P.L. 2024, c.16)
 Courts may limit access for requestors seeking records to "substantially interrupt
 government function" (clear and convincing evidence standard).
-"""
+""".replace("__LOCAL_RULES__", _local_rules())
 
-ATLANTIC_HIGHLANDS_INFO = """
-=== ATLANTIC HIGHLANDS BOROUGH - OPRA SUBMISSION INFO ===
-Municipality: Borough of Atlantic Highlands, Monmouth County, New Jersey
-Records Custodian: Michelle Clark, Municipal Clerk
-Phone: 732-291-1444
-Email: clerk@ahnj.com
-GovPilot Online Form: https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1
-Physical Address: 100 First Avenue, Atlantic Highlands, NJ 07716
-Fee Schedule:
-  - Letter-size copies: $0.05/page (N.J.S.A. 47:1A-5)
-  - Legal-size copies: $0.07/page (N.J.S.A. 47:1A-5)
-  - Envelopes: $0.25 each plus postage
-  - Electronic delivery: no charge for the medium
-"""
+def _info_block(key: str) -> str:
+    lines = _AGENCIES.get(key, {}).get("info", [])
+    return "\n" + "\n".join(lines) + "\n" if lines else ""
 
-HHRSD_INFO = """
-=== HENRY HUDSON REGIONAL SCHOOL DISTRICT - OPRA SUBMISSION INFO ===
-District: Henry Hudson Regional School District (HHRSD)
-Records Custodian: Janet Sherlock, School Business Administrator / Board Secretary
-Phone: 732-872-0900 ext. 4001
-Fax: 732-872-1315
-Email: jsherlock@henryhudsonreg.k12.nj.us
-Physical Address: 1 Grand Tour, Highlands, NJ 07732
-District Website: https://www.tridistrict.org
-Submission: email completed OPRA form to Janet Sherlock; mail or fax also accepted.
-Note: Consolidated July 1, 2024 (predecessor districts AHSD, Highlands SD, HHR HS no longer
-maintain separate records custodians).
-Fee Schedule:
-  - Letter-size copies: $0.05/page (N.J.S.A. 47:1A-5)
-  - Legal-size copies: $0.07/page (N.J.S.A. 47:1A-5)
-  - Electronic delivery: no charge for the medium
-"""
 
 ENTITY_INFO = {
-    "borough": ATLANTIC_HIGHLANDS_INFO,
-    "school":  HHRSD_INFO,
+    "borough": _info_block("borough"),
+    "school":  _info_block("school"),
 }
 
 # ── Record Category Templates ────────────────────────────────────────────────
@@ -234,19 +214,19 @@ RECORD_CATEGORIES = {
         "example_records": {
             "borough": [
                 "All professional service contracts awarded in calendar year [YEAR]",
-                "Contract between the Borough and [VENDOR NAME] for [SERVICE]",
+                f"Contract between the {_GOV} and [VENDOR NAME] for [SERVICE]",
                 "All vendor contracts exceeding $[AMOUNT] executed since [DATE]",
                 "Request for proposals (RFPs) issued for [SERVICE TYPE] in [YEAR]",
                 "Insurance policies and broker agreements currently in effect",
             ],
             "school": [
                 "All professional service contracts awarded for fiscal year [YEAR-YEAR]",
-                "Contract between HHRSD and [VENDOR NAME] for [SERVICE]",
+                f"Contract between {_SCHOOL} and [VENDOR NAME] for [SERVICE]",
                 "Transportation / bus contracts in effect for school year [YEAR-YEAR]",
                 "Food service / cafeteria management contracts for school year [YEAR-YEAR]",
                 "Architect, engineer, and construction-management contracts for [PROJECT]",
                 "Insurance policies and broker agreements currently in effect",
-                "Shared services agreements with the Borough or other districts",
+                f"Shared services agreements with the {_GOV} or other districts",
             ],
         },
         "notes": "Contracts are 'immediate access' records under N.J.S.A. 47:1A-5. School-district contracts are also subject to N.J.S.A. 18A:18A (public school contracts law).",
@@ -257,8 +237,8 @@ RECORD_CATEGORIES = {
         "entities": ["borough", "school"],
         "example_records": {
             "borough": [
-                "Borough Council meeting minutes from [DATE] to [DATE]",
-                "All resolutions adopted by the Borough Council in [YEAR]",
+                f"{_GOV} Council meeting minutes from [DATE] to [DATE]",
+                f"All resolutions adopted by the {_GOV} Council in [YEAR]",
                 "Ordinances introduced and/or adopted in [YEAR]",
                 "Planning Board meeting minutes from [DATE RANGE]",
                 "Zoning Board of Adjustment meeting minutes from [DATE RANGE]",
@@ -279,13 +259,13 @@ RECORD_CATEGORIES = {
         "entities": ["borough", "school"],
         "example_records": {
             "borough": [
-                "Names, titles, and annual salaries of all current Borough employees",
+                f"Names, titles, and annual salaries of all current {_GOV} employees",
                 "Overtime records for all departments from [DATE RANGE]",
                 "Dates of hire, separation, and length of service for [DEPARTMENT]",
                 "Position descriptions and salary ranges for all municipal positions",
             ],
             "school": [
-                "Names, titles, and annual salaries of all current HHRSD employees",
+                f"Names, titles, and annual salaries of all current {_SCHOOL} employees",
                 "Certificated staff roster with assignments for school year [YEAR-YEAR]",
                 "Administrative contracts for the Superintendent and Business Administrator",
                 "Salary guides for certificated and support staff for [YEAR-YEAR]",
@@ -300,15 +280,15 @@ RECORD_CATEGORIES = {
         "entities": ["borough", "school"],
         "example_records": {
             "borough": [
-                "All correspondence between the Borough and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
+                f"All correspondence between the {_GOV} and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
                 "Emails sent or received by [OFFICIAL TITLE] regarding [SUBJECT] from [DATE RANGE]",
                 "Written complaints received by [DEPARTMENT] regarding [SUBJECT] from [DATE RANGE]",
             ],
             "school": [
-                "All correspondence between HHRSD and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
+                f"All correspondence between {_SCHOOL} and [ENTITY] regarding [SUBJECT] from [DATE RANGE]",
                 "Emails sent or received by [OFFICIAL TITLE — e.g. Superintendent] regarding [SUBJECT] from [DATE RANGE]",
-                "Written communications between HHRSD and the NJ Department of Education regarding [TOPIC]",
-                "Communications with sending/receiving districts regarding the Sea Bright matter from [DATE RANGE]",
+                f"Written communications between {_SCHOOL} and the NJ Department of Education regarding [TOPIC]",
+                "Communications with sending/receiving districts regarding [SUBJECT] from [DATE RANGE]",
             ],
         },
         "notes": "Advisory, consultative, or deliberative (ACD) material is exempt per N.J.S.A. 47:1A-1.1. Correspondence that constitutes final agency action or policy is generally public.",
@@ -466,11 +446,11 @@ async def get_agencies():
     return {
         "borough": {
             **PDF_AGENCY_INFO["borough"],
-            "govpilot_url": "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
+            "govpilot_url": _GOVPILOT_URL,
         },
         "school": {
             **PDF_AGENCY_INFO["school"],
-            "form_url": "https://4.files.edl.io/56c6/01/28/25/200645-0bbdba1d-23de-4c56-aa11-c30d114ac3f7.pdf",
+            "form_url": _AGENCIES.get("school", {}).get("form_url"),
         },
     }
 
@@ -482,9 +462,9 @@ async def get_regulations(entity: Literal["borough", "school"] = "borough"):
     return {
         "regulations": OPRA_REGULATIONS,
         "entity_info": ENTITY_INFO[entity],
-        "atlantic_highlands_info": ATLANTIC_HIGHLANDS_INFO,
-        "hhrsd_info": HHRSD_INFO,
-        "govpilot_url": "https://main.govpilot.com/web/public/2b3162a4-a0f_OPRA-ahadmin?uid=6865&ust=NJ&pu=1&id=1",
+        "borough_info": ENTITY_INFO["borough"],
+        "school_info": ENTITY_INFO["school"],
+        "govpilot_url": _GOVPILOT_URL,
         "last_updated": "2024-09-03",
         "amendment": "P.L. 2024, c.16",
     }
@@ -513,6 +493,7 @@ async def generate_opra_request(req: OPRAGenerateRequest):
 
     entity_info_block = ENTITY_INFO[req.entity]
     agency = PDF_AGENCY_INFO[req.entity]
+    portal_text = f" or paste into the\n{_OPRA['portal_label']}" if _OPRA.get("portal_label") else ""
     custodian_address_line = (
         f"{agency['custodian_name']}, {agency['custodian_title']}\n"
         f"{agency['agency_name']}\n"
@@ -557,8 +538,7 @@ INSTRUCTIONS FOR GENERATION:
 12. End with signature block
 
 CITE SPECIFIC STATUTES throughout the letter where applicable (N.J.S.A. sections).
-The letter should be professional, legally precise, and ready to submit or paste into the
-GovPilot online form at the Atlantic Highlands portal.
+The letter should be professional, legally precise, and ready to submit{portal_text}.
 """
 
     if not api_key("GEMINI_API_KEY"):
@@ -819,7 +799,7 @@ async def generate_pdf_text(req: OPRAGenerateRequest):
 async def generate_pdf(req: OPRAGenerateRequest):
     """
     Render the OPRA request as a formal, prefilled PDF that mirrors the NJ DCA
-    model OPRA request form (the same form Atlantic Highlands and HHRSD publish).
+    model OPRA request form (the same form NJ towns and school districts publish).
 
     Long, structured requests overflow into a "Detailed Records Request"
     attachment page rather than being crammed into the page-1 form box — a

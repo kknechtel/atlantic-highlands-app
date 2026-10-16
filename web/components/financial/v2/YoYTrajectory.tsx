@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useMemo } from "react";
 import { type FinancialStatement } from "@/lib/api";
@@ -93,7 +94,7 @@ export default function YoYTrajectory({ statements, entity }: Props) {
           <h3 className="text-sm font-semibold text-gray-900">Year-over-Year Trajectory</h3>
           <p className="text-[11px] text-gray-500">
             One statement chosen per FY (priority: audit/ACFR &gt; financial statement &gt; adopted budget &gt; advertised).
-            {entity === "school" && " HHRSD pre-7/1/2024 figures are predecessor districts — not directly comparable."}
+            {entity === "school" && TOWN.about?.school_trend_note && ` ${TOWN.about.school_trend_note}`}
           </p>
         </div>
       </div>

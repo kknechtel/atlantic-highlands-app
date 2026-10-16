@@ -1,4 +1,5 @@
 "use client";
+import { TOWN, SCHOOL_ENTITY, KIND_LABEL } from "@/lib/municipality";
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -86,8 +87,8 @@ export default function FinancialDashboardV2() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <div className="grid grid-cols-3 sm:flex sm:items-center sm:gap-3 gap-2">
           {[
-            { key: "school" as const, shortLabel: "School", label: "School (Henry Hudson Regional)", icon: AcademicCapIcon },
-            { key: "town" as const, shortLabel: "Town", label: "Town (Atlantic Highlands Borough)", icon: BuildingOfficeIcon },
+            { key: "school" as const, shortLabel: "School", label: `School (${SCHOOL_ENTITY.label.replace(/\s+School District$/i, "")})`, icon: AcademicCapIcon },
+            { key: "town" as const, shortLabel: "Town", label: `Town (${TOWN.name} ${KIND_LABEL})`, icon: BuildingOfficeIcon },
             { key: "all" as const, shortLabel: "All", label: "All", icon: null },
           ].map(({ key, shortLabel, label, icon: Icon }) => (
             <button
@@ -196,7 +197,7 @@ export default function FinancialDashboardV2() {
           {entityFilter === "school" ? (
             <>
               <strong>NJ School District (GAAP/GASB):</strong> Surplus statutorily capped at greater of 2% of expenditures or $250K (N.J.S.A. 18A:7F-7).
-              {" "}HHRSD is a 7/1/2024 consolidation — pre-consolidation figures from AHSD/HSD/HHRS-HS cannot be summed naively.
+              {TOWN.about?.school_finance_note && ` ${TOWN.about.school_finance_note}`}
             </>
           ) : (
             <>

@@ -1,5 +1,5 @@
 """
-Atlantic Highlands - Database setup
+Database setup
 PostgreSQL with SQLAlchemy ORM. Inline migrations run on startup.
 """
 import logging
@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import DATABASE_URL
 from config import api_key
+from municipality import entities, primary_entity, sources
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,33 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def _municipality_seed_sql() -> str:
+    """UPDATE that fills documents.municipality from source_site (and each
+    source's legacy site_key), falling back to category, then the primary entity."""
+    def q(v: str) -> str:
+        return "'" + v.replace("'", "''") + "'"
+
+    primary = primary_entity()["id"]
+    by_entity: dict[str, list[str]] = {}
+    for group in sources().values():
+        for name, cfg in group.items():
+            ent = cfg.get("entity") or primary
+            if ent != primary:
+                by_entity.setdefault(ent, []).extend(n for n in (cfg.get("site_key"), name) if n)
+    whens = [
+        f"WHEN metadata->>'source_site' IN ({', '.join(q(n) for n in names)}) THEN {q(ent)}"
+        for ent, names in by_entity.items()
+    ]
+    school = next((e["id"] for e in entities() if e.get("kind") == "school"), None)
+    if school:
+        whens.append(f"WHEN category = 'school' THEN {q(school)}")
+    return (
+        "UPDATE documents SET municipality = CASE "
+        + " ".join(whens)
+        + f" ELSE {q(primary)} END WHERE municipality IS NULL"
+    )
 
 
 def init_db():
@@ -154,7 +182,7 @@ def _log_rag_health_banner() -> None:
             f"  pgvector v{s['pgvector_version']} · {s['chunks_embedded']}/{s['chunks_total']} chunks embedded (hash)",
             "",
             "  Fix:",
-            "    Set VOYAGE_API_KEY (free tier covers AH's corpus). Get a key at",
+            "    Set VOYAGE_API_KEY (free tier covers a town-sized corpus). Get a key at",
             "      https://dash.voyageai.com",
             "    Restart the API and re-run ingestion to overwrite hash vectors with",
             "    real embeddings.",
@@ -179,7 +207,7 @@ def _migrate():
         # canonical identifier; title is the display string.
         ("documents", "title", "VARCHAR"),
         ("documents", "doc_date", "VARCHAR"),
-        # atlantic_highlands | highlands | hhrsd | regional | state — seeded
+        # An entity id from the municipality profile — seeded
         # from metadata.source_site below, refined by services.doc_enrich.
         ("documents", "municipality", "VARCHAR"),
         ("document_chunks", "context", "TEXT"),
@@ -243,17 +271,7 @@ def _migrate():
         if _table_exists("documents"):
             try:
                 with conn.begin_nested():
-                    conn.execute(text("""
-                        UPDATE documents SET municipality = CASE
-                            WHEN metadata->>'source_site' IN ('highlands_borough', 'highlands_meetings') THEN 'highlands'
-                            WHEN metadata->>'source_site' IN ('tri', 'tridistrict', 'hhrsd_recordings') THEN 'hhrsd'
-                            WHEN metadata->>'source_site' = 'county' THEN 'regional'
-                            WHEN metadata->>'source_site' = 'nj_state' THEN 'state'
-                            WHEN category = 'school' THEN 'hhrsd'
-                            ELSE 'atlantic_highlands'
-                        END
-                        WHERE municipality IS NULL
-                    """))
+                    conn.execute(text(_municipality_seed_sql()))
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_municipality ON documents (municipality)"))
             except Exception as e:
                 logger.warning(f"municipality seed skipped: {e}")

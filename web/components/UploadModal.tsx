@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
@@ -6,7 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { uploadMultipleDocuments } from "@/lib/api";
 import { XMarkIcon, CloudArrowUpIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 interface UploadModalProps {
   projectId: string;

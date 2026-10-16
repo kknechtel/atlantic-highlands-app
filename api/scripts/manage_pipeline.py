@@ -13,7 +13,7 @@ Runs against the DEPLOYED API (not local). Logs in once, then can:
 Usage examples:
 
   # Initial setup (env vars or args; --base required)
-  export AH_BASE_URL=https://api.atlantichighlands.example
+  export AH_BASE_URL=https://api.example.org
   export AH_EMAIL=admin@example.org
   export AH_PASSWORD=...
 
@@ -57,7 +57,7 @@ except ImportError:
 
 
 class API:
-    """Minimal client for the AH Financial API."""
+    """Minimal client for the deployed financial API."""
 
     def __init__(self, base_url: str, token: Optional[str] = None):
         self.base = base_url.rstrip("/")

@@ -1,4 +1,5 @@
 "use client";
+import { TOWN } from "@/lib/municipality";
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +16,7 @@ import AdminDocumentsPanel from "@/components/admin/AdminDocumentsPanel";
 import AdminCostsPanel from "@/components/admin/AdminCostsPanel";
 import AdminSettingsPanel from "@/components/admin/AdminSettingsPanel";
 
-const brandColor = "#385854";
+const brandColor = TOWN.brand_color;
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -300,7 +301,7 @@ export default function AdminPage() {
                       <div className="flex items-center justify-end gap-1">
                         {!inv.is_used && (
                           <button
-                            onClick={() => handleCopyInvite(`https://ahnj.info?invite=${inv.token}`)}
+                            onClick={() => handleCopyInvite(`${TOWN.site_url}?invite=${inv.token}`)}
                             className="p-1 hover:bg-gray-100 rounded"
                             title="Copy link"
                           >

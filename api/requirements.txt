@@ -62,7 +62,7 @@ beautifulsoup4==4.12.3
 # to render JS-heavy venue calendars (Chubby Pickle's JetEngine widget,
 # Donovan's Reef BeatGig embed). After installing the wheel you ALSO
 # have to download the browser binary on the host:
-#     /opt/atlantic-highlands/api/venv/bin/playwright install --with-deps chromium
+#     /opt/<app-dir>/api/venv/bin/playwright install --with-deps chromium
 # That step adds ~200MB to the EC2 image and requires sudo for the
 # `--with-deps` (libnss3, libatk-bridge, etc.). Without those deps,
 # Chromium fails to launch and the scrapers log a warning + skip.

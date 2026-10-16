@@ -1,10 +1,10 @@
 """
-Parcels — Atlantic Highlands property records sourced from NJ MOD-IV.
+Parcels — the town's property records sourced from NJ MOD-IV.
 
 NJ MOD-IV is the statewide property tax administration data system. Every
 parcel has a Block, Lot, and (optionally) Qualifier; the (county-muni-block-lot-qual)
-tuple is unique. Atlantic Highlands borough is muni code 1305 in Monmouth County
-(NJGIN uses MUN_NAME='ATLANTIC HIGHLANDS BORO' as the primary identifier).
+tuple is unique. Each town has a 4-digit muni code (2-digit county + 2-digit
+municipality); NJGIN uses MUN_NAME (e.g. 'EXAMPLE BORO') as the primary identifier.
 
 Data source: NJ DOT/NJGIN publishes a "Parcels and MOD-IV Composite of NJ"
 feature service (ArcGIS Online id 533599bbfbaa4748bf39faf1375a8a9c) plus
@@ -36,8 +36,8 @@ class Parcel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Identity
-    county_code = Column(String, nullable=False)   # "13" = Monmouth
-    muni_code = Column(String, nullable=False)     # "1305" = Atlantic Highlands borough
+    county_code = Column(String, nullable=False)   # 2-digit NJ county code
+    muni_code = Column(String, nullable=False)     # 4-digit NJ municipality code
     block = Column(String, nullable=False)
     lot = Column(String, nullable=False)
     qualifier = Column(String, nullable=False, default="")  # "" or "C0001" etc.

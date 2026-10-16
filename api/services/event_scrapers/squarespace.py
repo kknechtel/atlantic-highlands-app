@@ -41,11 +41,13 @@ from urllib.parse import urljoin
 
 import requests
 
+from municipality import TOWN
+
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15
 _HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; ah-events-scraper/1.0; +https://ahnj.info)",
+    "User-Agent": f"Mozilla/5.0 (compatible; town-events-scraper/1.0; +{TOWN.site_url})",
     "Accept": "application/json, text/plain, */*",
 }
 

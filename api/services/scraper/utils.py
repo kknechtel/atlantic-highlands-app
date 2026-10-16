@@ -6,7 +6,10 @@ import os
 import re
 import hashlib
 import logging
+from functools import lru_cache
 from urllib.parse import urlparse, unquote
+
+from municipality import entity, entity_for_source, sources as _sources
 
 logger = logging.getLogger("ah_scraper")
 
@@ -30,10 +33,24 @@ def url_to_filename(url: str) -> str:
     return cleaned[:200]
 
 
+@lru_cache(maxsize=1)
+def _skip_segments() -> frozenset:
+    """Path segments that carry no meaning in a filename: generic CMS folders,
+    source hostnames, and each source's `path_prefixes` (e.g. a CMS's site id)."""
+    skip = {"documents", "apps", "pages", "index.jsp"}
+    for group in _sources().values():
+        for cfg in group.values():
+            host = urlparse(cfg.get("base_url", "")).netloc.lower()
+            if host:
+                skip.add(host)
+            skip.update(p.lower() for p in cfg.get("path_prefixes", []))
+    return frozenset(skip)
+
+
 def url_to_descriptive_name(url: str, source_page: str = "", title: str = "") -> str:
     """
     Generate a descriptive filename from the URL path tree.
-    e.g. https://www.ahnj.com/ahnj/Government/Employees/2024%20Holiday%20Closures.pdf
+    e.g. https://www.example.gov/Government/Employees/2024%20Holiday%20Closures.pdf
     -> Government - Employees - 2024 Holiday Closures.pdf
     """
     parsed = urlparse(url)
@@ -53,7 +70,7 @@ def url_to_descriptive_name(url: str, source_page: str = "", title: str = "") ->
             break
 
     # Build descriptive prefix from path segments (skip domain-specific prefixes)
-    skip_segments = {"ahnj", "at0153", "documents", "apps", "pages", "index.jsp", "www.ahnj.com", "ecode360.com"}
+    skip_segments = _skip_segments()
     path_parts = []
     for seg in segments[:-1]:  # exclude filename
         clean = seg.strip()
@@ -71,7 +88,7 @@ def url_to_descriptive_name(url: str, source_page: str = "", title: str = "") ->
     # the file) so the discriminating bits — year folders, district codes,
     # archive subtree leaves — survive. Using the first 3 segments collapsed
     # NJ Education ACFR years (.../acfr/search/18/0130.pdf → .../search/24/...)
-    # and AHNJ Planning Board year subfolders into identical names.
+    # and Planning Board year subfolders into identical names.
     if path_parts:
         prefix = " - ".join(path_parts[-3:])
         result = f"{prefix} - {clean_name}{ext}"
@@ -122,29 +139,30 @@ def categorize_url(url: str) -> str:
     return "general"
 
 
+def _resolve_source(source_name: str) -> str:
+    """Accept a source's legacy short key (its `site_key`, e.g. "tri") as well
+    as its sources.json name."""
+    for group in _sources().values():
+        if source_name in group:
+            return source_name
+        for name, cfg in group.items():
+            if cfg.get("site_key") == source_name:
+                return name
+    return source_name
+
+
 def source_to_entity_type(source_name: str) -> str:
-    """Map scraper source name to entity type."""
-    if source_name == "tridistrict":
-        return "school"
-    if source_name in ("highlands_borough", "highlands_meetings"):
-        # Highlands Borough is a constituent town of HHRSD, not Atlantic Highlands;
-        # tag as "town" so it groups with municipal records. The source_site metadata
-        # preserves which town it came from.
-        return "town"
-    return "town"
+    """Map scraper source name to entity type ("school" or "town").
+
+    Neighboring towns, the county and the state all group with municipal
+    records; the source_site metadata preserves where each one came from."""
+    ent = entity(entity_for_source(_resolve_source(source_name))) or {}
+    return "school" if ent.get("kind") == "school" else "town"
 
 
 def source_to_municipality(source_name: str) -> str:
     """Map scraper source name to the government that published the record."""
-    return {
-        "tri": "hhrsd",
-        "tridistrict": "hhrsd",
-        "hhrsd_recordings": "hhrsd",
-        "highlands_borough": "highlands",
-        "highlands_meetings": "highlands",
-        "county": "regional",
-        "nj_state": "state",
-    }.get(source_name, "atlantic_highlands")
+    return entity_for_source(_resolve_source(source_name))
 
 
 def detect_doc_type_from_name(filename: str) -> str:

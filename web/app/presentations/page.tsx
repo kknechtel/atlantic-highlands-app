@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +19,7 @@ import {
 } from '@/lib/api';
 import { ShareDialog } from '@/components/ShareDialog';
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 export default function PresentationsListPage() {
   const router = useRouter();
@@ -72,7 +73,7 @@ export default function PresentationsListPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 md:mb-6">
         <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Presentations</h1>
-          <p className="text-xs md:text-sm text-gray-500">Analytical decks and reports about Atlantic Highlands.</p>
+          <p className="text-xs md:text-sm text-gray-500">Analytical decks and reports about {TOWN.name}.</p>
         </div>
         <button onClick={() => setCreating(true)}
           className="px-3 py-2 rounded text-white text-sm flex items-center justify-center gap-1.5 shadow w-full sm:w-auto"

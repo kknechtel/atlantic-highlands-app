@@ -14,9 +14,20 @@ from models.financial import FinancialStatement, FinancialLineItem, FinancialAna
 from models.user import User
 from auth import get_current_user
 from config import api_key
+from municipality import TOWN
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# County DLGS filings carry the county name in entity_name.
+_COUNTY_WORD = TOWN.county.lower().replace(" county", "").strip()
+
+
+def _entity_name(entity_type: str) -> str:
+    """Stored FinancialStatement.entity_name, e.g. "<Town> Borough"."""
+    if entity_type == "town":
+        return f"{TOWN.name} {TOWN.kind.title()}"
+    return f"{TOWN.name} School District"
 
 
 class StatementResponse(BaseModel):
@@ -180,7 +191,7 @@ async def extract_financial_data(
     # Create a pending statement record
     stmt = FinancialStatement(
         document_id=doc.id,
-        entity_name=f"Atlantic Highlands {'Borough' if req.entity_type == 'town' else 'School District'}",
+        entity_name=_entity_name(req.entity_type),
         entity_type=req.entity_type,
         statement_type=req.statement_type,
         fiscal_year=doc.fiscal_year or "Unknown",
@@ -352,7 +363,7 @@ async def extract_all(
             entity = doc.category or "town"
             stmt = FinancialStatement(
                 document_id=doc.id,
-                entity_name=("Atlantic Highlands Borough" if entity == "town" else "Atlantic Highlands School District"),
+                entity_name=_entity_name(entity),
                 entity_type=entity,
                 statement_type=doc.doc_type or "audit",
                 fiscal_year=(doc.fiscal_year or "")[:4] or "Unknown",
@@ -520,7 +531,7 @@ def fy_view(
             return "advertised"
         if "adopted" in n or "final" in n:
             return "adopted"
-        if "monmouth" in n:
+        if _COUNTY_WORD and _COUNTY_WORD in n:
             return "dlgs_filing"
         if "presentation" in n:
             return "presentation"

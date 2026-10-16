@@ -1,4 +1,4 @@
-"""Check-in routes for the Around Town (events.ahnj.info) app.
+"""Check-in routes for the Around Town (events) app.
 
 Endpoints:
   POST   /api/checkins                     create a check-in (auth)

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from models.document import Document
 from models.document_chunk import DocumentChunk
+from municipality import entities
 from services.chunker import chunk_pages
 from services.embeddings import (
     embed_documents_batch,
@@ -64,13 +65,7 @@ def _refresh_chunk_fts(db: Session, chunk_ids: list) -> None:
     """), {"ids": [str(i) for i in chunk_ids]})
 
 
-_MUNI_LABEL = {
-    "atlantic_highlands": "Atlantic Highlands",
-    "highlands": "Highlands Borough",
-    "hhrsd": "Henry Hudson Regional School District",
-    "regional": "Monmouth County",
-    "state": "New Jersey",
-}
+_MUNI_LABEL = {e["id"]: e["label"] for e in entities()}
 
 
 def chunk_header(doc: Document) -> str:
@@ -160,7 +155,7 @@ def ingest_document(db: Session, doc: Document, force: bool = False) -> dict:
     db.add_all(rows)
     db.flush()
 
-    # Embed header + passage so "Highlands Council minutes" style queries
+    # Embed header + passage so "<town> Council minutes" style queries
     # match passages that never repeat the body name. fts covers both too.
     vecs = embed_documents_batch([f"{r.context}\n{r.content}" for r in rows])
     _set_chunk_embeddings(db, [(r.id, v) for r, v in zip(rows, vecs)])

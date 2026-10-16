@@ -74,7 +74,7 @@ const CURATED_SCOPE = {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle,
   Calendar, DollarSign, Users, FileText, Globe, Sparkles,
   ChevronRight, ArrowRight, BarChart2,
-  // AH-branded primitives — preferred over raw divs so output matches
+  // Site-branded primitives — preferred over raw divs so output matches
   // the rest of the deck. Keep this list in sync with the system prompt
   // that lists the components Claude is allowed to emit.
   KPICard, Callout, Stat, Section, Timeline, RiskMatrix, ComparisonRow,

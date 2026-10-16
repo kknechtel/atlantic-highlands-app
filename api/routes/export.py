@@ -9,9 +9,11 @@ from database import get_db
 from models.financial import FinancialStatement, FinancialLineItem
 from models.user import User
 from auth import get_current_user
+from municipality import TOWN
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_EXPORT_STEM = TOWN.name.lower().replace(" ", "_")
 
 
 @router.get("/financial-statements")
@@ -115,5 +117,5 @@ def export_financial_statements(
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=atlantic_highlands_financials.xlsx"},
+        headers={"Content-Disposition": f"attachment; filename={_EXPORT_STEM}_financials.xlsx"},
     )

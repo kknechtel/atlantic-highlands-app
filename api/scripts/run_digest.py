@@ -21,13 +21,13 @@ from datetime import datetime, timedelta
 from typing import Iterable
 from urllib.parse import quote
 
-sys.path.insert(0, "/opt/atlantic-highlands/api")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import and_, or_
 
 from config import PUBLIC_WEB_ORIGIN
 from database import SessionLocal
+from municipality import TOWN
 from models.document import Document
 from models.saved_alert import SavedAlert, AlertKind, DigestFrequency
 from models.user import User
@@ -180,7 +180,7 @@ def _render_digest(alert: SavedAlert, items: Iterable[dict]) -> tuple[str, str, 
     """Returns (subject, html, text)."""
     items = list(items)
     n = len(items)
-    subject = f"[Atlantic Highlands] {alert.name} — {n} new match{'es' if n != 1 else ''}"
+    subject = f"[{TOWN.name}] {alert.name} — {n} new match{'es' if n != 1 else ''}"
 
     # Plaintext
     lines = [
@@ -213,7 +213,7 @@ def _render_digest(alert: SavedAlert, items: Iterable[dict]) -> tuple[str, str, 
         html_items.append(
             '<li style="margin:0 0 16px 0;padding:0;list-style:none;'
             'border-bottom:1px solid #e5e7eb;padding-bottom:12px">'
-            f'<a href="{it["url"]}" style="color:#385854;text-decoration:none;'
+            f'<a href="{it["url"]}" style="color:{TOWN.brand_color};text-decoration:none;'
             f'font-weight:600;font-size:15px">{it["title"]}</a>'
             f'{meta_html}{snippet_html}'
             '</li>'
@@ -222,7 +222,7 @@ def _render_digest(alert: SavedAlert, items: Iterable[dict]) -> tuple[str, str, 
         '<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;'
         'max-width:640px;margin:0 auto;padding:24px;color:#111827">'
         f'<div style="color:#6b7280;font-size:12px;letter-spacing:0.05em;'
-        f'text-transform:uppercase">Atlantic Highlands · alert digest</div>'
+        f'text-transform:uppercase">{TOWN.name} · alert digest</div>'
         f'<h2 style="margin:8px 0 4px;font-size:20px">{alert.name}</h2>'
         f'<div style="color:#6b7280;font-size:13px;margin-bottom:20px">'
         f'{n} new match{"es" if n != 1 else ""}'

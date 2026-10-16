@@ -27,6 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import SessionLocal
 from models.parcel import Parcel
+from municipality import TOWN
+from scripts.ingest_parcels import default_county, default_muni_name
 
 logger = logging.getLogger("fetch_parcel_geometry")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -53,7 +55,7 @@ def _esri_to_geojson(esri_geom: dict) -> dict | None:
         return {"type": "Polygon", "coordinates": [rings[0]]}
     # Multiple rings — treat as a single polygon with holes. The composite
     # rarely has multi-polygons (one parcel can span multiple boundaries
-    # but it's unusual for AH); if needed we'd detect ring nesting here.
+    # but it's unusual for residential parcels); if needed we'd detect ring nesting here.
     return {"type": "Polygon", "coordinates": rings}
 
 
@@ -84,7 +86,7 @@ def fetch_features(county: str, muni_name: str, page_size: int = 1000) -> Iterat
         where = f"COUNTY='{county}' AND " + where
     offset = 0
     sess = requests.Session()
-    sess.headers["User-Agent"] = "ah-app/parcels-geom-ingest"
+    sess.headers["User-Agent"] = f"{TOWN.slug}-app/parcels-geom-ingest"
 
     while True:
         params = {
@@ -123,8 +125,8 @@ def fetch_features(county: str, muni_name: str, page_size: int = 1000) -> Iterat
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--county", default="MONMOUTH")
-    p.add_argument("--muni-name", default="ATLANTIC HIGHLANDS BORO")
+    p.add_argument("--county", default=default_county())
+    p.add_argument("--muni-name", default=default_muni_name())
     args = p.parse_args()
 
     db = SessionLocal()

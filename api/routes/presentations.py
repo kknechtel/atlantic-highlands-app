@@ -50,6 +50,7 @@ from config import api_key
 from database import get_db, SessionLocal
 from models.presentation import Presentation
 from models.user import User
+from municipality import place
 from services.deck_chat_service import build_sections_summary, stream_deck_chat
 from services.deck_export import export_docx, export_pptx
 from services.fact_check_service import fact_check_presentation, fact_check_presentation_stream
@@ -573,7 +574,7 @@ def ai_edit_section(
         guidance += "\n\nAdditional instructions from the operator:\n" + body.instructions
 
     prompt = (
-        f"You are editing one section of a presentation about Atlantic Highlands, NJ municipal affairs.\n\n"
+        f"You are editing one section of a presentation about {place()} municipal affairs.\n\n"
         f"## Action: {body.action}\n{guidance}\n\n"
         f"## Section title: {section.get('title') or '(untitled)'}\n\n"
         f"## Current body:\n{original_body}\n\n"
@@ -633,7 +634,7 @@ class FromChatBody(BaseModel):
     title_hint: Optional[str] = None
 
 
-_FROM_CHAT_PROMPT = """You are converting a chat transcript about Atlantic Highlands, NJ into a structured presentation.
+_FROM_CHAT_PROMPT = """You are converting a chat transcript about __PLACE__ into a structured presentation.
 
 Output ONLY a JSON object of this shape:
 {{
@@ -663,7 +664,7 @@ RULES:
 - If the user typed a clear prompt at the top, weave it into a section 1 "Background" or "Question".
 - title_hint, if provided, is a strong suggestion for the deck title.
 
-Output ONLY valid JSON — no fences, no commentary."""
+Output ONLY valid JSON — no fences, no commentary.""".replace("__PLACE__", place())
 
 
 def _structure_chat_with_claude(messages: list[dict], title_hint: Optional[str]) -> tuple[dict, int, int]:
@@ -1271,7 +1272,7 @@ def audit_citations(presentation_id: str,
 
     rows: list[dict] = []
     for cid, labels in occurrences.items():
-        # AH document IDs are UUIDs (string).
+        # Document IDs are UUIDs (string).
         doc = None
         try:
             doc = db.query(Document).filter(Document.id == cid).first()

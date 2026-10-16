@@ -166,7 +166,7 @@ data for FY2024 because that drill failed").
 `FinancialStatement`:
 - `accounting_basis` ∈ {gaap, nj_regulatory} — branches every analysis rule
 - `fiscal_calendar` ∈ {calendar_year, school_year, sfy}
-- `predecessor_entity` — for HHRSD pre-7/1/2024 from AHSD/HSD/HHRS-HS
+- `predecessor_entity` — for a consolidated school district's pre-consolidation figures, which predecessor they came from
 - `extraction_pass` — counter, 0 → 5 as passes complete
 - `reconcile_status` ∈ {balanced, off_lt_1pct, off_gt_1pct, unbalanced, not_attempted}
 - `reconcile_details` — per-section sums vs reported totals
@@ -202,6 +202,6 @@ These ARE encoded in the code; do not undo them:
 - Schools (GAAP) flag fund balance ABOVE the 2%/$250K cap; municipalities (NJ regulatory) flag below 5% of expenditures.
 - Salary-ratio thresholds for small NJ schools are 75% (info) / 82% (warn) — small districts run higher than the state average.
 - For FY26+ municipalities, CMPTRA = $0 because it consolidated into ETR — do not flag as decline.
-- HHRSD pre-7/1/2024 figures are predecessor-district data and must not be summed across the three.
-- AH borough = calendar year; HHRSD = school year (Jul-Jun). Never compare YoY across these on the same period axis.
+- Pre-consolidation school figures are predecessor-district data and must not be summed across predecessors.
+- Towns follow the profile's fiscal_year (often calendar year); school districts = school year (Jul-Jun). Never compare YoY across these on the same period axis.
 - NJ COA fund whitelist is `{11, 12, 13, 20, 30, 40, 60, 63, 70, 80, 90}`. Fund 30 = Capital Projects, Fund 40 = Debt Service. Don't conflate.

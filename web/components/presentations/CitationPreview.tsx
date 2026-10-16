@@ -1,4 +1,5 @@
 'use client';
+import { TOWN } from "@/lib/municipality";
 
 import React, { useEffect, useState } from 'react';
 import { X, Loader2, ExternalLink } from 'lucide-react';
@@ -28,7 +29,7 @@ interface Props {
     publicSlug?: string;
 }
 
-const brandColor = '#385854';
+const brandColor = TOWN.brand_color;
 
 /**
  * Side panel that renders a clicked `[source: filename.pdf]` citation
@@ -36,7 +37,7 @@ const brandColor = '#385854';
  * window event that MarkdownRenderer / SourceChip dispatches when the
  * user clicks a citation link.
  *
- * AH-specific: citations are by filename. In auth mode we resolve via
+ * Citations are by filename. In auth mode we resolve via
  * `searchDocuments(filename) → getDocumentViewUrl(id)`. In public mode
  * we hit `/api/presentations/public/{slug}/citation?filename=...` which
  * scope-checks the filename against the deck's cited / attached docs.

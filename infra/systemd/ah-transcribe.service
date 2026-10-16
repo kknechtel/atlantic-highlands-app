@@ -1,15 +1,19 @@
 [Unit]
-Description=Atlantic Highlands meeting-recording transcribe + summarize worker
+Description=Municipal hub meeting-recording transcribe + summarize worker
 After=network-online.target ah-api.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/atlantic-highlands/api
+# Paths and the env file keep the original deployment's names
+# (/opt/atlantic-highlands); adjust them when installing for another town.
 # Inherit ah-api's env (DATABASE_URL, AWS creds, ANTHROPIC_API_KEY, etc.).
-# AHNJ_PROXY_* not needed here — the worker reads files from S3, doesn't
-# scrape ahnj.com.
+# The scraper proxy vars are not needed here — the worker reads files from
+# S3, it doesn't scrape the town site.
 EnvironmentFile=-/etc/atlantic-highlands.env
+# Which municipalities/<slug>/ profile this deployment serves.
+Environment=MUNICIPALITY=atlantic-highlands-nj
 # Pin Whisper to a writable cache dir under our app root rather than $HOME,
 # which is /root and may be ephemeral on snapshot rotation.
 Environment="HF_HOME=/opt/atlantic-highlands/.cache/huggingface"

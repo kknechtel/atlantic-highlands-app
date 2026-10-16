@@ -14,26 +14,13 @@ import {
   ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
-type Site = { key: string; name: string; desc: string; siteId: string; note?: string };
+type Site = { key: string; name: string; desc: string; siteId: string; note?: string; needsBrowser?: boolean };
 
 // `siteId` is the human-readable site name the backend uses as the per_site key
 // (e.g. "ahnj.com", "highlands-nj.municodemeetings.com"). Use it to look up
 // per-site progress in status.per_site.
-const SITES: Site[] = [
-  { key: "ahnj", siteId: "ahnj.com", name: "ahnj.com", desc: "Borough website — Planning Board, Council Archives, Budgets, Ordinances, Annual Audits" },
-  { key: "ecode", siteId: "ecode360.com", name: "ecode360.com", desc: "Document archive — Agendas, Minutes, Resolutions, Legislation, Budgets", note: "Cloudflare Turnstile protected — requires a browser. Currently skipped on the server (no Chrome installed); results will show 0 found." },
-  { key: "tri", siteId: "tridistrict.org", name: "tridistrict.org", desc: "HHRSD + AHES + HES + HHRS — BOE Agendas/Minutes, Budget, Curriculum, Performance Reports" },
-  { key: "nj_state", siteId: "NJ State / Courts", name: "NJ State / Courts", desc: "ACFR school finance (0130, 2120, 2160), Sea Bright court opinions, Master Plan, DCA UFB" },
-  { key: "highlands_borough", siteId: "highlandsnj.gov", name: "highlandsnj.gov", desc: "Borough of Highlands — regionalization, council letters, public docs" },
-  { key: "highlands_meetings", siteId: "highlands-nj.municodemeetings.com", name: "Highlands Council (Municode)", desc: "Highlands Borough Council meeting agendas + packets" },
-  { key: "ah_recordings", siteId: "AH meeting recordings (audio)", name: "AH Meeting Recordings (audio)", desc: "Atlantic Highlands Council, Planning Board, and Harbor Commission audio recordings (.wma/.wav)", note: "Last 12 months only. Files are uploaded to S3; transcribe + summarize via the Meetings page." },
-  { key: "hhrsd_recordings", siteId: "HHRSD BOE recordings (YouTube)", name: "HHRSD BOE Recordings (YouTube)", desc: "Henry Hudson Regional School District board meeting videos from tridistrict.org", note: "Metadata-only ingest. Player + transcript come from YouTube embed + auto-captions on the Meetings page." },
-  { key: "opra", siteId: "OPRAmachine", name: "OPRAmachine", desc: "Crowdsourced OPRA public records requests for Atlantic Highlands", note: "Cloudflare protected — requires a browser. Currently skipped on the server (no Chrome installed)." },
-  { key: "police", siteId: "Police/Crime Data", name: "Police / Crime", desc: "SpotCrime, CrimeMapping, Nixle, AHPD page", note: "Limited — these are mostly interactive maps, not document repositories." },
-  { key: "fire", siteId: "Fire/EMS Data", name: "Fire / EMS", desc: "PulsePoint, Monmouth County OEM, Fire Dept reports", note: "Limited — interactive feeds." },
-  { key: "county", siteId: "Monmouth County", name: "Monmouth County", desc: "County clerk archives, property records, tax data" },
-  { key: "census", siteId: "Census ACS Data", name: "Census ACS", desc: "Demographics, income, housing, poverty data via Census API" },
-];
+// From municipalities/<slug>/sources.json (inlined by next.config.js).
+const SITES: Site[] = JSON.parse(process.env.NEXT_PUBLIC_SCRAPER_SITES || "[]");
 
 export default function ScraperPage() {
   const [selectedSites, setSelectedSites] = useState<string[]>(["ahnj", "ecode", "tri", "nj_state"]);
@@ -160,7 +147,7 @@ export default function ScraperPage() {
                         : `Downloading documents… (${stats.documents_uploaded + stats.documents_skipped} of ${stats.documents_found})`}
                     </p>
                   )}
-                  {stats?.status === "done" && stats.documents_found === 0 && (site.key === "ecode" || site.key === "opra") && (
+                  {stats?.status === "done" && stats.documents_found === 0 && site.needsBrowser && (
                     <p className="text-[11px] text-amber-700 italic mt-0.5">
                       Skipped — Cloudflare-protected, needs a browser the server doesn't have.
                     </p>

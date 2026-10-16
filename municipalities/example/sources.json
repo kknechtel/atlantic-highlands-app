@@ -1,0 +1,19 @@
+{
+  "documents": {
+    "town_site": {
+      "base_url": "https://www.example-town.gov",
+      "description": "Official town website",
+      "entity": "example_town",
+      "pages_to_crawl": ["/agendas/", "/minutes/", "/budget/", "/ordinances/"],
+      "historical_pages": [],
+      "direct_downloads": []
+    },
+    "schools": {
+      "base_url": "https://www.example-schools.org",
+      "description": "Example School District",
+      "entity": "example_schools",
+      "pages_to_crawl": ["/board-of-education/"]
+    }
+  },
+  "recordings": {}
+}

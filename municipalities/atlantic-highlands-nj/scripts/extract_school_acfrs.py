@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+Specific to Atlantic Highlands, NJ.
+
 Extract financial data from the 21 NJ DOE school ACFRs (AHSD/0130, HHRS/2120,
 HSD/2160 x FY18-24) into financial_statements + financial_line_items.
 
@@ -18,8 +20,9 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_API = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "api"))
+sys.path.insert(0, _API)
+os.chdir(_API)
 
 from google import genai
 from google.genai import types

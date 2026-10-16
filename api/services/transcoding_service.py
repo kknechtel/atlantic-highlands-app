@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Codecs that browsers play natively — no transcode needed.
 NATIVE_PLAYBACK_EXTS = {".mp3", ".m4a", ".mp4", ".aac", ".ogg", ".wav"}
-# Codecs that need transcoding. .wma is the big one for AH town recordings.
+# Codecs that need transcoding. .wma is the big one for town meeting recordings.
 NEEDS_TRANSCODE_EXTS = {".wma", ".wmv", ".asf", ".dcr"}
 
 

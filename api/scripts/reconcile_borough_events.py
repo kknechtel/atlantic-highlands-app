@@ -1,4 +1,5 @@
-"""Reconcile stored borough-calendar events against ahnj.com.
+"""Reconcile stored town-calendar events against the town site's calendar
+(the `events_calendar` source scrape_events.py reads).
 
 `scrape_events.save_to_db` is insert-only (dedup on date+title), so any
 row a buggy parser ever wrote stays in the table forever. That is how we
@@ -12,7 +13,7 @@ rows the borough calendar no longer backs are deleted, missing ones are
 inserted. It self-corrects any future parser change too, so prefer it
 over one-off DELETE-by-title cleanups.
 
-Only `source = 'ahnj_calendar'` rows are touched — live-music and
+Only rows with scrape_events.EVENT_SOURCE as their source are touched — live-music and
 hand-entered events are never considered.
 
 Deleting an event can orphan RSVPs that point at it. That is safe by
@@ -38,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import text
 
 from database import SessionLocal
-from scripts.scrape_events import scrape_month, classify_borough_event
+from scripts.scrape_events import EVENT_SOURCE, scrape_month, classify_borough_event
 
 
 def _month_span(year: int, month: int) -> tuple[str, str]:
@@ -75,8 +76,8 @@ def reconcile(months: int = 12, apply: bool = False) -> int:
 
             stored = db.execute(text(
                 "SELECT id, date, title FROM calendar_events "
-                "WHERE source = 'ahnj_calendar' AND date BETWEEN :s AND :e"
-            ), {"s": start, "e": end}).fetchall()
+                "WHERE source = :src AND date BETWEEN :s AND :e"
+            ), {"src": EVENT_SOURCE, "s": start, "e": end}).fetchall()
 
             stale = [r for r in stored if (r.date.isoformat(), r.title) not in fresh_keys]
             stored_keys = {(r.date.isoformat(), r.title) for r in stored}
@@ -97,7 +98,7 @@ def reconcile(months: int = 12, apply: bool = False) -> int:
                         "date": e["date"],
                         "title": e["title"],
                         "time": e.get("time"),
-                        "source": e.get("source", "ahnj_calendar"),
+                        "source": e.get("source", EVENT_SOURCE),
                         "url": e.get("url"),
                         "event_type": classify_borough_event(e["title"]),
                     })
@@ -105,7 +106,7 @@ def reconcile(months: int = 12, apply: bool = False) -> int:
             deleted_total += len(stale)
             inserted_total += len(missing)
             print(f"{year}-{month:02d}: {len(stale)} stale, {len(missing)} missing "
-                  f"({len(fresh)} on the borough calendar)")
+                  f"({len(fresh)} on the town calendar)")
 
         if apply:
             db.commit()

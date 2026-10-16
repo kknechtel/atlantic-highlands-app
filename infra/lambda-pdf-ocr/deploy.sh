@@ -1,5 +1,5 @@
 #!/bin/bash
-# AHNJ PDF OCR Lambda — one-shot deploy script.
+# PDF OCR Lambda — one-shot deploy script.
 #
 # Idempotent: ECR repo, IAM role, Lambda function are all created on first
 # run, updated on subsequent runs.
@@ -8,18 +8,23 @@
 #   cd infra/lambda-pdf-ocr
 #   ./deploy.sh
 #
-# Requires: aws CLI, docker, configured AWS creds for the AHNJ account.
+# Requires: aws CLI, docker, configured AWS creds for the deployment's account.
 
 set -e
 
+# Deployment names. Defaults are the original Atlantic Highlands deployment;
+# override via env for another town.
 REGION=${AWS_REGION:-us-east-1}
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-REPO=ah-pdf-ocr
-FN=ah-pdf-ocr
+REPO=${OCR_REPO:-ah-pdf-ocr}
+FN=${OCR_FUNCTION:-ah-pdf-ocr}
+ROLE_NAME=${OCR_ROLE:-ah-pdf-ocr-role}
+# The documents bucket is <prefix>-<account id>.
+BUCKET_PREFIX=${BUCKET_PREFIX:-atlantic-highlands-documents}
 TAG=$(date +%Y%m%d-%H%M%S)
 IMAGE_URI="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${REPO}:${TAG}"
 
-echo "=== AHNJ Lambda OCR deploy ==="
+echo "=== Lambda OCR deploy ==="
 echo "  account:  $ACCOUNT"
 echo "  region:   $REGION"
 echo "  image:    $IMAGE_URI"
@@ -51,7 +56,6 @@ echo "[4/6] docker push…"
 docker push "${IMAGE_URI}"
 
 # 3. IAM role
-ROLE_NAME=ah-pdf-ocr-role
 TRUST_POLICY='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 
 echo "[5/6] ensuring IAM role '${ROLE_NAME}' exists…"
@@ -60,9 +64,9 @@ if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     # Lambda basic execution (CloudWatch logs)
     aws iam attach-role-policy --role-name "$ROLE_NAME" \
         --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-    # S3 read access on the AHNJ bucket
+    # S3 read access on the documents bucket
     aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name s3-read \
-        --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"arn:aws:s3:::atlantic-highlands-documents-*/*"}]}'
+        --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"arn:aws:s3:::'"${BUCKET_PREFIX}"'-*/*"}]}'
     echo "  created role; sleeping 8s for IAM propagation…"
     sleep 8
 fi
@@ -75,7 +79,7 @@ if aws lambda get-function --function-name "$FN" --region "$REGION" >/dev/null 2
     aws lambda wait function-updated --function-name "$FN" --region "$REGION"
     aws lambda update-function-configuration --function-name "$FN" \
         --memory-size 2048 --timeout 300 \
-        --environment "Variables={S3_BUCKET=atlantic-highlands-documents-${ACCOUNT}}" \
+        --environment "Variables={S3_BUCKET=${BUCKET_PREFIX}-${ACCOUNT}}" \
         --region "$REGION" >/dev/null
 else
     aws lambda create-function --function-name "$FN" \
@@ -84,7 +88,7 @@ else
         --role "$ROLE_ARN" \
         --memory-size 2048 \
         --timeout 300 \
-        --environment "Variables={S3_BUCKET=atlantic-highlands-documents-${ACCOUNT}}" \
+        --environment "Variables={S3_BUCKET=${BUCKET_PREFIX}-${ACCOUNT}}" \
         --region "$REGION" >/dev/null
     aws lambda wait function-active-v2 --function-name "$FN" --region "$REGION"
 fi

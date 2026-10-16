@@ -11,6 +11,7 @@ import {
   ChevronLeftIcon, ChevronRightIcon, UserIcon,
   ClipboardDocumentListIcon, PresentationChartLineIcon,
   MicrophoneIcon, HomeModernIcon, BellIcon, ArrowTopRightOnSquareIcon,
+  ShieldExclamationIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = "#385854";
@@ -18,6 +19,7 @@ const brandColor = "#385854";
 const navItems = [
   { name: "Dashboard", href: "/", icon: ChartBarIcon },
   { name: "Documents", href: "/document-library", icon: FolderIcon },
+  { name: "Integrity", href: "/integrity", icon: ShieldExclamationIcon },
   {
     name: "Financials",
     href: "/financial-analysis",

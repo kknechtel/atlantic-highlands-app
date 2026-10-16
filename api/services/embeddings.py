@@ -3,20 +3,17 @@ Embedding generation for hybrid RAG.
 
 Order of preference:
   1. Voyage AI voyage-3-lite (1024 dims, $0.02/1M tokens) if VOYAGE_API_KEY set
-  2. Deterministic SHA-512-derived hash vector (not semantic, but keeps the
-     vector columns populated so cosine distance is well-defined)
+  2. Nothing. Without a key, search is keyword-only (services.keyword_search
+     handles plain-English questions) and vectors stay NULL.
 
-The hash fallback exists so the system stays functional without a Voyage
-account — keyword search still does most of the lifting via tsvector. Once
-a real embedding key is wired up, re-run the ingestion script to overwrite
-hash vectors with semantic ones.
+Every stored vector is tagged with model_id() (embedding_model column) and
+semantic search only compares vectors from the current model. There is no
+non-semantic fallback: the old SHA-512 "hash vector" overflowed to all-zero
+vectors and ranked by NaN.
 """
-import hashlib
 from typing import Optional
 import logging
-import os
 
-import numpy as np
 from config import api_key
 
 log = logging.getLogger(__name__)
@@ -71,59 +68,46 @@ def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[f
     return [d["embedding"] for d in data["data"]]
 
 
-def _hash_embed(text: str) -> list[float]:
-    """SHA-512-derived unit vector. Not semantic — placeholder so the vector
-    columns aren't NULL and cosine math doesn't degenerate."""
-    target_bytes = EMBEDDING_DIM * 4  # float32
-    raw = b""
-    seed = text[:5000].encode()
-    counter = 0
-    while len(raw) < target_bytes:
-        raw += hashlib.sha512(seed + counter.to_bytes(4, "big")).digest()
-        counter += 1
-    arr = np.frombuffer(raw[:target_bytes], dtype=np.float32).copy()
-    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=-1.0)
-    norm = np.linalg.norm(arr)
-    if norm > 0:
-        arr = arr / norm
-    return arr.tolist()
+def model_id() -> Optional[str]:
+    """Tag stored with every vector; None when search is keyword-only."""
+    return EMBEDDING_MODEL if api_key("VOYAGE_API_KEY") else None
 
 
-# With a Voyage key configured, a failed call returns None (stored as NULL and
-# retried by ingestion.reembed_missing) rather than a hash vector that would
-# silently poison semantic ranking. The hash fallback is only for keyless dev.
+def is_semantic() -> bool:
+    return model_id() is not None
 
+
+# A failed Voyage call returns None (stored as NULL and retried by
+# ingestion.reembed_missing), never a placeholder vector.
 def embed_document(text: str) -> Optional[list[float]]:
-    truncated = text[:32000]
-    if api_key("VOYAGE_API_KEY"):
-        try:
-            return _voyage_embed([truncated], input_type="document")[0]
-        except Exception as exc:
-            log.warning("Voyage embed failed; leaving NULL for retry: %s", exc)
-            return None
-    return _hash_embed(truncated)
+    if not is_semantic():
+        return None
+    try:
+        return _voyage_embed([text[:32000]], input_type="document")[0]
+    except Exception as exc:
+        log.warning("Voyage embed failed; leaving NULL for retry: %s", exc)
+        return None
 
 
 def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[Optional[list[float]]]:
+    if not is_semantic():
+        return [None] * len(texts)
     out: list[Optional[list[float]]] = []
     for i in range(0, len(texts), batch_size):
         batch = [t[:32000] for t in texts[i:i + batch_size]]
-        if api_key("VOYAGE_API_KEY"):
-            try:
-                out.extend(_voyage_embed(batch, input_type="document"))
-            except Exception as exc:
-                log.warning("Voyage batch embed failed at offset %d; leaving NULL: %s", i, exc)
-                out.extend([None] * len(batch))
-            continue
-        out.extend(_hash_embed(t) for t in batch)
+        try:
+            out.extend(_voyage_embed(batch, input_type="document"))
+        except Exception as exc:
+            log.warning("Voyage batch embed failed at offset %d; leaving NULL: %s", i, exc)
+            out.extend([None] * len(batch))
     return out
 
 
-def embed_query(query: str) -> list[float]:
-    """Raises when Voyage is configured but fails — callers fall back to keyword search."""
-    if api_key("VOYAGE_API_KEY"):
-        return _voyage_embed([query], input_type="query")[0]
-    return _hash_embed(query)
+def embed_query(query: str) -> Optional[list[float]]:
+    """None when keyword-only. Raises if Voyage fails (callers drop to keyword)."""
+    if not is_semantic():
+        return None
+    return _voyage_embed([query], input_type="query")[0]
 
 
 def to_pgvector_literal(vec: list[float]) -> str:

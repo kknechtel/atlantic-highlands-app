@@ -1205,7 +1205,7 @@ async def _stream_claude(
         yield _sse("session", {"session_id": session_id})
         yield _sse("status", {"text": "Building context…", "stage": "context"})
 
-        for iteration in range(8):
+        for iteration in range(MAX_TOOL_ROUNDS):
             if await request.is_disconnected():
                 return
 
@@ -1232,6 +1232,10 @@ async def _stream_claude(
                 api_kwargs["thinking"] = thinking_cfg
             if output_config_cfg:
                 api_kwargs["output_config"] = output_config_cfg
+            if iteration == MAX_TOOL_ROUNDS - 1:
+                # Last round: no more tools, so the user always gets an answer
+                # instead of the narration that preceded the next tool call.
+                api_kwargs["tool_choice"] = {"type": "none"}
 
             iter_text = ""
             thinking_active = False
@@ -1396,6 +1400,11 @@ async def _stream_claude(
                     })
 
                 messages.append({"role": "assistant", "content": final_message.content})
+                if iteration == MAX_TOOL_ROUNDS - 2:
+                    results.append({"type": "text", "text": (
+                        "Tool limit reached. Write your final answer now from what you have found, "
+                        "with citations, and say plainly what you could not find."
+                    )})
                 messages.append({"role": "user", "content": results})
 
         # Hit the iteration cap — emit what we have.
@@ -1442,6 +1451,9 @@ async def _stream_claude(
     except Exception as exc:
         logger.exception("chat_stream failed")
         yield _sse("error", {"content": str(exc)[:300]})
+
+
+MAX_TOOL_ROUNDS = 8
 
 
 def _chat_model(deep: bool) -> str:

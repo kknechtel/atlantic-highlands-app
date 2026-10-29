@@ -57,3 +57,14 @@ def test_read_window_pages_through_whole_doc_on_line_breaks():
         offset = w["next_offset"]
     assert "".join(parts) == DOC
     assert read_window(DOC, 80, 40)["start_page"] == 1
+
+
+def test_no_embedding_key_means_no_fake_vectors(monkeypatch):
+    import pytest
+    from services import embeddings
+    monkeypatch.setattr(embeddings, "api_key", lambda name: "")
+    assert not embeddings.semantic_available()
+    assert embeddings.embed_documents_batch(["a", "b"]) == [None, None]
+    assert embeddings.embed_document("a") is None
+    with pytest.raises(RuntimeError):
+        embeddings.embed_query("police budget")

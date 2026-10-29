@@ -18,7 +18,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from services.embeddings import embed_query, to_pgvector_literal
+from services.embeddings import embed_query, semantic_available, to_pgvector_literal
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +76,8 @@ def search_chunks(
     Ranking is reciprocal rank fusion of the semantic and keyword lists,
     scaled so a doc ranked #1 in both scores 1.0 (#1 in one list ≈ 0.5).
     """
-    has_vec = _has_vector_column(db, "document_chunks")
+    # No embedding key → keyword-only. Never rank against a fake query vector.
+    has_vec = semantic_available() and _has_vector_column(db, "document_chunks")
     dates = date_bounds(date_from, date_to)
 
     if has_vec:
@@ -282,13 +283,14 @@ def search_documents(
 ) -> list[dict]:
     """Return ranked documents with their summaries — for "what documents
     exist on X" questions. Hybrid when possible, keyword-only otherwise."""
-    has_vec = _has_vector_column(db, "documents")
+    has_vec = semantic_available() and _has_vector_column(db, "documents")
 
     if has_vec:
         try:
             return _hybrid_doc_search(db, query, top_k, fiscal_year, category)
         except Exception as exc:
             log.warning("Hybrid doc search failed, falling back to keyword: %s", exc)
+            db.rollback()
 
     return _keyword_doc_search(db, query, top_k, fiscal_year, category)
 

@@ -109,8 +109,8 @@ def main() -> int:
             print(f"final: {fmt_status(s)}")
             if s.get("documents_embedded", 0) == 0:
                 print("\nNote: documents_embedded=0 means VOYAGE_API_KEY isn't configured —")
-                print("the system is using hash-vector fallback. Search still works via tsvector,")
-                print("but recall will improve significantly once you add a Voyage key and re-ingest.")
+                print("search is keyword-only. It still works via tsvector, but recall improves")
+                print("significantly once you add a Voyage key (vectors fill in nightly).")
             return 0
 
         # Stuck detection: if no progress for 2 batches, bail.

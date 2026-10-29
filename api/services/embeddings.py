@@ -1,22 +1,15 @@
 """
 Embedding generation for hybrid RAG.
 
-Order of preference:
-  1. Voyage AI voyage-3-lite (1024 dims, $0.02/1M tokens) if VOYAGE_API_KEY set
-  2. Deterministic SHA-512-derived hash vector (not semantic, but keeps the
-     vector columns populated so cosine distance is well-defined)
-
-The hash fallback exists so the system stays functional without a Voyage
-account — keyword search still does most of the lifting via tsvector. Once
-a real embedding key is wired up, re-run the ingestion script to overwrite
-hash vectors with semantic ones.
+Voyage AI voyage-3 (1024 dims) when VOYAGE_API_KEY is set. Without a key,
+nothing is embedded: vectors stay NULL (ingestion.reembed_missing fills them
+once a key exists) and search runs keyword-only. There is deliberately no
+fake fallback vector: the old hash vector made semantic search return random
+passages blended in at full weight.
 """
-import hashlib
 from typing import Optional
 import logging
 import os
-
-import numpy as np
 from config import api_key
 
 log = logging.getLogger(__name__)
@@ -71,27 +64,13 @@ def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[f
     return [d["embedding"] for d in data["data"]]
 
 
-def _hash_embed(text: str) -> list[float]:
-    """SHA-512-derived unit vector. Not semantic — placeholder so the vector
-    columns aren't NULL and cosine math doesn't degenerate."""
-    target_bytes = EMBEDDING_DIM * 4  # float32
-    raw = b""
-    seed = text[:5000].encode()
-    counter = 0
-    while len(raw) < target_bytes:
-        raw += hashlib.sha512(seed + counter.to_bytes(4, "big")).digest()
-        counter += 1
-    arr = np.frombuffer(raw[:target_bytes], dtype=np.float32).copy()
-    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=-1.0)
-    norm = np.linalg.norm(arr)
-    if norm > 0:
-        arr = arr / norm
-    return arr.tolist()
+def semantic_available() -> bool:
+    """Real embeddings need a Voyage key; without one search is keyword-only."""
+    return bool(api_key("VOYAGE_API_KEY"))
 
 
-# With a Voyage key configured, a failed call returns None (stored as NULL and
-# retried by ingestion.reembed_missing) rather than a hash vector that would
-# silently poison semantic ranking. The hash fallback is only for keyless dev.
+# A missing key or failed call returns None (stored as NULL and retried by
+# ingestion.reembed_missing) rather than a vector that would poison ranking.
 
 def embed_document(text: str) -> Optional[list[float]]:
     truncated = text[:32000]
@@ -101,7 +80,7 @@ def embed_document(text: str) -> Optional[list[float]]:
         except Exception as exc:
             log.warning("Voyage embed failed; leaving NULL for retry: %s", exc)
             return None
-    return _hash_embed(truncated)
+    return None
 
 
 def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[Optional[list[float]]]:
@@ -115,15 +94,14 @@ def embed_documents_batch(texts: list[str], batch_size: int = 32) -> list[Option
                 log.warning("Voyage batch embed failed at offset %d; leaving NULL: %s", i, exc)
                 out.extend([None] * len(batch))
             continue
-        out.extend(_hash_embed(t) for t in batch)
+        out.extend([None] * len(batch))
     return out
 
 
 def embed_query(query: str) -> list[float]:
-    """Raises when Voyage is configured but fails — callers fall back to keyword search."""
-    if api_key("VOYAGE_API_KEY"):
-        return _voyage_embed([query], input_type="query")[0]
-    return _hash_embed(query)
+    """Raises without a key or when Voyage fails; callers fall back to keyword
+    search (check semantic_available() first to skip the attempt)."""
+    return _voyage_embed([query], input_type="query")[0]
 
 
 def to_pgvector_literal(vec: list[float]) -> str:

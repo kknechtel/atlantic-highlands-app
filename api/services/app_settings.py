@@ -81,6 +81,7 @@ SETTINGS = {
 _lock = threading.Lock()
 _cache: dict[str, str] = {}
 _loaded_at = 0.0
+_engine = None
 
 
 def _fernet():
@@ -92,13 +93,27 @@ def _fernet():
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
+def _settings_engine():
+    """A one-connection pool of its own: settings are read on nearly every
+    request, so a refresh must never queue behind (or add to) a busy main
+    pool, and gives up quickly instead of stalling for the 30s pool timeout."""
+    global _engine
+    if _engine is None:
+        from sqlalchemy import create_engine
+        from config import DATABASE_URL
+        _engine = create_engine(DATABASE_URL, pool_size=1, max_overflow=0,
+                                pool_timeout=3, pool_pre_ping=True,
+                                connect_args={"connect_timeout": 5})
+    return _engine
+
+
 def _load() -> dict[str, str]:
-    from database import SessionLocal
+    from sqlalchemy.orm import Session
     from models.app_setting import AppSetting
 
     out: dict[str, str] = {}
     f = _fernet()
-    with SessionLocal() as db:
+    with Session(_settings_engine()) as db:
         for row in db.query(AppSetting).all():
             try:
                 out[row.key] = f.decrypt(row.value_encrypted.encode()).decode()
@@ -108,16 +123,28 @@ def _load() -> dict[str, str]:
 
 
 def saved() -> dict[str, str]:
+    """Cached settings. One thread refreshes when the cache is stale; every
+    other caller gets the current cache immediately instead of waiting."""
     global _cache, _loaded_at
-    with _lock:
+    if time.monotonic() - _loaded_at <= CACHE_SECONDS:
+        return _cache
+    # Before the first load there is nothing to fall back on, so wait briefly;
+    # after that, never block a request on a refresh.
+    first = not _cache and _loaded_at == 0.0
+    got = _lock.acquire(timeout=8) if first else _lock.acquire(blocking=False)
+    if not got:
+        return _cache  # someone else is refreshing
+    try:
         if time.monotonic() - _loaded_at > CACHE_SECONDS:
             try:
                 _cache = _load()
             except Exception:
                 # No table yet, or the DB is down: the environment still works.
-                logger.debug("app settings unavailable", exc_info=True)
+                logger.warning("app settings refresh failed; using cached values", exc_info=True)
             _loaded_at = time.monotonic()
-        return _cache
+    finally:
+        _lock.release()
+    return _cache
 
 
 def invalidate() -> None:

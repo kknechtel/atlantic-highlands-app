@@ -1,7 +1,7 @@
 """User model for authentication and authorization."""
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy import Column, String, Boolean, DateTime, Float, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 
@@ -28,6 +28,11 @@ class User(Base):
     display_name = Column(String, nullable=True)  # what to show in chat / on check-ins
     last_login_at = Column(DateTime, nullable=True)
 
+    # Monthly AI spend cap in USD; NULL means CHAT_DEFAULT_BUDGET_USD.
+    # Admins are uncapped. Enforced in services.chat_budget.
+    chat_budget_usd = Column(Float, nullable=True)
+    can_deep_think = Column(Boolean, default=False)  # Opus mode in chat
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -40,6 +45,9 @@ class InviteToken(Base):
     email = Column(String, nullable=True)  # Optional: lock to specific email
     created_by = Column(UUID(as_uuid=True), nullable=False)
     used_by = Column(UUID(as_uuid=True), nullable=True)
-    is_used = Column(Boolean, default=False)
+    is_used = Column(Boolean, default=False)  # True once use_count reaches max_uses
+    max_uses = Column(Integer, default=1)     # >1 makes a shareable signup link
+    use_count = Column(Integer, default=0)
+    chat_budget_usd = Column(Float, nullable=True)  # granted to users who join via this link
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

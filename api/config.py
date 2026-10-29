@@ -89,3 +89,14 @@ PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", "https://ahnj.info")
 # /api/auth/google returns 503 — local dev without GSI configured can
 # still use password login.
 GOOGLE_OAUTH_CLIENT_ID = _get("GOOGLE_OAUTH_CLIENT_ID", "")
+
+# Per-user monthly AI budgets (USD). Users with no explicit budget get the
+# default; people who self-register with Google *without* a signup link get
+# the open-signup budget (0 = community features only, no chat).
+CHAT_DEFAULT_BUDGET_USD = float(_get("CHAT_DEFAULT_BUDGET_USD", "5"))
+CHAT_OPEN_SIGNUP_BUDGET_USD = float(_get("CHAT_OPEN_SIGNUP_BUDGET_USD", "0"))
+
+# Chat models — env-switchable so a cheaper model can be tried without a deploy.
+CHAT_MODEL = _get("CHAT_MODEL", "claude-sonnet-4-6")
+CHAT_DEEP_MODEL = _get("CHAT_DEEP_MODEL", "claude-opus-4-7")
+CHAT_EFFORT = _get("CHAT_EFFORT", "")  # optional output_config.effort for normal chat (e.g. "low")

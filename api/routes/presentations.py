@@ -51,6 +51,7 @@ from database import get_db, SessionLocal
 from models.presentation import Presentation
 from models.user import User
 from services.deck_chat_service import build_sections_summary, stream_deck_chat
+from services.chat_budget import enforce_budget, may_deep_think
 from services.deck_export import export_docx, export_pptx
 from services.fact_check_service import fact_check_presentation, fact_check_presentation_stream
 
@@ -406,6 +407,7 @@ async def ai_chat(presentation_id: str, body: AIChatBody, request: Request,
         if not p:
             raise HTTPException(404, "Presentation not found")
         require_view(setup_db, "presentations", p.created_by, p.id, user)
+        enforce_budget(setup_db, user)
         sections_summary = build_sections_summary(p.sections or [])
     finally:
         setup_db.close()
@@ -415,7 +417,7 @@ async def ai_chat(presentation_id: str, body: AIChatBody, request: Request,
             body.message, sections_summary, body.history,
             user_id=str(user.id), presentation_id=presentation_id,
             target_section_id=body.target_section_id,
-            deep_thinking=body.deep_thinking,
+            deep_thinking=body.deep_thinking and may_deep_think(user),
             attachments=[a.model_dump() for a in (body.attachments or [])],
         ),
         media_type="text/event-stream",

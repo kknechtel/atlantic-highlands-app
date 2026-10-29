@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from config import GOOGLE_OAUTH_CLIENT_ID
+from config import GOOGLE_OAUTH_CLIENT_ID, CHAT_DEFAULT_BUDGET_USD, CHAT_OPEN_SIGNUP_BUDGET_USD
 from database import get_db
 from models.user import User, InviteToken
 from auth import (
@@ -18,6 +18,8 @@ from auth import (
     get_current_user_allow_pending,
 )
 from services.google_oauth import verify_id_token as verify_google_id_token
+from services.chat_budget import may_deep_think
+from services.invites import consume_invite, grant_raises_budget, invite_is_open
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -53,6 +55,7 @@ class UserResponse(BaseModel):
     is_admin: bool
     is_active: bool
     must_change_password: bool = False
+    can_deep_think: bool = False
 
     class Config:
         from_attributes = True
@@ -75,17 +78,22 @@ class InviteCheckResponse(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _validate_invite(db: Session, token_str: str) -> InviteToken:
-    """Validate an invite token. Raises HTTPException if invalid."""
+def _lock_open_invite(db: Session, token_str: str) -> InviteToken | None:
+    """Row-lock the invite so concurrent signups can't overrun max_uses.
+    Returns None if the token is unknown, used up, or expired."""
     invite = db.query(InviteToken).filter(
         InviteToken.token == token_str,
-        InviteToken.is_used == False,
-    ).first()
+    ).with_for_update().first()
+    if invite is None or not invite_is_open(invite):
+        return None
+    return invite
 
+
+def _validate_invite(db: Session, token_str: str) -> InviteToken:
+    """Validate an invite token. Raises HTTPException if invalid."""
+    invite = _lock_open_invite(db, token_str)
     if not invite:
-        raise HTTPException(status_code=400, detail="Invalid invite link")
-    if invite.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Invite link has expired")
+        raise HTTPException(status_code=400, detail="This invite link is invalid, used up, or expired")
     return invite
 
 
@@ -157,6 +165,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 
 class GoogleLoginRequest(BaseModel):
     id_token: str
+    invite_token: str | None = None
 
 
 def _slugify_username(email: str, db: Session) -> str:
@@ -195,6 +204,12 @@ def login_google(req: GoogleLoginRequest, db: Session = Depends(get_db)):
     email = identity["email"]
     sub = identity["sub"]
 
+    # A signup link sets a new account's chat budget. A bad/expired link
+    # never blocks the login itself.
+    invite = _lock_open_invite(db, req.invite_token) if req.invite_token else None
+    if invite is not None and invite.email and invite.email.lower() != email.lower():
+        invite = None
+
     # 1) Existing OAuth user
     user = db.query(User).filter(User.google_id == sub).first()
     if user is None:
@@ -216,9 +231,18 @@ def login_google(req: GoogleLoginRequest, db: Session = Depends(get_db)):
             display_name=identity.get("given_name") or identity.get("name"),
             is_active=True,   # Google-verified email; auto-active for community app
             is_admin=False,
+            # Open sign-ups get community features; AI chat needs a signup link.
+            chat_budget_usd=CHAT_OPEN_SIGNUP_BUDGET_USD,
         )
         db.add(user)
-        logger.info("Created Google user %s (sub=%s)", email, sub)
+        db.flush()
+        if invite is not None:
+            consume_invite(invite, user, new_user=True, default_budget=CHAT_DEFAULT_BUDGET_USD)
+        logger.info("Created Google user %s (sub=%s, via_invite=%s)", email, sub, invite is not None)
+    elif invite is not None and grant_raises_budget(invite, user, CHAT_DEFAULT_BUDGET_USD):
+        # Existing accounts only get the budget bump. Activation stays an
+        # admin decision, so a shared link can't revive a disabled account.
+        consume_invite(invite, user, new_user=False, default_budget=CHAT_DEFAULT_BUDGET_USD)
 
     # Always refresh picture + display_name + last_login on every Google login
     if identity.get("picture"):
@@ -240,12 +264,9 @@ def login_google(req: GoogleLoginRequest, db: Session = Depends(get_db)):
 @router.get("/invite/{token}", response_model=InviteCheckResponse)
 def check_invite(token: str, db: Session = Depends(get_db)):
     """Check if an invite token is valid. Frontend calls this on page load."""
-    invite = db.query(InviteToken).filter(
-        InviteToken.token == token,
-        InviteToken.is_used == False,
-    ).first()
+    invite = db.query(InviteToken).filter(InviteToken.token == token).first()
 
-    if not invite or invite.expires_at < datetime.utcnow():
+    if not invite or not invite_is_open(invite):
         return InviteCheckResponse(valid=False, email=None, already_registered=False)
 
     already_registered = False
@@ -275,8 +296,17 @@ def magic_link_login(req: SetPasswordRequest, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.email == req.email).first()
 
+    if user and not invite.email:
+        # An open/shareable link proves nothing about who owns this email, so
+        # it must never overwrite an existing account's password.
+        raise HTTPException(
+            status_code=409,
+            detail="An account with this email already exists. Sign in instead.",
+        )
+
+    new_user = user is None
     if user:
-        # Existing user — activate and update password
+        # Existing user on an email-locked invite — activate and update password
         user.hashed_password = hash_password(req.password)
         user.is_active = True
         if req.full_name:
@@ -300,9 +330,7 @@ def magic_link_login(req: SetPasswordRequest, db: Session = Depends(get_db)):
         db.add(user)
         db.flush()
 
-    # Consume the invite
-    invite.is_used = True
-    invite.used_by = user.id
+    consume_invite(invite, user, new_user=new_user, default_budget=CHAT_DEFAULT_BUDGET_USD)
     db.commit()
     db.refresh(user)
 
@@ -322,6 +350,7 @@ def _user_to_response(u: User) -> UserResponse:
         is_admin=u.is_admin,
         is_active=u.is_active,
         must_change_password=u.must_change_password,
+        can_deep_think=may_deep_think(u),
     )
 
 

@@ -72,12 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loginWithGoogle = useCallback(async (idToken: string) => {
-    const data = await apiLoginGoogle(idToken);
+    const data = await apiLoginGoogle(idToken, inviteToken);
     localStorage.setItem("ah_token", data.access_token);
     const me = await getMe();
     setUser(me);
     setPendingApproval(!!data.pending_approval);
-  }, []);
+    setInviteToken(null);
+  }, [inviteToken]);
 
   const magicLinkLogin = useCallback(async (token: string, email: string, password: string, fullName?: string) => {
     const res = await fetch("/api/auth/magic-link", {

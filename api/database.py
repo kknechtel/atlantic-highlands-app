@@ -201,6 +201,15 @@ def _migrate():
     """
     new_columns = [
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Per-user AI budget (USD/month, NULL = CHAT_DEFAULT_BUDGET_USD) and
+        # the Opus "deep thinking" permission. See services.chat_budget.
+        ("users", "chat_budget_usd", "DOUBLE PRECISION"),
+        ("users", "can_deep_think", "BOOLEAN DEFAULT FALSE"),
+        # Reusable signup links: one token, many signups, each new user
+        # gets the link's chat budget.
+        ("invite_tokens", "max_uses", "INTEGER DEFAULT 1"),
+        ("invite_tokens", "use_count", "INTEGER DEFAULT 0"),
+        ("invite_tokens", "chat_budget_usd", "DOUBLE PRECISION"),
         # Document titles — added 2026-05-19. Populated by
         # services.title_extractor (also runnable as a one-shot via
         # POST /api/documents/backfill-titles). The filename column is the

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, resolveCitation, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, type Document } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks";
+import { useAuth } from "@/app/contexts/AuthContext";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import FilePreviewModal from "@/components/FilePreviewModal";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
@@ -206,6 +207,8 @@ export default function GlobalChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepThinking, setDeepThinking] = useState(false);
+  const { user } = useAuth();
+  const canDeepThink = !!(user?.is_admin || user?.can_deep_think);
   // reportMode kept in state (still passed to backend) so existing chat sessions
   // don't break, but the toggle UI is gone — presentations replace formal reports.
   const reportMode = false;
@@ -609,7 +612,7 @@ export default function GlobalChat() {
         model: "claude",
         session_id: sessionId,
         web_search: webSearchEnabled,
-        deep_thinking: deepThinking,
+        deep_thinking: deepThinking && canDeepThink,
         report_mode: reportMode,
         scope_type: chatScope.type,
         scope_id: chatScope.id,
@@ -648,6 +651,11 @@ export default function GlobalChat() {
         } else {
           throw netErr;
         }
+      }
+      if (!response.ok) {
+        // Budget / permission errors come back as JSON, not an SSE stream.
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.detail || `Chat request failed (${response.status})`);
       }
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1031,6 +1039,7 @@ export default function GlobalChat() {
             "School (...) only") wraps onto a second row instead of pushing
             the doc-scope button off-screen. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
+          {canDeepThink && (
           <label
             className={`flex items-center gap-1.5 cursor-pointer ${deepThinking ? "font-semibold" : "text-gray-500"}`}
             style={deepThinking ? { color: brandColor } : undefined}
@@ -1040,6 +1049,7 @@ export default function GlobalChat() {
             <LightBulbIcon className="w-3 h-3" />
             Deep
           </label>
+          )}
           <label
             className={`flex items-center gap-1.5 cursor-pointer ${webSearchEnabled ? "font-semibold" : "text-gray-500"}`}
             style={webSearchEnabled ? { color: brandColor } : undefined}

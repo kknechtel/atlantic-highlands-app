@@ -37,7 +37,8 @@ from sqlalchemy import desc, text as sql_text
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
-from config import api_key
+from config import api_key, setting
+from services.chat_budget import enforce_budget, may_deep_think
 from database import SessionLocal, get_db
 from models.financial import FinancialStatement
 from models.user import User
@@ -1052,6 +1053,10 @@ async def chat_stream(
             if owner is not None and owner[0] is not None and str(owner[0]) != user_id_str:
                 raise HTTPException(status_code=404, detail="Session not found")
 
+        enforce_budget(setup_db, user)
+        if req.deep_thinking and not may_deep_think(user):
+            req.deep_thinking = False  # Opus mode is per-user; fall back silently
+
         doc_context = _attached_doc_context(setup_db, req.document_id)
         history_rows = setup_db.execute(sql_text(
             "SELECT role, content FROM chat_history WHERE session_id = :sid ORDER BY created_at"
@@ -1128,14 +1133,16 @@ async def _stream_claude(
     # is steered via output_config.effort (low/medium/high/xhigh/max).
     output_config_cfg: Optional[dict] = None
     if req.deep_thinking:
-        model = "claude-opus-4-7"
+        model = _chat_model(deep=True)
         max_tokens = 32000
         thinking_cfg: Optional[dict] = {"type": "adaptive"}
         output_config_cfg = {"effort": "high"}
     else:
-        model = "claude-sonnet-4-6"
+        model = _chat_model(deep=False)
         max_tokens = 16000
         thinking_cfg = None
+        if effort := _chat_effort():
+            output_config_cfg = {"effort": effort}
 
     try:
         yield _sse("session", {"session_id": session_id})
@@ -1159,10 +1166,11 @@ async def _stream_claude(
                 "system": system_blocks,
                 "tools": tools,
                 "messages": messages,
-                # 1M-token context window beta. Tiered pricing — first 200K at
-                # standard rate, the rest at premium. Anthropic's policy.
-                "extra_headers": {"anthropic-beta": "context-1m-2025-08-07"},
             }
+            if "4-6" in model:
+                # 1M-token context window beta for the 4.6 models (5.x have
+                # 1M by default). Above 200K input bills at a premium rate.
+                api_kwargs["extra_headers"] = {"anthropic-beta": "context-1m-2025-08-07"}
             if thinking_cfg:
                 api_kwargs["thinking"] = thinking_cfg
             if output_config_cfg:
@@ -1379,16 +1387,21 @@ async def _stream_claude(
         yield _sse("error", {"content": str(exc)[:300]})
 
 
+def _chat_model(deep: bool) -> str:
+    """Admin-settable (Settings screen > env > default), read per request."""
+    if deep:
+        return setting("CHAT_DEEP_MODEL", "claude-opus-4-7")
+    return setting("CHAT_MODEL", "claude-sonnet-4-6")
+
+
+def _chat_effort() -> str:
+    return setting("CHAT_EFFORT", "")
+
+
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int,
                    cache_read: int = 0, cache_write: int = 0) -> float:
-    """Approximate USD. input_tokens excludes cached tokens (Anthropic reports
-    them separately): cache reads bill at 0.1x input, cache writes at 1.25x."""
-    if "opus" in model.lower():
-        in_rate, out_rate = 15.0, 75.0
-    else:
-        in_rate, out_rate = 3.0, 15.0
-    return (input_tokens * in_rate + cache_write * in_rate * 1.25
-            + cache_read * in_rate * 0.1 + output_tokens * out_rate) / 1_000_000
+    from services.usage import estimate_cost
+    return estimate_cost(model, input_tokens, output_tokens, cache_read, cache_write)
 
 
 def _mark_last_message_for_cache(messages: list) -> None:

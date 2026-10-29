@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getAdminStats, getAdminUsers, approveUser, toggleUserActive,
   toggleUserAdmin, deleteUser, createInvite, getInvites, deleteInvite,
+  updateUserAISettings, AdminUser,
 } from "@/lib/api";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
@@ -49,6 +50,28 @@ export default function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
     },
   });
+  const aiSettingsMut = useMutation({
+    mutationFn: ({ id, settings }: { id: string; settings: Parameters<typeof updateUserAISettings>[1] }) =>
+      updateUserAISettings(id, settings),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+
+  const editBudget = (u: AdminUser) => {
+    const current = u.chat_budget_usd ?? "";
+    const input = prompt(
+      `Monthly AI budget for ${u.email} in USD (0 = no chat; blank = default):`,
+      String(current),
+    );
+    if (input === null) return;
+    const trimmed = input.trim();
+    const value = trimmed === "" ? null : Number(trimmed);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      alert("Enter a number of dollars, 0 or more.");
+      return;
+    }
+    aiSettingsMut.mutate({ id: u.id, settings: { chat_budget_usd: value } });
+  };
+
   const deleteInviteMut = useMutation({
     mutationFn: deleteInvite,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-invites"] }),
@@ -56,11 +79,19 @@ export default function AdminPage() {
 
   // Invite creation
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMaxUses, setInviteMaxUses] = useState("1");
+  const [inviteBudget, setInviteBudget] = useState("");
+  const [inviteDays, setInviteDays] = useState("3");
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
 
   const createInviteMut = useMutation({
-    mutationFn: () => createInvite(inviteEmail || undefined),
+    mutationFn: () => createInvite({
+      email: inviteEmail || undefined,
+      maxUses: Math.max(1, parseInt(inviteMaxUses, 10) || 1),
+      chatBudgetUsd: inviteBudget.trim() === "" ? null : Number(inviteBudget),
+      expiresHours: Math.max(1, Math.round((parseFloat(inviteDays) || 3) * 24)),
+    }),
     onSuccess: (data) => {
       setLastInviteUrl(data.invite_url);
       setInviteEmail("");
@@ -234,18 +265,37 @@ export default function AdminPage() {
             <h2 className="font-semibold text-gray-900">Invite Links</h2>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Generate links that let people register and auto-approve. Optionally lock to a specific email.
+            Generate links that let people register and auto-approve. Set &quot;Uses&quot; above 1 for one link
+            you can share with a group; people who join through it get the link&apos;s monthly AI budget.
           </p>
         </div>
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-end gap-3">
             <input
               type="email"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="Optional: lock to email@example.com"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm"
             />
+            <label className="text-[11px] text-gray-500">
+              Uses
+              <input type="number" min={1} max={1000} value={inviteMaxUses}
+                onChange={(e) => setInviteMaxUses(e.target.value)}
+                className="block w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+            </label>
+            <label className="text-[11px] text-gray-500">
+              AI $/month
+              <input type="number" min={0} step="0.5" value={inviteBudget} placeholder="default"
+                onChange={(e) => setInviteBudget(e.target.value)}
+                className="block w-24 px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+            </label>
+            <label className="text-[11px] text-gray-500">
+              Expires (days)
+              <input type="number" min={1} max={90} value={inviteDays}
+                onChange={(e) => setInviteDays(e.target.value)}
+                className="block w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+            </label>
             <button
               onClick={() => createInviteMut.mutate()}
               disabled={createInviteMut.isPending}
@@ -279,6 +329,7 @@ export default function AdminPage() {
                 <tr>
                   <th className="text-left px-6 py-2 font-medium text-gray-500">Email</th>
                   <th className="text-left px-6 py-2 font-medium text-gray-500">Status</th>
+                  <th className="text-left px-6 py-2 font-medium text-gray-500">AI $/mo</th>
                   <th className="text-left px-6 py-2 font-medium text-gray-500">Expires</th>
                   <th className="text-right px-6 py-2 font-medium text-gray-500"></th>
                 </tr>
@@ -293,6 +344,12 @@ export default function AdminPage() {
                       }`}>
                         {inv.is_used ? "Used" : "Active"}
                       </span>
+                      {inv.max_uses > 1 && (
+                        <span className="ml-1.5 text-gray-500">{inv.use_count} / {inv.max_uses} used</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-2 text-gray-500">
+                      {inv.chat_budget_usd != null ? `$${inv.chat_budget_usd.toFixed(2)}` : "default"}
                     </td>
                     <td className="px-6 py-2 text-gray-500">
                       {new Date(inv.expires_at).toLocaleDateString()}
@@ -342,6 +399,7 @@ export default function AdminPage() {
               <tr>
                 <th className="text-left px-6 py-3 font-medium text-gray-500">User</th>
                 <th className="text-left px-6 py-3 font-medium text-gray-500">Role</th>
+                <th className="text-left px-6 py-3 font-medium text-gray-500">AI this month</th>
                 <th className="text-left px-6 py-3 font-medium text-gray-500">Joined</th>
                 <th className="text-right px-6 py-3 font-medium text-gray-500">Actions</th>
               </tr>
@@ -364,6 +422,36 @@ export default function AdminPage() {
                     >
                       {u.is_admin ? "Admin" : "User"}
                     </span>
+                  </td>
+                  <td className="px-6 py-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => editBudget(u)}
+                        disabled={u.is_admin}
+                        className="text-gray-700 hover:underline disabled:no-underline disabled:cursor-default"
+                        title={u.is_admin ? "Admins are uncapped" : "Change monthly budget"}
+                      >
+                        ${u.spent_this_month_usd.toFixed(2)}
+                        {" / "}
+                        {u.effective_budget_usd == null ? "no cap" : `$${u.effective_budget_usd.toFixed(2)}`}
+                        {!u.is_admin && u.chat_budget_usd == null && (
+                          <span className="text-gray-400"> (default)</span>
+                        )}
+                      </button>
+                      {!u.is_admin && (
+                        <label className="flex items-center gap-1 text-gray-500" title="Allow Deep (Opus) mode">
+                          <input
+                            type="checkbox"
+                            checked={!!u.can_deep_think}
+                            onChange={(e) => aiSettingsMut.mutate({
+                              id: u.id, settings: { can_deep_think: e.target.checked },
+                            })}
+                            style={{ accentColor: brandColor }}
+                          />
+                          Deep
+                        </label>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-3 text-xs text-gray-500">
                     {new Date(u.created_at).toLocaleDateString()}

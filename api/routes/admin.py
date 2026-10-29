@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, text as sql_text
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from models.user import User, InviteToken
 from models.document import Document, Project
 from models.financial import FinancialStatement
 from auth import get_admin_user
+from services.chat_budget import effective_budget, may_deep_think, spend_by_user_this_month
 
 router = APIRouter()
 
@@ -44,14 +45,26 @@ class AdminUserResponse(BaseModel):
     is_active: bool
     is_admin: bool
     created_at: str
+    chat_budget_usd: float | None = None        # explicit budget; None = default
+    effective_budget_usd: float | None = None   # what's enforced; None = uncapped
+    spent_this_month_usd: float = 0.0
+    can_deep_think: bool = False
 
     class Config:
         from_attributes = True
 
 
+class AISettingsRequest(BaseModel):
+    # Send chat_budget_usd: null to reset to the default budget; omit to leave as is.
+    chat_budget_usd: float | None = Field(default=None, ge=0, le=1000)
+    can_deep_think: bool | None = None
+
+
 class InviteRequest(BaseModel):
     email: str | None = None  # Lock invite to a specific email, or None for open invite
-    expires_hours: int = 72
+    expires_hours: int = Field(default=72, ge=1, le=24 * 90)
+    max_uses: int = Field(default=1, ge=1, le=1000)  # >1 = shareable signup link
+    chat_budget_usd: float | None = Field(default=None, ge=0, le=1000)  # None = default budget
 
 
 class InviteResponse(BaseModel):
@@ -69,6 +82,9 @@ class InviteListResponse(BaseModel):
     used_by: str | None
     expires_at: str
     created_at: str
+    max_uses: int = 1
+    use_count: int = 0
+    chat_budget_usd: float | None = None
 
 
 # ── Stats ────────────────────────────────────────────────────────────────────
@@ -130,18 +146,44 @@ def get_stats(db: Session = Depends(get_db), admin: User = Depends(get_admin_use
 @router.get("/users", response_model=List[AdminUserResponse])
 def list_users(db: Session = Depends(get_db), admin: User = Depends(get_admin_user)):
     users = db.query(User).order_by(User.created_at.desc()).all()
-    return [
-        AdminUserResponse(
-            id=str(u.id),
-            email=u.email,
-            username=u.username,
-            full_name=u.full_name,
-            is_active=u.is_active,
-            is_admin=u.is_admin,
-            created_at=u.created_at.isoformat(),
-        )
-        for u in users
-    ]
+    spend = spend_by_user_this_month(db)
+    return [_admin_user(u, spend.get(str(u.id), 0.0)) for u in users]
+
+
+def _admin_user(u: User, spent: float) -> AdminUserResponse:
+    return AdminUserResponse(
+        id=str(u.id),
+        email=u.email,
+        username=u.username,
+        full_name=u.full_name,
+        is_active=u.is_active,
+        is_admin=u.is_admin,
+        created_at=u.created_at.isoformat(),
+        chat_budget_usd=u.chat_budget_usd,
+        effective_budget_usd=effective_budget(u),
+        spent_this_month_usd=round(spent, 4),
+        can_deep_think=may_deep_think(u),
+    )
+
+
+@router.patch("/users/{user_id}/ai-settings", response_model=AdminUserResponse)
+def update_user_ai_settings(
+    user_id: str,
+    req: AISettingsRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    """Set a user's monthly AI budget and/or deep-thinking permission."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if "chat_budget_usd" in req.model_fields_set:
+        user.chat_budget_usd = req.chat_budget_usd
+    if req.can_deep_think is not None:
+        user.can_deep_think = req.can_deep_think
+    db.commit()
+    db.refresh(user)
+    return _admin_user(user, spend_by_user_this_month(db).get(str(user.id), 0.0))
 
 
 @router.patch("/users/{user_id}/approve")
@@ -206,6 +248,9 @@ def create_invite(
         email=req.email.lower() if req.email else None,
         created_by=admin.id,
         expires_at=expires_at,
+        max_uses=req.max_uses,
+        use_count=0,
+        chat_budget_usd=req.chat_budget_usd,
     )
     db.add(invite)
     db.commit()
@@ -234,6 +279,9 @@ def list_invites(db: Session = Depends(get_db), admin: User = Depends(get_admin_
             used_by=str(i.used_by) if i.used_by else None,
             expires_at=i.expires_at.isoformat(),
             created_at=i.created_at.isoformat(),
+            max_uses=i.max_uses or 1,
+            use_count=i.use_count or 0,
+            chat_budget_usd=i.chat_budget_usd,
         )
         for i in invites
     ]

@@ -93,3 +93,9 @@ PUBLIC_WEB_ORIGIN = _get("PUBLIC_WEB_ORIGIN", TOWN.site_url)
 
 # Google Sign-In: api_key("GOOGLE_OAUTH_CLIENT_ID"). When blank,
 # /api/auth/google returns 503 and password login still works.
+
+
+def setting(name: str, default: str) -> str:
+    """Live value of an admin-settable plain setting (chat model, budgets):
+    Settings screen > env > `default`."""
+    return api_key(name) or default

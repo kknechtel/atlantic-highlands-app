@@ -199,7 +199,7 @@ export default function GlobalChat() {
       window.removeEventListener("ah:show-chat", onShowChat);
     };
   }, []);
-  const [sessionId, setSessionId] = useState(() => `s_${Date.now()}`);
+  const [sessionId, setSessionId] = useState(() => `s_${crypto.randomUUID()}`);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -333,7 +333,7 @@ export default function GlobalChat() {
   };
 
   const handleNewSession = () => {
-    setSessionId(`s_${Date.now()}`);
+    setSessionId(`s_${crypto.randomUUID()}`);
     setMessages([{
       id: "welcome", role: "assistant", timestamp: new Date(),
       content: `New conversation started. Ask me anything about ${TOWN.name}.`,

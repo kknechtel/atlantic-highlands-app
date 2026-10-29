@@ -922,21 +922,30 @@ def _execute_tool(name: str, args: dict, db: Session) -> dict:
 
 # ─── Chat history ────────────────────────────────────────────────────────────
 
+def _session_access(db: Session, session_id: str, user: User) -> str:
+    """'new' if the session has no messages yet, 'mine' if every message in it
+    belongs to `user`, else 'other'. Chats are private to the person who had
+    them; admins don't get an exception, and unowned legacy rows count as
+    someone else's."""
+    owners = db.execute(sql_text(
+        "SELECT DISTINCT user_id FROM chat_history WHERE session_id = :sid"
+    ), {"sid": session_id}).fetchall()
+    if not owners:
+        return "new"
+    return "mine" if all(o[0] is not None and str(o[0]) == str(user.id) for o in owners) else "other"
+
+
 @router.get("/history")
 def get_chat_history(
     session_id: str = Query(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Verify the session belongs to this user (or admin can read any).
-    if not user.is_admin:
-        owner = db.execute(sql_text(
-            "SELECT user_id FROM chat_history WHERE session_id = :sid LIMIT 1"
-        ), {"sid": session_id}).fetchone()
-        if owner is None:
-            return {"session_id": session_id, "messages": []}
-        if owner[0] is None or str(owner[0]) != str(user.id):
-            raise HTTPException(status_code=404, detail="Session not found")
+    access = _session_access(db, session_id, user)
+    if access == "new":
+        return {"session_id": session_id, "messages": []}
+    if access != "mine":
+        raise HTTPException(status_code=404, detail="Session not found")
 
     rows = db.execute(sql_text(
         "SELECT role, content, metadata, created_at FROM chat_history "
@@ -991,8 +1000,7 @@ def create_share(req: ShareRequest, db: Session = Depends(get_db),
         "SELECT role, content, user_id, created_at FROM chat_history "
         "WHERE session_id = :sid ORDER BY created_at"
     ), {"sid": req.session_id}).fetchall()
-    if not rows or (not user.is_admin and any(
-            r.user_id is not None and str(r.user_id) != str(user.id) for r in rows)):
+    if not rows or _session_access(db, req.session_id, user) != "mine":
         raise HTTPException(status_code=404, detail="Chat not found")
     want = req.answer.strip()
     idx = next((i for i in range(len(rows) - 1, -1, -1)
@@ -1047,33 +1055,20 @@ def list_chat_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.is_admin:
-        rows = db.execute(sql_text("""
-            SELECT session_id, scope_type, scope_id,
-                   count(*) AS message_count,
-                   max(created_at) AS last_activity,
-                   (SELECT content FROM chat_history ch2
-                    WHERE ch2.session_id = ch.session_id AND ch2.role = 'user'
-                    ORDER BY created_at DESC LIMIT 1) AS last_query
-            FROM chat_history ch
-            GROUP BY session_id, scope_type, scope_id
-            ORDER BY max(created_at) DESC
-            LIMIT 30
-        """)).fetchall()
-    else:
-        rows = db.execute(sql_text("""
-            SELECT session_id, scope_type, scope_id,
-                   count(*) AS message_count,
-                   max(created_at) AS last_activity,
-                   (SELECT content FROM chat_history ch2
-                    WHERE ch2.session_id = ch.session_id AND ch2.role = 'user'
-                    ORDER BY created_at DESC LIMIT 1) AS last_query
-            FROM chat_history ch
-            WHERE user_id = :uid
-            GROUP BY session_id, scope_type, scope_id
-            ORDER BY max(created_at) DESC
-            LIMIT 30
-        """), {"uid": str(user.id)}).fetchall()
+    # Everyone, admins included, sees only their own conversations.
+    rows = db.execute(sql_text("""
+        SELECT session_id, scope_type, scope_id,
+               count(*) AS message_count,
+               max(created_at) AS last_activity,
+               (SELECT content FROM chat_history ch2
+                WHERE ch2.session_id = ch.session_id AND ch2.role = 'user'
+                ORDER BY created_at DESC LIMIT 1) AS last_query
+        FROM chat_history ch
+        WHERE user_id = :uid
+        GROUP BY session_id, scope_type, scope_id
+        ORDER BY max(created_at) DESC
+        LIMIT 30
+    """), {"uid": str(user.id)}).fetchall()
     return [
         {
             "session_id": r.session_id,
@@ -1267,13 +1262,9 @@ async def chat_stream(
     # Build the prompt with attached-doc context (small, opens/closes its own session).
     setup_db = SessionLocal()
     try:
-        # If continuing a session, ensure it belongs to this user.
-        if req.session_id and not user.is_admin:
-            owner = setup_db.execute(sql_text(
-                "SELECT user_id FROM chat_history WHERE session_id = :sid LIMIT 1"
-            ), {"sid": session_id}).fetchone()
-            if owner is not None and owner[0] is not None and str(owner[0]) != user_id_str:
-                raise HTTPException(status_code=404, detail="Session not found")
+        # Continuing a session: only its owner may read or add to it.
+        if req.session_id and _session_access(setup_db, session_id, user) == "other":
+            raise HTTPException(status_code=404, detail="Session not found")
 
         enforce_budget(setup_db, user)
         # Deep (Opus) mode is switched off site-wide; ignore it from old clients.

@@ -265,6 +265,8 @@ def rank_chunks(
     pool_size: int = 30,
     expand: bool = True,
     rerank: bool = True,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ):
     """The full ranking pipeline shared by /api/search and the chat tools:
     parse → expand → hybrid RRF retrieval → Voyage rerank → recency/title/literal
@@ -290,6 +292,9 @@ def rank_chunks(
         except Exception as exc:
             logger.warning("query expansion failed: %s", exc)
             expansions = []
+    # Exact figures: Postgres tokenizes "41,206.13" and "41206.13" differently,
+    # so search both spellings.
+    expansions += [v for v in query_expansion.amount_variants(base_query) if v not in expansions]
     fts_query = query_expansion.build_or_query(base_query, expansions)
 
     # ── 3. Hybrid chunk-level retrieval. Pull a pool 3x the limit so the
@@ -310,6 +315,8 @@ def rank_chunks(
             use_websearch=True,
             # Embed the plain query; the OR-expanded string is keyword syntax.
             embed_text=base_query,
+            date_from=date_from,
+            date_to=date_to,
         )
     except Exception as exc:
         logger.warning("hybrid chunk search failed: %s", exc)

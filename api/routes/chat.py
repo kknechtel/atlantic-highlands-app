@@ -7,7 +7,7 @@ iteratively call:
 
   - search_documents(query, fiscal_year?, category?)
   - search_chunks(query, fiscal_year?, category?)        ← passage-level
-  - read_document(document_id, max_chars?)
+  - read_document(document_id, offset?, max_chars?, find?)
   - get_financial_summary(entity?, fiscal_year?)
   - list_recent_documents(doc_type?)
   - web_search(query)                                    ← when enabled
@@ -43,8 +43,10 @@ from database import SessionLocal, get_db
 from models.financial import FinancialStatement
 from models.user import User
 from municipality import TOWN, context, entities, entity_ids
+from services.doc_reader import find_lines, read_window
 from services.rag_search import (
     get_document_excerpt,
+    get_document_text,
     list_recent_documents,
     search_chunks,
     search_documents,
@@ -150,7 +152,7 @@ After share_plan, follow the plan: call the search/read tools, then write the fi
 
 For every non-trivial question:
 1. Call `search_chunks` with the user's question (verbatim or rephrased) — this returns the most relevant passages from across the entire document corpus.
-2. If the chunks point to a document worth reading in full, call `read_document` with that document's ID.
+2. If the chunks point to a document worth reading in full, call `read_document` with that document's ID. To check one figure, name or phrase inside a long document, use `read_document` with `find` instead of reading it all; to search a single document by topic, pass `document_id` to `search_chunks`.
 3. If the question concerns budgets, taxes, debt, or fund balances:
    - For HEADLINE figures, call `get_financial_summary`.
    - For ANALYSIS (revenue composition, expenditure breakdown, fund-balance health, debt position, red flags), call `get_drill_results` for the relevant statement_id. The drill is far richer than the summary — use it.
@@ -279,8 +281,9 @@ def _tool_defs() -> list[dict]:
                     "doc_type": {"type": "string", "description": "e.g. minutes, agenda, budget, audit, ordinance, resolution, bill_list, planning"},
                     "department": {"type": "string"},
                     "fiscal_year": {"type": "string"},
-                    "date_from": {"type": "string", "description": "YYYY-MM-DD; only documents dated on/after"},
-                    "date_to": {"type": "string", "description": "YYYY-MM-DD; only documents dated on/before"},
+                    "date_from": {"type": "string", "description": "YYYY, YYYY-MM or YYYY-MM-DD; only documents dated on/after"},
+                    "date_to": {"type": "string", "description": "YYYY, YYYY-MM or YYYY-MM-DD; only documents dated on/before"},
+                    "document_id": {"type": "string", "description": "Search inside this one document only."},
                     "top_k": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
                 },
                 "required": ["query"],
@@ -288,11 +291,18 @@ def _tool_defs() -> list[dict]:
         },
         {
             "name": "read_document",
-            "description": "Read a specific document by ID. Use this AFTER search_documents/search_chunks identifies a document you need to inspect more carefully.",
+            "description": (
+                "Read a specific document by ID, after search_documents/search_chunks identifies one worth inspecting. "
+                "Returns a window of text; if `next_offset` is set, call again with offset=next_offset to continue. "
+                "Pass `find` to get only the lines containing a word, name or dollar figure (with page numbers) "
+                "instead of reading the whole document."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "document_id": {"type": "string"},
+                    "find": {"type": "string", "description": "Return only lines containing this text (case-insensitive)."},
+                    "offset": {"type": "integer", "default": 0, "minimum": 0, "description": "Character offset to start reading from."},
                     "max_chars": {"type": "integer", "default": 12000, "maximum": 30000},
                 },
                 "required": ["document_id"],
@@ -476,9 +486,13 @@ CHUNK_CHARS = 1500
 
 
 def _exec_search_chunks(db: Session, args: dict) -> dict:
-    """Same ranking pipeline as /api/search (parse, expand, hybrid RRF, rerank)."""
+    """Same ranking pipeline as /api/search (parse, expand, hybrid RRF, rerank).
+    Passages come back with their doc header; each source document is listed
+    once with its summary, so the model rarely needs a separate
+    search_documents call."""
     from routes.search import rank_chunks
     top_k = min(int(args.get("top_k", 8)), 20)
+    date_from, date_to = args.get("date_from"), args.get("date_to")
     rows, _, _, _ = rank_chunks(
         db, args["query"],
         fiscal_year=args.get("fiscal_year"),
@@ -486,47 +500,82 @@ def _exec_search_chunks(db: Session, args: dict) -> dict:
         doc_type=args.get("doc_type"),
         department=args.get("department"),
         municipality=args.get("municipality"),
+        document_id=args.get("document_id"),
+        date_from=date_from,
+        date_to=date_to,
         pool_size=max(top_k * 3, 30),
     )
-    date_from, date_to = args.get("date_from"), args.get("date_to")
-    if date_from or date_to:
-        rows = [r for r in rows if r.get("doc_date")
-                and (not date_from or r["doc_date"] >= date_from)
-                and (not date_to or r["doc_date"] <= date_to)]
     rows = rows[:top_k]
-    return {
+    documents: dict[str, dict] = {}
+    for r in rows:
+        did = str(r["document_id"])
+        if did not in documents:
+            documents[did] = {
+                "document_id": did,
+                "filename": r["filename"],
+                "title": r.get("title"),
+                "doc_date": r.get("doc_date"),
+                "fiscal_year": r.get("fiscal_year"),
+                "municipality": r.get("municipality"),
+                "doc_type": r.get("doc_type"),
+                "summary": (r.get("notes") or "")[:400],
+            }
+    out = {
         "count": len(rows),
         "chunks": [
             {
                 "document_id": str(r["document_id"]),
                 "filename": r["filename"],
-                "title": r.get("title"),
-                "doc_date": r.get("doc_date"),
-                "municipality": r.get("municipality"),
-                "doc_type": r.get("doc_type"),
+                "context": r.get("context"),
                 "page_start": r.get("page_start"),
                 "page_end": r.get("page_end"),
                 "content": (r.get("content") or "")[:CHUNK_CHARS],
             }
             for r in rows
         ],
+        "documents": list(documents.values()),
     }
+    if not rows:
+        scope = []
+        if date_from or date_to:
+            scope.append(f"dated {date_from or 'any time'} to {date_to or 'now'}")
+        if args.get("document_id"):
+            scope.append("in that document")
+        out["note"] = (
+            "No matching passages" + (f" {' and '.join(scope)}" if scope else "")
+            + ". Try fewer filters or different words before concluding the records don't exist."
+        )
+    return out
 
 
 def _exec_read_document(db: Session, args: dict) -> dict:
-    doc = get_document_excerpt(db, args["document_id"], max_chars=int(args.get("max_chars", 12000)))
+    doc = get_document_text(db, args["document_id"])
     if not doc:
         return {"error": "not_found"}
-    return {
+    out = {
         "document_id": str(doc["id"]),
         "filename": doc["filename"],
+        "title": doc.get("title"),
+        "doc_date": doc.get("doc_date"),
         "doc_type": doc.get("doc_type"),
         "fiscal_year": doc.get("fiscal_year"),
         "category": doc.get("category"),
         "page_count": doc.get("page_count"),
-        "summary": doc.get("notes"),
-        "excerpt": doc.get("excerpt") or "",
     }
+    find = (args.get("find") or "").strip()
+    if find:
+        out.update(find_lines(doc["body"], find))
+        return out
+    offset = int(args.get("offset") or 0)
+    window = read_window(doc["body"], offset, min(int(args.get("max_chars") or 12000), 30000))
+    if offset == 0:
+        out["summary"] = doc.get("notes")
+    out.update(window)
+    if window["next_offset"] is not None:
+        out["note"] = (f"Showing characters {window['offset']}-{window['next_offset']} of "
+                       f"{window['total_chars']}. Call read_document with offset={window['next_offset']} "
+                       "to continue, or use find to jump to specific text.")
+    return out
 
 
 def _exec_get_financial_summary(db: Session, args: dict) -> dict:
@@ -970,11 +1019,17 @@ def _attached_doc_context(db: Session, document_id: Optional[str]) -> str:
     doc = get_document_excerpt(db, document_id, max_chars=30000)
     if not doc:
         return ""
+    excerpt = doc.get("excerpt") or ""
+    more = ""
+    if len(excerpt) >= 30000:
+        more = (f"\n\n(Only the first 30,000 characters are shown. Use read_document with "
+                f"document_id={doc['id']} and `find` or `offset`, or search_chunks with this "
+                f"document_id, to see the rest.)")
     return (
         f"## ATTACHED DOCUMENT (inline)\n\n"
-        f"**{doc['filename']}** (FY {doc.get('fiscal_year') or '?'}, "
+        f"**{doc['filename']}** (document_id {doc['id']}, FY {doc.get('fiscal_year') or '?'}, "
         f"{doc.get('doc_type') or 'document'})\n\n"
-        f"{doc.get('excerpt') or ''}\n"
+        f"{excerpt}{more}\n"
     )
 
 
@@ -997,6 +1052,8 @@ def _describe_tool_call(name: str, input_args: dict) -> str:
     if name == "web_search" and q:
         return f"Web search: “{q[:80]}”"
     if name == "read_document":
+        if args.get("find"):
+            return f"Looking for “{str(args['find'])[:60]}” in document"
         return "Reading document"
     if name == "get_financial_summary":
         ent = args.get("entity") or "all"
@@ -1458,6 +1515,8 @@ def _summarize_tool_result(name: str, res: dict) -> str:
     if name == "search_chunks":
         return f"Found {res.get('count', 0)} matching passages"
     if name == "read_document":
+        if "match_count" in res:
+            return f"Found {res['match_count']} line(s) in {res.get('filename', 'document')}"
         return f"Read {res.get('filename', 'document')}"
     if name == "get_financial_summary":
         return f"Loaded {res.get('count', 0)} financial statement(s)"

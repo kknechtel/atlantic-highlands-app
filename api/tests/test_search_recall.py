@@ -68,3 +68,15 @@ def test_no_embedding_key_means_no_fake_vectors(monkeypatch):
     assert embeddings.embed_document("a") is None
     with pytest.raises(RuntimeError):
         embeddings.embed_query("police budget")
+
+
+def test_fill_missing_never_overwrites(monkeypatch):
+    from types import SimpleNamespace
+    from services import title_extractor
+    monkeypatch.setattr(title_extractor, "derive", lambda **kw: {
+        "title": "Derived title", "doc_date": "2026-10-28", "department": "Board of Education"})
+    doc = SimpleNamespace(filename="x.pdf", extracted_text="", metadata_=None,
+                          title="Kept title", doc_date=None, department=None)
+    assert title_extractor.fill_missing(doc) == ["doc_date", "department"]
+    assert (doc.title, doc.doc_date) == ("Kept title", "2026-10-28")
+    assert title_extractor.fill_missing(doc) == []  # nothing left to fill

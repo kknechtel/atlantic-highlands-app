@@ -112,6 +112,11 @@ function displayFiscalYear(raw: string | null | undefined): string | null {
  */
 function formatDocDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
+  const ym = iso.match(/^(\d{4})-(\d{2})$/);  // month-only dates, e.g. monthly minutes
+  if (ym) {
+    const dt = new Date(`${ym[1]}-${ym[2]}-15T12:00:00Z`);
+    return isNaN(dt.getTime()) ? iso : dt.toLocaleDateString("en-US", { year: "numeric", month: "short" });
+  }
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return iso;
   const [_, y, mo, d] = m;

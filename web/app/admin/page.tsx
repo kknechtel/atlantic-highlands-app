@@ -438,19 +438,6 @@ export default function AdminPage() {
                           <span className="text-gray-400"> (default)</span>
                         )}
                       </button>
-                      {!u.is_admin && (
-                        <label className="flex items-center gap-1 text-gray-500" title="Allow Deep (Opus) mode">
-                          <input
-                            type="checkbox"
-                            checked={!!u.can_deep_think}
-                            onChange={(e) => aiSettingsMut.mutate({
-                              id: u.id, settings: { can_deep_think: e.target.checked },
-                            })}
-                            style={{ accentColor: brandColor }}
-                          />
-                          Deep
-                        </label>
-                      )}
                     </div>
                   </td>
                   <td className="px-6 py-3 text-xs text-gray-500">

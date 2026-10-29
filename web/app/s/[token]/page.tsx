@@ -46,9 +46,9 @@ export default function SharedAnswerPage({ params }: PageProps) {
             <div className="rounded-xl bg-white border border-gray-200 shadow-sm px-4 py-3 text-sm text-gray-800">
               <MarkdownWithCharts content={data.answer} brandColor={brandColor} />
             </div>
-            <p className="text-xs text-gray-500">
-              AI-generated from public records on {new Date(data.created_at).toLocaleDateString()}.
-              Sources are named in brackets; check the original documents before relying on a figure.
+            <p className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              This answer was written by AI from public records on {new Date(data.created_at).toLocaleDateString()} and
+              can be wrong or out of date. Sources are named in brackets; verify anything important in the original documents.
             </p>
           </article>
         )}

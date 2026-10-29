@@ -60,10 +60,19 @@ async def run_one(model: str, effort: str, question: str) -> dict:
         kind = payload.get("type")
         if kind == "delta":
             answer.append(payload.get("content", ""))
+        elif kind == "narration":
+            # The UI moves pre-tool narration out of the answer; do the same.
+            text = "".join(answer)
+            note = payload.get("text", "")
+            answer = [text[:len(text) - len(note)] if text.endswith(note) else text]
         elif kind == "tool_call":
             tools.append(payload.get("description") or payload.get("name"))
         elif kind == "done":
             done = payload
+            for f in payload.get("unverified_figures") or []:
+                tools.append(f"UNVERIFIED {f['figure']} in {', '.join(f['sources'])}")
+            for c in payload.get("citations_removed") or []:
+                tools.append(f"CITATION REMOVED {c}")
         elif kind == "error":
             error = payload.get("content")
     return {

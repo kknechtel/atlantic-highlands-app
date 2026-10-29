@@ -391,19 +391,40 @@ def get_document_text(db: Session, document_id: str) -> Optional[dict]:
     return dict(row._mapping) if row else None
 
 
-def list_recent_documents(db: Session, doc_type: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """Surface recent documents for browsing-style queries ('what's the latest budget?')."""
+def list_recent_documents(db: Session, doc_type: Optional[str] = None, limit: int = 20,
+                          municipality: Optional[str] = None) -> list[dict]:
+    """Newest documents first, by the date the document is about (meeting
+    date, budget date), falling back to when it was added. For "latest /
+    most recent" questions. doc_type may be a prefix: "recording" matches
+    recording_council, recording_planning, ..."""
     sql = """
-        SELECT id, filename, doc_type, category, fiscal_year, notes,
-               page_count, created_at
+        SELECT id, filename, title, doc_date, doc_type, category, fiscal_year,
+               municipality, notes, page_count, created_at
         FROM documents
         WHERE lower(filename) NOT LIKE '%.xlsx'
           AND lower(filename) NOT LIKE '%.csv'
     """
     params: dict = {"limit": limit}
     if doc_type:
-        sql += " AND doc_type = :doc_type"
+        sql += " AND (doc_type = :doc_type OR doc_type LIKE :doc_prefix)"
         params["doc_type"] = doc_type
-    sql += " ORDER BY fiscal_year DESC NULLS LAST, created_at DESC LIMIT :limit"
+        params["doc_prefix"] = f"{doc_type}%"
+    if municipality:
+        sql += " AND municipality = :municipality"
+        params["municipality"] = municipality
+    sql += " ORDER BY COALESCE(doc_date, to_char(created_at, 'YYYY-MM-DD')) DESC, created_at DESC LIMIT :limit"
     rows = db.execute(text(sql), params).fetchall()
     return [dict(r._mapping) for r in rows]
+
+
+def get_texts_by_filename(db: Session, filenames: list[str]) -> dict[str, str]:
+    """Extracted text for each filename (for checking cited figures)."""
+    if not filenames:
+        return {}
+    rows = db.execute(text(
+        "SELECT filename, COALESCE(extracted_text, '') AS body FROM documents WHERE filename = ANY(:f)"
+    ), {"f": list(filenames)}).fetchall()
+    out: dict[str, str] = {}
+    for r in rows:
+        out[r.filename] = out.get(r.filename, "") + "\n" + r.body
+    return out

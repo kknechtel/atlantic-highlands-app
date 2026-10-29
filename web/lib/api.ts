@@ -1131,6 +1131,28 @@ export async function clearAppSetting(key: string) {
   return request<AppSettingView>(`/api/admin/settings/${key}`, { method: "DELETE" });
 }
 
+// ─── Chat sharing ─────────────────────────────────────────────────────
+
+/** Publish one saved answer at /s/{token}. The server copies the text from
+ *  the saved chat; `answer` only identifies which answer. */
+export async function shareChatAnswer(sessionId: string, answer: string) {
+  return request<{ token: string; expires_at: string }>("/api/chat/share", {
+    method: "POST", body: JSON.stringify({ session_id: sessionId, answer }),
+  });
+}
+export async function revokeChatShare(token: string) {
+  return request<{ revoked: boolean }>(`/api/chat/share/${token}`, { method: "DELETE" });
+}
+export interface SharedAnswer { question: string; answer: string; created_at: string }
+export async function getSharedAnswer(token: string) {
+  const res = await fetch(`/api/chat/shared/${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.detail || "This link has expired or was removed.");
+  }
+  return (await res.json()) as SharedAnswer;
+}
+
 // ─── Admin: corpus health ─────────────────────────────────────────────
 
 export interface AdminDocumentRow {

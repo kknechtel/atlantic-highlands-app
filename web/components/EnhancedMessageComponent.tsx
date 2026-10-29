@@ -13,6 +13,8 @@ import {
     WrenchScrewdriverIcon,
     PlusIcon,
     DocumentTextIcon,
+    LinkIcon,
+    ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import MarkdownWithCharts from './MarkdownWithCharts';
 import TypingIndicator from './TypingIndicator';
@@ -71,6 +73,13 @@ export interface ChatMessage {
     continuations?: number;
     /** Deck-mode proposals from Claude (when chat is bound to an active presentation). */
     proposals?: DeckProposalLite[];
+    /** Suggested next questions, or the options of a clarifying question. */
+    followups?: string[];
+    /** Server-side citation checks from the `done` event. */
+    checks?: {
+        unverified?: { figure: string; sources: string[] }[];
+        removed?: string[];
+    };
 }
 
 interface EnhancedMessageComponentProps {
@@ -92,6 +101,10 @@ interface EnhancedMessageComponentProps {
     /** Called to seed an OPRA records request from this single message
      *  (navigates to /opra with additional_context pre-filled). */
     onMessageToOpra?: (message: ChatMessage) => void;
+    /** Clicking a follow-up / clarification chip sends it as the next question. */
+    onFollowup?: (question: string) => void;
+    /** Publish this answer; resolves to the public URL. */
+    onShare?: (message: ChatMessage) => Promise<string>;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -101,13 +114,17 @@ const TOOL_LABEL: Record<string, string> = {
     get_financial_summary: 'Loading financials',
     list_recent_documents: 'Listing recent documents',
     web_search: 'Searching the web',
+    research_topic: 'Researching',
+    view_document_page: 'Looking at document page',
 };
 
 function ToolActivityList({ items, brandColor }: { items: ToolActivity[]; brandColor: string }) {
     if (!items.length) return null;
     return (
         <div className="mt-2 space-y-1">
-            {items.map((t, i) => (
+            {items.map((t, i) => t.name === 'note' ? (
+                <div key={i} className="text-[11px] text-gray-400 italic pl-5 line-clamp-2">{t.description}</div>
+            ) : (
                 <div key={i} className="flex items-start gap-2 text-[11px] text-gray-500">
                     <WrenchScrewdriverIcon className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: brandColor }} />
                     <div className="flex-1 min-w-0">
@@ -368,8 +385,11 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
     activeDeckTitle,
     onMessageToNewPresentation,
     onMessageToOpra,
+    onFollowup,
+    onShare,
 }) => {
     const [copied, setCopied] = useState(false);
+    const [shareState, setShareState] = useState<'idle' | 'working' | 'copied' | 'error'>('idle');
     const [isVisible, setIsVisible] = useState(false);
     const messageRef = useRef<HTMLDivElement>(null);
     const { user } = useAuth();
@@ -386,6 +406,20 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         } catch {}
+    };
+
+    const handleShare = async () => {
+        if (!onShare) return;
+        setShareState('working');
+        try {
+            const url = await onShare(message);
+            try { await navigator.clipboard.writeText(url); } catch {}
+            setShareState('copied');
+            setTimeout(() => setShareState('idle'), 4000);
+        } catch {
+            setShareState('error');
+            setTimeout(() => setShareState('idle'), 4000);
+        }
     };
 
     const formatTimestamp = (date: Date) => {
@@ -513,8 +547,42 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                         </div>
                     )}
 
-                    {!isUser && !message.isStreaming && message.content && (onSendMessageToDeck || onMessageToNewPresentation || onMessageToOpra) && (
+                    {!isUser && !message.isStreaming && message.checks && (
+                        (message.checks.unverified?.length || 0) + (message.checks.removed?.length || 0) > 0
+                    ) && (
+                        <div className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                            <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                            <div>
+                                {!!message.checks.unverified?.length && (
+                                    <div>
+                                        Not found word-for-word in the cited document (may be a calculation, check the source):{' '}
+                                        {message.checks.unverified.map(u => u.figure).join(', ')}
+                                    </div>
+                                )}
+                                {!!message.checks.removed?.length && (
+                                    <div>
+                                        {message.checks.removed.length} citation{message.checks.removed.length === 1 ? '' : 's'} didn&apos;t match a retrieved document and {message.checks.removed.length === 1 ? 'was' : 'were'} removed.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {!isUser && !message.isStreaming && message.content && (onSendMessageToDeck || onMessageToNewPresentation || onMessageToOpra || onShare) && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
+                            {onShare && (
+                                <button
+                                    onClick={handleShare}
+                                    disabled={shareState === 'working'}
+                                    className="text-[11px] px-2.5 py-1 rounded-full border hover:opacity-90 inline-flex items-center gap-1.5 disabled:opacity-50"
+                                    style={{ borderColor: `${brandColor}50`, color: brandColor, backgroundColor: `${brandColor}08` }}
+                                    title="Copy a public link to this question and answer"
+                                >
+                                    <LinkIcon className="w-3 h-3" />
+                                    {shareState === 'copied' ? 'Link copied' : shareState === 'working' ? 'Sharing…'
+                                        : shareState === 'error' ? 'Couldn\u2019t share' : 'Share'}
+                                </button>
+                            )}
                             {onSendMessageToDeck && (
                                 <button
                                     onClick={() => onSendMessageToDeck(message)}
@@ -561,6 +629,21 @@ const EnhancedMessageComponent: React.FC<EnhancedMessageComponentProps> = ({
                                     onApply={onApplyProposal ? () => onApplyProposal(message.id, i) : undefined}
                                     onDismiss={onDismissProposal ? () => onDismissProposal(message.id, i) : undefined}
                                 />
+                            ))}
+                        </div>
+                    )}
+
+                    {!isUser && !message.isStreaming && onFollowup && !!message.followups?.length && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            {message.followups.map((q, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => onFollowup(q)}
+                                    className="text-[11px] px-2.5 py-1 rounded-full border text-left hover:bg-gray-50"
+                                    style={{ borderColor: `${brandColor}40`, color: brandColor }}
+                                >
+                                    {q}
+                                </button>
                             ))}
                         </div>
                     )}

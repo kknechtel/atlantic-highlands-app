@@ -6,6 +6,30 @@
 // Server-side: use full URL
 const API_BASE = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "");
 
+// Browser calls go straight to the API host (https://api.<site>): the
+// relative /api route is a pass-through on Amplify's SSR compute that adds
+// most of a second to every call. If the direct host can't be reached at all
+// (CORS from an origin it doesn't allow, VPN, DNS), fall back to the proxy
+// for the rest of the page's life.
+const API_DIRECT =
+  typeof window !== "undefined" && (process.env.NEXT_PUBLIC_API_DIRECT_URL || "").startsWith("https://")
+    ? process.env.NEXT_PUBLIC_API_DIRECT_URL!.replace(/\/$/, "")
+    : "";
+let directReachable = true;
+
+export async function apiFetch(path: string, init: RequestInit): Promise<Response> {
+  if (API_DIRECT && directReachable) {
+    try {
+      return await fetch(`${API_DIRECT}${path}`, init);
+    } catch (err) {
+      // Network-level failure only (HTTP errors still return a Response).
+      console.warn("Direct API unreachable, using the site proxy:", err);
+      directReachable = false;
+    }
+  }
+  return fetch(`${API_BASE}${path}`, init);
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("ah_token");
@@ -25,7 +49,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (!(options.body instanceof FormData)) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await apiFetch(path, { ...options, headers });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `Request failed: ${res.status}`);

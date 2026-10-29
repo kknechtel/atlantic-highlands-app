@@ -5,9 +5,8 @@
  * detail endpoint adds a presigned audio_url (for town audio) or a
  * youtube_id (for school board videos), plus the stored transcript + summary.
  */
-import { getAuthToken } from "./api";
+import { apiFetch, getAuthToken } from "./api";
 
-const API_BASE = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "");
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
@@ -15,7 +14,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...getAuthToken(),
   };
   if (!(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const res = await apiFetch(path, { ...init, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || `Request failed: ${res.status}`);

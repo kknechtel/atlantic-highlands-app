@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user
 from config import api_key, setting
-from services.chat_budget import enforce_budget, may_deep_think
+from services.chat_budget import enforce_budget
 from database import SessionLocal, get_db
 from models.financial import FinancialStatement
 from models.user import User
@@ -1276,8 +1276,8 @@ async def chat_stream(
                 raise HTTPException(status_code=404, detail="Session not found")
 
         enforce_budget(setup_db, user)
-        if req.deep_thinking and not may_deep_think(user):
-            req.deep_thinking = False  # Opus mode is per-user; fall back silently
+        # Deep (Opus) mode is switched off site-wide; ignore it from old clients.
+        req.deep_thinking = False
 
         doc_context = _attached_doc_context(setup_db, req.document_id)
         history_rows = setup_db.execute(sql_text(

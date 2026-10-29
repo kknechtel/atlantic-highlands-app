@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { searchDocuments, resolveCitation, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, shareChatAnswer, type Document } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks";
-import { useAuth } from "@/app/contexts/AuthContext";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import FilePreviewModal from "@/components/FilePreviewModal";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
@@ -15,8 +14,7 @@ import {
   XMarkIcon, PaperAirplaneIcon, SparklesIcon,
   MinusIcon, DocumentTextIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
   MagnifyingGlassIcon, LinkIcon, GlobeAltIcon,
-  ArrowDownTrayIcon, ArrowUpTrayIcon, ClockIcon, ArrowPathIcon,
-  LightBulbIcon, DocumentChartBarIcon, CpuChipIcon, PlusIcon,
+  ArrowDownTrayIcon, ArrowUpTrayIcon, ClockIcon, ArrowPathIcon, DocumentChartBarIcon, CpuChipIcon, PlusIcon,
   ClipboardDocumentIcon, CheckIcon, PaperClipIcon,
   EllipsisVerticalIcon, EyeSlashIcon, FunnelIcon,
 } from "@heroicons/react/24/outline";
@@ -206,9 +204,6 @@ export default function GlobalChat() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
-  const [deepThinking, setDeepThinking] = useState(false);
-  const { user } = useAuth();
-  const canDeepThink = !!(user?.is_admin || user?.can_deep_think);
   // reportMode kept in state (still passed to backend) so existing chat sessions
   // don't break, but the toggle UI is gone — presentations replace formal reports.
   const reportMode = false;
@@ -620,7 +615,7 @@ export default function GlobalChat() {
         model: "claude",
         session_id: sessionId,
         web_search: webSearchEnabled,
-        deep_thinking: deepThinking && canDeepThink,
+        deep_thinking: false,
         report_mode: reportMode,
         scope_type: chatScope.type,
         scope_id: chatScope.id,
@@ -949,7 +944,7 @@ export default function GlobalChat() {
               <div className="text-[10px] opacity-75 leading-tight truncate">
                 {activeDeck
                   ? `Revising · ${activeDeck.title}`
-                  : `Connected · Documents${webSearchEnabled ? " + Web" : ""}${deepThinking ? " + Deep" : ""}${reportMode ? " + Report" : ""}`}
+                  : `Connected · Documents${webSearchEnabled ? " + Web" : ""}${reportMode ? " + Report" : ""}`}
               </div>
             </div>
           </div>
@@ -1073,17 +1068,6 @@ export default function GlobalChat() {
             "School (...) only") wraps onto a second row instead of pushing
             the doc-scope button off-screen. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
-          {canDeepThink && (
-          <label
-            className={`flex items-center gap-1.5 cursor-pointer ${deepThinking ? "font-semibold" : "text-gray-500"}`}
-            style={deepThinking ? { color: brandColor } : undefined}
-          >
-            <input type="checkbox" checked={deepThinking} onChange={e => setDeepThinking(e.target.checked)}
-              className="cursor-pointer" style={{ accentColor: brandColor, width: 13, height: 13 }} />
-            <LightBulbIcon className="w-3 h-3" />
-            Deep
-          </label>
-          )}
           <label
             className={`flex items-center gap-1.5 cursor-pointer ${webSearchEnabled ? "font-semibold" : "text-gray-500"}`}
             style={webSearchEnabled ? { color: brandColor } : undefined}
@@ -1297,7 +1281,6 @@ export default function GlobalChat() {
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
               placeholder={
                 selectedDoc ? `Ask about ${selectedDoc.filename}...`
-                : deepThinking ? "Ask a deep analytical question..."
                 : webSearchEnabled ? "Ask anything (+ web search)..."
                 : `Ask about ${TOWN.short_name} documents...`
               }
@@ -1315,6 +1298,10 @@ export default function GlobalChat() {
               <PaperAirplaneIcon className={isMobile ? "w-5 h-5" : "w-4 h-4"} />
             </button>
           </div>
+          <p className="text-[10px] leading-snug text-gray-400 mt-1.5 text-center">
+            Answers are written by AI from public records and can be wrong or out of date.
+            Verify anything important in the cited documents.
+          </p>
         </div>
       </div>
 

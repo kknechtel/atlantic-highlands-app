@@ -7,7 +7,6 @@ import {
   Paperclip, Brain, Image as ImageIcon, FileText,
 } from 'lucide-react';
 import MarkdownWithCharts from '@/components/MarkdownWithCharts';
-import { useAuth } from '@/app/contexts/AuthContext';
 
 import type { DeckSection } from '@/lib/presentationsApi';
 import type { DeckProposal } from '@/app/contexts/DeckChatContext';
@@ -59,9 +58,6 @@ export default function AskAIPanel({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [targetSectionId, setTargetSectionId] = useState<string | null>(initialTargetSectionId);
-  const [deepThinking, setDeepThinking] = useState(false);
-  const { user } = useAuth();
-  const canDeepThink = !!(user?.is_admin || user?.can_deep_think);
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -206,7 +202,7 @@ export default function AskAIPanel({
           message,
           history,
           target_section_id: targetSectionId,
-          deep_thinking: deepThinking && canDeepThink,
+          deep_thinking: false,
           attachments: requestAttachments.map(a => ({
             type: a.type, media_type: a.media_type, data_base64: a.data_base64,
             filename: a.filename,
@@ -320,16 +316,7 @@ export default function AskAIPanel({
           </select>
           <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
-        {canDeepThink && <button
-          type="button"
-          onClick={() => setDeepThinking(v => !v)}
-          className={`flex items-center gap-1 px-2 py-1 rounded border ${
-            deepThinking ? 'bg-purple-50 border-purple-300 text-purple-700' : 'border-gray-300 text-gray-600 hover:bg-gray-100'
-          }`}
-          title="Use Opus 4.7 with adaptive extended thinking"
-        >
-          <Brain className="w-3 h-3" /> Think
-        </button>}
+
       </div>
 
       {targetSection && (
@@ -485,7 +472,7 @@ export default function AskAIPanel({
           disabled={(!input.trim() && attachments.length === 0) || busy}
           className="px-3 py-2 rounded-lg text-white disabled:opacity-50"
           style={{ backgroundColor: brandColor }}
-          title={deepThinking ? 'Send (Opus 4.7 + extended thinking)' : 'Send'}
+          title="Send"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>

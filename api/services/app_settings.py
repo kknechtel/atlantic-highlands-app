@@ -41,6 +41,13 @@ SETTINGS = {
                 "to keyword-only vectors. Get one at https://dash.voyageai.com",
         "secret": True,
     },
+    "DEEPINFRA_API_KEY": {
+        "label": "DeepInfra API key",
+        "help": "Meeting transcription with Whisper large-v3 (about $0.05 per 2-hour meeting). "
+                "Without it, recordings are transcribed on the server with a smaller, "
+                "less accurate model. Get one at https://deepinfra.com/dash/api_keys",
+        "secret": True,
+    },
     "GOOGLE_OAUTH_CLIENT_ID": {
         "label": "Google Sign-In client ID",
         "help": "OAuth 2.0 Web client ID from Google Cloud Console. Blank disables "

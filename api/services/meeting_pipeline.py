@@ -15,6 +15,7 @@ rather than retry forever.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
@@ -117,15 +118,22 @@ def process_playback_ready(meeting_id: str) -> str:
         db.close()
 
 
-def process_transcribe(meeting_id: str) -> str:
+def process_transcribe(meeting_id: str, *, upgrade: bool = False) -> str:
     """Transcribe a single recording. Returns the resulting status string.
 
     Status transitions:
       uploaded → transcribing → transcribed | transcription_failed
+
+    upgrade=True re-does an existing transcript with a better engine. It
+    never falls back to the slow local model when the API is configured,
+    and on failure (or a result no better than what's stored) keeps the old
+    transcript and its status, recording metadata.upgrade_failed so the
+    queue waits a day before trying that meeting again.
     """
     from services.s3_service import S3Service
     from services.transcription_service import (
-        transcribe_audio_bytes, transcribe_youtube,
+        current_engine_name, engine_rank, transcribe_audio_bytes,
+        transcribe_youtube, _deepinfra_key,
     )
 
     db = SessionLocal()
@@ -138,6 +146,19 @@ def process_transcribe(meeting_id: str) -> str:
         meta = doc.metadata_ or {}
         rec = meta.get("recording") or {}
         platform = rec.get("platform") or "audio"
+        old_engine = (meta.get("transcript") or {}).get("engine") or ""
+        api_only = upgrade and bool(_deepinfra_key())
+
+        def _upgrade_failed(reason: str) -> str:
+            logger.warning("Upgrade of %s failed (%s); keeping %s transcript",
+                           meeting_id, reason, old_engine)
+            doc.metadata_ = {**(doc.metadata_ or {}), "upgrade_failed": {
+                "engine": current_engine_name(),
+                "error": reason[:500],
+                "at": datetime.now(timezone.utc).isoformat(),
+            }}
+            db.commit()
+            return "upgrade_failed"
 
         try:
             # If a sync script (scripts/sync_youtube_audio.py) has uploaded
@@ -150,31 +171,39 @@ def process_transcribe(meeting_id: str) -> str:
                 result = transcribe_audio_bytes(
                     audio_bytes,
                     filename_hint=s3_override,
+                    api_only=api_only,
                 )
             elif platform == "youtube":
                 yt_id = rec.get("youtube_id")
                 if not yt_id:
                     raise RuntimeError("youtube_id missing from metadata")
-                result = transcribe_youtube(yt_id)
+                result = transcribe_youtube(yt_id, api_only=api_only)
             else:
                 s3 = S3Service()
                 audio_bytes = s3.download_file(doc.s3_key)
                 result = transcribe_audio_bytes(
                     audio_bytes,
                     filename_hint=doc.original_filename or doc.filename,
+                    api_only=api_only,
                 )
         except Exception as e:
+            if upgrade:
+                return _upgrade_failed(str(e))
             logger.exception("Transcription failed for %s: %s", meeting_id, e)
             doc.status = "transcription_failed"
             doc.metadata_ = {**(doc.metadata_ or {}), "transcription_error": str(e)[:500]}
             db.commit()
             return "transcription_failed"
 
+        if upgrade and engine_rank(result.engine) <= engine_rank(old_engine):
+            return _upgrade_failed(f"{result.engine} is no better than {old_engine}")
+
         doc.extracted_text = result.text
         # SQLAlchemy doesn't auto-detect JSONB mutation; reassign so it persists.
         new_meta = {**meta}
         new_meta["transcript"] = result.to_dict()
         new_meta.pop("transcription_error", None)
+        new_meta.pop("upgrade_failed", None)
         # A summary of the old transcript is stale; drop it so the summarize
         # pass regenerates it from the new text.
         new_meta.pop("summary", None)
@@ -320,23 +349,27 @@ def fix_future_meeting_dates() -> int:
 
 
 def pending_upgrade_ids() -> list[str]:
-    """Recordings whose transcript came from an older local Whisper model.
+    """Recordings whose transcript came from a less accurate engine than the
+    current one (e.g. local base/small.en once a DeepInfra key is set).
 
     Re-transcribed after new recordings are handled: Board of Education
     first, then everything else, newest meeting first within each.
-    YouTube caption transcripts aren't Whisper output and are left alone; a
-    failed upgrade sets transcription_failed (old transcript kept) and drops
-    out of this queue."""
-    from services.transcription_service import whisper_engine_name
+    YouTube caption transcripts aren't ours and are left alone; a failed
+    upgrade sets transcription_failed (old transcript kept) and drops out
+    of this queue."""
+    from services.transcription_service import current_engine_name, engine_rank
 
-    current = whisper_engine_name()
+    engine_now = current_engine_name()
+    current = engine_rank(engine_now)
+    retry_before = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     db = SessionLocal()
     try:
         rows = db.execute(
             text(
-                f"SELECT id, metadata->'transcript'->>'engine' FROM documents "
+                f"SELECT id, metadata->'transcript'->>'engine', metadata->'upgrade_failed' FROM documents "
                 f"WHERE doc_type IN {_DOC_TYPES_SQL} "
-                f"  AND strpos(metadata->'transcript'->>'engine', 'faster-whisper-') > 0 "
+                f"  AND (strpos(metadata->'transcript'->>'engine', 'faster-whisper-') > 0 "
+                f"       OR strpos(metadata->'transcript'->>'engine', 'deepinfra-') > 0) "
                 f"  AND status NOT IN ('transcription_failed','transcribing','summarizing') "
                 f"ORDER BY (doc_type = 'recording_school_board') DESC, "
                 f"  COALESCE((metadata->'recording'->>'meeting_date')::date, created_at::date) DESC"
@@ -344,14 +377,15 @@ def pending_upgrade_ids() -> list[str]:
         ).fetchall()
     finally:
         db.close()
-    # Engines look like "faster-whisper-base", "faster-whisper-base-chunked",
-    # "yt-dlp+faster-whisper-base".
-    stale = []
-    for doc_id, engine in rows:
-        tail = engine.split("+")[-1].removesuffix("-chunked")
-        if tail != current:
-            stale.append(str(doc_id))
-    return stale
+    out = []
+    for doc_id, engine, failed in rows:
+        if engine_rank(engine) >= current:
+            continue
+        # A failed upgrade waits a day (e.g. API out of credit) before retrying.
+        if failed and failed.get("engine") == engine_now and (failed.get("at") or "") > retry_before:
+            continue
+        out.append(str(doc_id))
+    return out
 
 
 def pending_summarize_ids() -> list[str]:

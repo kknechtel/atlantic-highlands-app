@@ -2,8 +2,10 @@
 
 Three sources, one normalized result:
 
-  - Town audio (.wma/.wav/.m4a/.dcr) → faster-whisper (local CPU, small.en model),
-    OpenAI Whisper API fallback if OPENAI_API_KEY is set.
+  - Town audio (.wma/.wav/.m4a/.dcr) → Whisper large-v3 on DeepInfra when
+    DEEPINFRA_API_KEY is set (admin Settings or env); otherwise, or if the
+    API fails, faster-whisper on the local CPU (small.en), then the OpenAI
+    Whisper API if OPENAI_API_KEY is set.
   - YouTube videos → youtube-transcript-api auto-captions (no download).
 
 Returns segments with float-second offsets so the UI can render a clickable
@@ -19,6 +21,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -314,6 +317,147 @@ def transcribe_local_chunked(audio_path: str, *, chunk_seconds: int = _CHUNK_SEC
     )
 
 
+# ─── DeepInfra Whisper large-v3 (primary when a key is set) ─────────
+# Full large-v3 on GPU: clearly more accurate than small.en on council audio
+# ("Asbury Park Press", "formal action", the OPMA statement) at $0.00045 per
+# audio minute. Native endpoint; params per
+# https://api.deepinfra.com/models/openai/whisper-large-v3 (txt_docs).
+_DEEPINFRA_URL = "https://api.deepinfra.com/v1/inference/openai/whisper-large-v3"
+_DEEPINFRA_ENGINE = "deepinfra-whisper-large-v3"
+# 10-min mono MP3 chunks at 48 kbps are ~3.6MB: small uploads, short
+# requests, and a failed chunk is cheap to retry.
+_API_CHUNK_SECONDS = int(os.getenv("DEEPINFRA_CHUNK_SECONDS", "600"))
+_API_ATTEMPTS = 3
+
+
+def _deepinfra_key() -> str:
+    try:
+        from config import api_key
+        return api_key("DEEPINFRA_API_KEY")
+    except Exception:
+        return os.getenv("DEEPINFRA_API_KEY", "").strip()
+
+
+def current_engine_name() -> str:
+    """Engine new transcripts get under the current settings."""
+    return _DEEPINFRA_ENGINE if _deepinfra_key() else whisper_engine_name()
+
+
+def engine_rank(engine: str) -> int:
+    """Rough accuracy order of our engines, for deciding what to redo.
+
+    Accepts the stored forms: "faster-whisper-base-chunked",
+    "yt-dlp+faster-whisper-small.en", "deepinfra-whisper-large-v3"."""
+    tail = (engine or "").split("+")[-1].removesuffix("-chunked")
+    if tail.startswith("deepinfra-") or tail == "openai-whisper-1":
+        return 3
+    model = tail.removeprefix("faster-whisper-")
+    return {"tiny": 0, "tiny.en": 0, "base": 0, "base.en": 0,
+            "small": 1, "small.en": 1, "medium": 2, "medium.en": 2}.get(model, 2)
+
+
+def _encode_mp3_chunk(src_path: str, *, start: float, duration: float, out_path: str) -> bool:
+    if not shutil.which("ffmpeg"):
+        return False
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error",
+             "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+             "-i", src_path, "-vn",
+             "-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "48k",
+             out_path],
+            capture_output=True, text=True, timeout=600,
+        )
+        return proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
+    except subprocess.SubprocessError:
+        return False
+
+
+def _deepinfra_request(key: str, mp3_path: str) -> dict:
+    """POST one chunk, retrying rate limits and server errors."""
+    import requests
+
+    data = {"task": "transcribe", "chunk_level": "segment"}
+    if _WHISPER_LANGUAGE:
+        data["language"] = _WHISPER_LANGUAGE
+    prompt = _initial_prompt()
+    if prompt:
+        data["initial_prompt"] = prompt
+    last = ""
+    for attempt in range(_API_ATTEMPTS):
+        with open(mp3_path, "rb") as fh:
+            resp = requests.post(
+                _DEEPINFRA_URL,
+                headers={"Authorization": f"bearer {key}"},
+                data=data,
+                files={"audio": ("chunk.mp3", fh, "audio/mpeg")},
+                timeout=600,
+            )
+        if resp.status_code == 200:
+            return resp.json()
+        last = f"HTTP {resp.status_code}: {resp.text[:200]}"
+        if resp.status_code not in (429, 500, 502, 503, 504):
+            break  # bad key, no credit, bad request: retrying won't help
+        time.sleep(min(60, int(resp.headers.get("retry-after") or 0) or 10 * (attempt + 1)))
+    raise RuntimeError(f"DeepInfra transcription failed: {last}")
+
+
+def transcribe_deepinfra(audio_path: str) -> Optional[TranscriptionResult]:
+    """Whisper large-v3 via DeepInfra, in MP3 chunks. None if no key is set
+    or any chunk fails, so the caller falls back to the local model rather
+    than storing a transcript with a hole in it."""
+    key = _deepinfra_key()
+    if not key:
+        return None
+    duration = _probe_duration_seconds(audio_path)
+    if duration is None:
+        logger.error("DeepInfra: could not probe duration of %s", audio_path)
+        return None
+
+    segs: list[TranscriptSegment] = []
+    cost = 0.0
+    offset, idx = 0.0, 0
+    try:
+        while offset < duration:
+            chunk_path = audio_path + f".api{idx:03d}.mp3"
+            try:
+                if not _encode_mp3_chunk(audio_path, start=offset,
+                                         duration=min(_API_CHUNK_SECONDS, duration - offset),
+                                         out_path=chunk_path):
+                    logger.error("DeepInfra: failed to encode chunk %d of %s", idx, audio_path)
+                    return None
+                data = _deepinfra_request(key, chunk_path)
+            finally:
+                try:
+                    os.unlink(chunk_path)
+                except OSError:
+                    pass
+            for seg in data.get("segments") or []:
+                text = (seg.get("text") or "").strip()
+                if not text:
+                    continue
+                segs.append(TranscriptSegment(
+                    start=float(seg.get("start") or 0) + offset,
+                    end=float(seg.get("end") or 0) + offset,
+                    text=text,
+                ))
+            cost += float((data.get("inference_status") or {}).get("cost") or 0)
+            offset += _API_CHUNK_SECONDS
+            idx += 1
+    except Exception as e:
+        logger.warning("DeepInfra transcription of %s failed: %s", audio_path, e)
+        return None
+
+    logger.info("DeepInfra transcribed %.0fs in %d chunk(s), cost $%.4f", duration, idx, cost)
+    return TranscriptionResult(
+        text=_segments_to_timestamped_text(segs),
+        segments=segs,
+        engine=_DEEPINFRA_ENGINE,
+        language=_WHISPER_LANGUAGE or "en",
+        duration_seconds=duration,
+    )
+
+
 # ─── OpenAI Whisper API (fallback) ──────────────────────────────────
 
 def transcribe_openai(audio_path: str) -> Optional[TranscriptionResult]:
@@ -363,8 +507,12 @@ def transcribe_openai(audio_path: str) -> Optional[TranscriptionResult]:
 
 # ─── Public entrypoint for audio ────────────────────────────────────
 
-def transcribe_audio_bytes(audio_bytes: bytes, *, filename_hint: str = "audio") -> TranscriptionResult:
-    """Local-first with OpenAI fallback. Raises if both fail."""
+def transcribe_audio_bytes(audio_bytes: bytes, *, filename_hint: str = "audio",
+                           api_only: bool = False) -> TranscriptionResult:
+    """DeepInfra when a key is set, else (or on failure) local Whisper, then
+    OpenAI. Raises if all fail. api_only=True stops after DeepInfra (used
+    when re-doing an existing transcript, where the local model would only
+    reproduce what's already stored)."""
     # Preserve the original extension so faster-whisper/PyAV can sniff the codec
     # (.wma needs the right hint to decode correctly).
     suffix = ""
@@ -376,6 +524,11 @@ def transcribe_audio_bytes(audio_bytes: bytes, *, filename_hint: str = "audio") 
         tmp.write(audio_bytes)
         tmp_path = tmp.name
     try:
+        result = transcribe_deepinfra(tmp_path)
+        if result and result.text.strip():
+            return result
+        if api_only:
+            raise RuntimeError("DeepInfra transcription failed or returned no text")
         # Use chunked path: auto-detects duration and chunks when needed.
         # For short audio it just calls transcribe_local() directly.
         result = transcribe_local_chunked(tmp_path)
@@ -529,7 +682,8 @@ def _download_youtube_audio(video_id: str) -> tuple[bytes, str]:
     )
 
 
-def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en-US")) -> TranscriptionResult:
+def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en-US"),
+                       *, api_only: bool = False) -> TranscriptionResult:
     """Get a transcript for a YouTube video.
 
     Two paths:
@@ -549,7 +703,7 @@ def transcribe_youtube(video_id: str, prefer_langs: tuple[str, ...] = ("en", "en
         )
 
     audio_bytes, fname = _download_youtube_audio(video_id)
-    result = transcribe_audio_bytes(audio_bytes, filename_hint=fname)
+    result = transcribe_audio_bytes(audio_bytes, filename_hint=fname, api_only=api_only)
     # Tag the engine string so we can tell apart from town-audio transcriptions
     # in stats/debugging.
     return TranscriptionResult(

@@ -100,7 +100,8 @@ export default function PrivacyPage() {
             <li><strong>Google</strong>: Google Sign-In, and Gemini AI for document reading,
               summaries, and search.</li>
             <li><strong>Anthropic</strong>: Claude AI for the assistant, summaries, and analysis.</li>
-            <li><strong>OpenAI</strong>: Whisper, for transcribing public meeting recordings.</li>
+            <li><strong>DeepInfra</strong> and <strong>OpenAI</strong>: Whisper, for transcribing
+              public meeting recordings.</li>
             <li><strong>Voyage AI</strong>: text embeddings that power semantic search.</li>
           </ul>
           <p>When you ask the AI assistant a question, your question and the relevant document

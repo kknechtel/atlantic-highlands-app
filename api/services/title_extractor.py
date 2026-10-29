@@ -123,10 +123,13 @@ _FN_DATE_PATTERNS = [
     # Month name DD YYYY
     re.compile(r"(?:^|[^a-zA-Z])(january|february|march|april|may|june|july|august|september|october|november|december|"
                r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[_\s]+(\d{1,2})[_,\s]+(\d{4})(?=[^\d]|$)", re.IGNORECASE),
-    # YYYY_MM_DD / YYYY-MM-DD
-    re.compile(r"(?:^|[^\d])(\d{4})[_\-](\d{1,2})[_\-](\d{1,2})(?=[^\d]|$)"),
-    # MM-DD-YYYY (e.g. 3-19-2019)
-    re.compile(r"(?:^|[^\d])(\d{1,2})[_\-](\d{1,2})[_\-](\d{4})(?=[^\d]|$)"),
+    # YYYY_MM_DD / YYYY-MM-DD / YYYY.MM.DD
+    re.compile(r"(?:^|[^\d])(\d{4})[_\-.](\d{1,2})[_\-.](\d{1,2})(?=[^\d]|$)"),
+    # MM-DD-YYYY / MM.DD.YYYY (e.g. 3-19-2019, 08.04.2022, 6.12.2024HHRS...)
+    re.compile(r"(?:^|[^\d])(\d{1,2})[_\-.](\d{1,2})[_\-.](\d{4})(?=[^\d]|$)"),
+    # Month YYYY with no day (e.g. "Minutes - August 2025") -> YYYY-MM
+    re.compile(r"(?:^|[^a-zA-Z])(january|february|march|april|may|june|july|august|september|october|november|december|"
+               r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[_,\s]+(\d{4})(?=[^\d]|$)", re.IGNORECASE),
 ]
 
 _MONTH_TO_NUM = {
@@ -135,6 +138,13 @@ _MONTH_TO_NUM = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
     "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
 }
+
+
+_TEXT_DATE = re.compile(
+    r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
+    r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b",
+    re.IGNORECASE,
+)
 
 
 def _extract_date_from_filename(filename: str) -> Optional[str]:
@@ -168,6 +178,22 @@ def _extract_date_from_filename(filename: str) -> Optional[str]:
                 return f"{y:04d}-{mo:02d}-{d:02d}"
         except (ValueError, TypeError):
             pass
+    # "Agendas - Archives - 2005 - 11-09 REGULAR MEETING": year in the folder,
+    # month-day at the start of the name.
+    m = _ARCHIVES_RE.match(name)
+    if m:
+        md = re.match(r"(\d{1,2})[-_.](\d{1,2})(?=\D|$)", name[m.end():])
+        if md:
+            y, mo, d = int(m.group(2)), int(md.group(1)), int(md.group(2))
+            if 1900 < y < 2100 and 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+    # Month and year only: a monthly series. Stored as YYYY-MM (sorts before
+    # any full date in that month; nothing parses doc_date as a date).
+    m = _FN_DATE_PATTERNS[3].search(name)
+    if m:
+        month, y = _MONTH_TO_NUM.get(m.group(1).lower()), int(m.group(2))
+        if month and 1900 < y < 2100:
+            return f"{y:04d}-{month:02d}"
     return None
 
 
@@ -335,7 +361,8 @@ def derive_from_text(extracted_text: Optional[str]) -> dict:
     Returns {title, doc_date} when a useful candidate is found."""
     if not extracted_text:
         return {}
-    head = extracted_text[:2000]
+    # Some PDFs wrap lines in invisible direction marks (U+202A-202E, 200E/F).
+    head = re.sub("[\u200e\u200f\u202a-\u202e]", "", extracted_text[:2000])
     lines = [_clean_text_line(l) for l in head.splitlines()]
 
     out: dict = {}
@@ -350,6 +377,16 @@ def derive_from_text(extracted_text: Optional[str]) -> dict:
             if iso and "doc_date" not in out:
                 out["doc_date"] = iso
             break
+
+    # Fallback: the first full date near the top ("MEETING OF NOVEMBER 9,
+    # 2005", "JUNE 12, 2024") even when it isn't on a line by itself. For
+    # agendas and minutes that's the meeting date.
+    if "doc_date" not in out:
+        m = _TEXT_DATE.search(head[:1500])
+        if m:
+            month, d, y = _MONTH_TO_NUM.get(m.group(1).lower()), int(m.group(2)), int(m.group(3))
+            if month and 1 <= d <= 31 and 1900 < y < 2100:
+                out["doc_date"] = f"{y:04d}-{month:02d}-{d:02d}"
 
     # Second pass: pick first non-skip non-date line that's "title-like"
     title_lines: list[str] = []

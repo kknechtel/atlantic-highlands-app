@@ -12,14 +12,15 @@ from typing import Optional
 
 import anthropic
 
-from config import api_key
+from config import api_key, setting
 from municipality import TOWN, entities
 
 logger = logging.getLogger(__name__)
 
-# Sonnet 4.6 is the default for chat in this app; reuse it for summaries so
-# we don't fan out across models.
-MODEL = "claude-sonnet-4-6"
+# Haiku: summarizing a transcript into fixed JSON doesn't need a bigger model,
+# and at $0.10/$0.50 per MTok a full 2-hour meeting costs under a cent.
+# Overridable on the admin Settings screen (SUMMARY_MODEL).
+DEFAULT_MODEL = "claude-haiku-5-5"
 
 _BODIES = " or ".join(
     [TOWN.name]
@@ -46,10 +47,10 @@ Rules:
 
 
 def _segments_to_prompt(segments: list[dict]) -> str:
-    """Render segments as time-stamped lines. Caps total length so we don't
-    blow the context window on a 2-hour meeting; we drop short filler lines
-    when over the cap."""
-    MAX_CHARS = 120_000  # ~30K tokens; leaves room for system + completion
+    """Render segments as time-stamped lines, capped at MAX_CHARS. The cap
+    fits a ~4-hour meeting and keeps the prompt under the 100K-token line
+    where Haiku's input price rises."""
+    MAX_CHARS = 360_000  # ~90K tokens
     lines: list[str] = []
     total = 0
     for s in segments:
@@ -83,18 +84,23 @@ def summarize_meeting(
     if segments:
         transcript_block = _segments_to_prompt(segments)
     else:
-        transcript_block = (raw_text or "")[:120_000]
+        transcript_block = (raw_text or "")[:360_000]
 
     header = f"Meeting body: {meeting_body}\nMeeting date: {meeting_date or 'unknown'}"
     user_msg = f"{header}\n\n--- Transcript ---\n{transcript_block}"
 
     client = anthropic.Anthropic(api_key=api_key("ANTHROPIC_API_KEY"))
     resp = client.messages.create(
-        model=MODEL,
-        max_tokens=4096,
+        model=setting("SUMMARY_MODEL", DEFAULT_MODEL),
+        # Haiku 5.5 thinks by default and thinking counts toward max_tokens;
+        # 4096 left too little room and could cut the JSON off.
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_msg}],
     )
+
+    if resp.stop_reason == "max_tokens":
+        raise RuntimeError("Summary hit max_tokens before finishing the JSON")
 
     raw = "".join(
         getattr(block, "text", "") for block in resp.content

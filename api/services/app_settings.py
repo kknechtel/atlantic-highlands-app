@@ -71,6 +71,12 @@ SETTINGS = {
                 "Blank uses the model's default.",
         "secret": False,
     },
+    "SUMMARY_MODEL": {
+        "label": "Meeting summary model",
+        "help": "Claude model for meeting summaries. Default claude-haiku-5-5 (under a cent "
+                "per meeting); claude-sonnet-5-5 for more detail.",
+        "secret": False,
+    },
     "CHAT_DEFAULT_BUDGET_USD": {
         "label": "Default monthly AI budget (USD)",
         "help": "Per-user cap for anyone without their own budget. Default 5. "

@@ -54,3 +54,9 @@ def test_unverified_figures_ignore_comma_spelling_and_flag_missing():
               "Uncited line with $999,999.")
     assert unverified_figures(answer, docs) == [
         {"figure": "$1,251,681", "sources": ["2024 Audit Report.pdf"]}]
+
+
+def test_figure_list_punctuation_is_not_part_of_the_figure():
+    docs = {"a.pdf": "Bonds 4,861,725 and notes 4,924,350"}
+    answer = "Debt was $4,861,725, $4,924,350, and $1,000,000. [source: a.pdf]"
+    assert unverified_figures(answer, docs) == [{"figure": "$1,000,000", "sources": ["a.pdf"]}]

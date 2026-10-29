@@ -47,6 +47,7 @@ def _within_budget(start: float) -> bool:
 
 def main() -> int:
     from services.meeting_pipeline import (
+        fix_future_meeting_dates,
         process_playback_ready, process_summarize, process_transcribe,
         pending_playback_ids, pending_summarize_ids, pending_transcribe_ids,
         pending_upgrade_ids,
@@ -54,6 +55,14 @@ def main() -> int:
     )
 
     started = time.monotonic()
+
+    # ── 0a. Correct meeting dates with a mistyped future year.
+    try:
+        n = fix_future_meeting_dates()
+        if n:
+            logger.info("Corrected %d future-dated recording(s)", n)
+    except Exception as e:
+        logger.exception("Future-date repair errored: %s", e)
 
     # ── 0. Re-ingest any recordings that have extracted_text but no chunks
     # (transcript landed but vector pipeline crashed, or text predates the
@@ -79,9 +88,9 @@ def main() -> int:
         except Exception as e:
             logger.exception("Unhandled error transcoding %s: %s", mid, e)
 
-    # ── 2. Transcribe one. Audio first (always works from our S3), YouTube
-    # second (frequently blocked from EC2 IPs — see comment in
-    # services/transcription_service.py::transcribe_youtube).
+    # ── 2. Transcribe one. Board of Education first, then town audio (always
+    # works from our S3), then other YouTube (frequently blocked from EC2
+    # IPs — see comment in services/transcription_service.py::transcribe_youtube).
     if _within_budget(started):
         candidates = pending_transcribe_ids()
         from sqlalchemy import text as sql_text
@@ -91,21 +100,25 @@ def main() -> int:
             try:
                 rows = db.execute(
                     sql_text(
-                        "SELECT id, metadata->'recording'->>'platform' AS p "
+                        "SELECT id, metadata->'recording'->>'platform' AS p, doc_type "
                         "FROM documents WHERE id::text = ANY(:ids)"
                     ),
                     {"ids": candidates},
                 ).fetchall()
-                yt = [str(r[0]) for r in rows if r[1] == "youtube"]
-                audio = [str(r[0]) for r in rows if r[1] != "youtube"]
+                # Keep the newest-first order from pending_transcribe_ids().
+                order = {mid: i for i, mid in enumerate(candidates)}
+                rows = sorted(rows, key=lambda r: order.get(str(r[0]), 0))
+                boe = [str(r[0]) for r in rows if r[2] == "recording_school_board"]
+                yt = [str(r[0]) for r in rows if r[1] == "youtube" and r[2] != "recording_school_board"]
+                audio = [str(r[0]) for r in rows if r[1] != "youtube" and r[2] != "recording_school_board"]
             finally:
                 db.close()
 
-            target = (audio or yt)[0] if (audio or yt) else None
+            target = (boe or audio or yt)[0] if (boe or audio or yt) else None
             if target:
                 logger.info(
-                    "Transcribing 1 of %d pending (audio=%d, yt=%d): %s",
-                    len(candidates), len(audio), len(yt), target,
+                    "Transcribing 1 of %d pending (boe=%d, audio=%d, yt=%d): %s",
+                    len(candidates), len(boe), len(audio), len(yt), target,
                 )
                 try:
                     outcome = process_transcribe(target)

@@ -14,6 +14,7 @@ from .scraper import BasicScraper, SeleniumScraper
 from .utils import categorize_url
 from .config import SOURCES, RECORDING_SOURCES, REQUEST_DELAY
 from municipality import TOWN, entity, entity_for_source
+from services.meeting_dates import correct_future_date, year_from_url as _year_from_url
 
 logger = logging.getLogger("ah_scraper")
 
@@ -423,15 +424,6 @@ class MunicodeMeetingsCrawler:
 # to month/day named subfolders we don't want to recurse into.
 _YEAR_FOLDER_RE = re.compile(r"/(20\d{2})(?:%20Recordings)?/?$", re.I)
 
-# Match a year segment anywhere in a URL path: /2024/, /2024%20Recordings/,
-# / 2024 Recordings/. Used as fallback when the filename has no year — many
-# Harbor files are like "Harbor Commission 04.07.wma" inside /2020 Recordings/.
-_URL_YEAR_RE = re.compile(r"/(20\d{2})(?:%20Recordings|\s+Recordings)?/", re.I)
-
-
-def _year_from_url(url: str) -> int | None:
-    m = _URL_YEAR_RE.search(unquote(url))
-    return int(m.group(1)) if m else None
 
 # Parse common recording filename date formats:
 #   2024.03.05, 2024-03-05  → ymd
@@ -544,6 +536,12 @@ class FolderRecordingsCrawler:
                 for item in media:
                     title_with_url = item["title"] + " " + item["url"]
                     meeting_date = _parse_meeting_date(title_with_url)
+                    meeting_date_raw = None
+                    if meeting_date:
+                        fixed = correct_future_date(meeting_date, url_year=_year_from_url(item["url"]))
+                        if fixed:
+                            logger.warning(f"{self.source_name}: future date {meeting_date} in {item['url']} → {fixed}")
+                            meeting_date_raw, meeting_date = meeting_date, fixed
                     if meeting_date:
                         d = datetime.strptime(meeting_date, "%Y-%m-%d").date()
                         if d < self.cutoff:
@@ -566,6 +564,7 @@ class FolderRecordingsCrawler:
                             "platform": "audio",
                             "meeting_body": body["name"],
                             "meeting_date": meeting_date,
+                            **({"meeting_date_raw": meeting_date_raw} if meeting_date_raw else {}),
                         },
                     })
 
@@ -629,6 +628,12 @@ class YouTubeLinksCrawler:
 
                 anchor_text = link.get_text(strip=True) or f"{self.name_prefix} Meeting {yt_id}"
                 meeting_date = _parse_meeting_date(anchor_text)
+                meeting_date_raw = None
+                if meeting_date:
+                    fixed = correct_future_date(meeting_date)
+                    if fixed:
+                        logger.warning(f"{self.source_name}: future date {meeting_date} in '{anchor_text}' → {fixed}")
+                        meeting_date_raw, meeting_date = meeting_date, fixed
                 if meeting_date:
                     d = datetime.strptime(meeting_date, "%Y-%m-%d").date()
                     if d < self.cutoff:
@@ -647,6 +652,7 @@ class YouTubeLinksCrawler:
                         "platform": "youtube",
                         "meeting_body": self.meeting_body,
                         "meeting_date": meeting_date,
+                        **({"meeting_date_raw": meeting_date_raw} if meeting_date_raw else {}),
                         "youtube_id": yt_id,
                     },
                 })

@@ -57,8 +57,10 @@ async def process_one(db, doc, *, enrich: bool = True, reextract: bool = False,
             content = await asyncio.to_thread(S3Service().download_file, doc.s3_key)
             ex = await extract(doc.filename or "", content or b"")
             res.method = ex.method
-            if len(ex.text.strip()) >= len(text.strip()):
-                text = ex.text
+            # Postgres text can't hold NUL bytes; some PDFs' text layers have them.
+            new_text = (ex.text or "").replace("\x00", "")
+            if len(new_text.strip()) >= len(text.strip()):
+                text = new_text
                 if not dry_run:
                     doc.extracted_text = text
                     if ex.page_count:
@@ -117,6 +119,24 @@ async def process_one(db, doc, *, enrich: bool = True, reextract: bool = False,
         return res
 
 
+def _mark_failed(doc_id: str, exc: Exception) -> None:
+    """Record a crash on a fresh session (the doc's own session may be unusable)."""
+    from database import SessionLocal
+    from models.document import Document
+    try:
+        with SessionLocal() as db:
+            doc = db.get(Document, doc_id)
+            if doc is None:
+                return
+            meta = dict(doc.metadata_ or {})
+            meta["process_attempts"] = int(meta.get("process_attempts") or 0) + 1
+            meta["process_error"] = str(exc)[:500]
+            doc.status, doc.metadata_ = "error", meta
+            db.commit()
+    except Exception:
+        logger.exception("could not record failure for %s", doc_id)
+
+
 def pending_query(db):
     """Docs that still need processing: new, or errored with attempts left."""
     from sqlalchemy import or_, cast, Integer
@@ -143,13 +163,19 @@ async def process_pending(limit: Optional[int] = None, concurrency: int = 4) -> 
 
     async def run(doc_id: str):
         async with sem:
-            with SessionLocal() as db:
-                doc = db.get(Document, doc_id)
-                if not doc:
-                    return
-                r = await process_one(db, doc)
-                totals[r.status if r.status in totals else "skipped"] += 1
-                totals["cost_usd"] += r.cost_usd
+            try:
+                with SessionLocal() as db:
+                    doc = db.get(Document, doc_id)
+                    if not doc:
+                        return
+                    r = await process_one(db, doc)
+                    totals[r.status if r.status in totals else "skipped"] += 1
+                    totals["cost_usd"] += r.cost_usd
+            except Exception as exc:
+                # One bad document must not take down the whole batch.
+                logger.error("process %s crashed: %s", doc_id, exc, exc_info=True)
+                totals["error"] += 1
+                _mark_failed(doc_id, exc)
 
     await asyncio.gather(*(run(i) for i in ids))
     totals["cost_usd"] = round(totals["cost_usd"], 4)

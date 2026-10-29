@@ -5,10 +5,10 @@ Runs as a systemd timer (`ah-transcribe.timer`). Each invocation:
   1. Transcodes every pending .wma/.wmv recording to .mp3 (fast — ~30s per
      90-min meeting on CPU). Drains ALL pending so playback comes online
      immediately across the whole library.
-  2. Transcribes ONE pending recording (slow — roughly 0.2x realtime on
-     2 vCPUs with faster-whisper small.en/int8/beam 5, more if the instance
-     is out of CPU credits). New recordings first; when none are waiting,
-     re-transcribes one whose transcript came from an older model.
+  2. Transcribes ONE pending recording: ~1 min via DeepInfra when a key is
+     set, else roughly 0.2x realtime on 2 vCPUs with local small.en.
+     New recordings first; when none are waiting, re-transcribes one whose
+     transcript came from a less accurate engine.
   3. Summarizes whatever has a fresh transcript but no summary yet (fast).
 
 Why one transcription per tick: keeps memory steady, lets systemd OOM-kill
@@ -135,7 +135,7 @@ def main() -> int:
                     len(upgrades), target,
                 )
                 try:
-                    outcome = process_transcribe(target)
+                    outcome = process_transcribe(target, upgrade=True)
                     logger.info("Re-transcribe %s → %s", target, outcome)
                 except Exception as e:
                     logger.exception("Unhandled error re-transcribing %s: %s", target, e)

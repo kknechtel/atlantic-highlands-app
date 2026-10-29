@@ -23,6 +23,9 @@ folder named by `MUNICIPALITY` (default `atlantic-highlands-nj`), or the path in
    - `opra`: the records custodians. Leave `govpilot_url` empty if the town
      doesn't use GovPilot.
    - `census`: the place's FIPS codes, for demographics.
+   - `transcription_terms` (optional): names Whisper mishears in meeting
+     recordings: council members, staff, streets, local bodies. Spell them
+     exactly as they should appear; Whisper copies these spellings.
 3. Fill in `sources.json`: one entry per website. Each source needs
    `base_url`, `description` and `entity`. Then add `pages_to_crawl` (visited
    every run), `historical_pages` (full runs only) and `direct_downloads` (PDFs

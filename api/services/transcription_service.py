@@ -2,7 +2,7 @@
 
 Three sources, one normalized result:
 
-  - Town audio (.wma/.wav/.m4a/.dcr) → faster-whisper (local CPU, base model),
+  - Town audio (.wma/.wav/.m4a/.dcr) → faster-whisper (local CPU, small.en model),
     OpenAI Whisper API fallback if OPENAI_API_KEY is set.
   - YouTube videos → youtube-transcript-api auto-captions (no download).
 
@@ -83,7 +83,59 @@ def _segments_to_timestamped_text(segments: list["TranscriptSegment"]) -> str:
 # Lazy singleton — loading the model is expensive (~200ms + first-run download).
 # Module-level so successive calls in one process reuse it.
 _whisper_model = None
-_WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")  # base | small | tiny
+# small.en: English-only, ~3x the parameters of base. Meetings are English, so
+# the .en variant spends its capacity on accuracy instead of other languages.
+# Peak memory with int8 and 20-min chunks stays under ~1.5GB.
+_WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL", "small.en")  # small.en | base | medium.en
+# beam_size=1 is greedy decoding: fast but drops words on mumbled speech.
+_WHISPER_BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
+# Fixed language skips detection, which misfires on silence or crosstalk at
+# the start of a recording. Set WHISPER_LANGUAGE="" to auto-detect.
+_WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "en") or None
+
+
+def whisper_engine_name() -> str:
+    """Engine prefix the current settings write, for spotting stale transcripts."""
+    return f"faster-whisper-{_WHISPER_MODEL_SIZE}"
+
+
+def _initial_prompt() -> Optional[str]:
+    """Vocabulary hint passed to Whisper as preceding context.
+
+    Whisper conditions on this text, so place names, officials and procedural
+    phrases it would otherwise mishear ("Mrs. Clark" for "Madam Clerk") come
+    out right. WHISPER_PROMPT overrides; otherwise built from the municipality
+    profile plus its optional `transcription_terms` list."""
+    explicit = os.getenv("WHISPER_PROMPT")
+    if explicit is not None:
+        return explicit or None
+    try:
+        import municipality
+        prof = municipality.profile()
+    except Exception:
+        return None
+    parts = [
+        f"{prof.get('official_name', '')}, {prof.get('county', '')}, {prof.get('state_name', '')}.",
+        "Mayor and Council meeting. Borough Clerk, roll call, Open Public Meetings Act,"
+        " adequate notice, Pledge of Allegiance, resolution, ordinance, first reading,"
+        " second reading, public hearing, consent agenda, motion, second, all in favor,"
+        " public comment, executive session.",
+    ]
+    terms = prof.get("transcription_terms") or []
+    if terms:
+        parts.append(", ".join(terms) + ".")
+    return " ".join(p for p in parts if p.strip(" ,.")) or None
+
+
+def _transcribe_kwargs(language: Optional[str]) -> dict:
+    # vad_filter=True drops silences which speeds up meeting audio noticeably.
+    # word_timestamps=False — we only need segment-level for click-to-seek.
+    return dict(
+        vad_filter=True,
+        beam_size=_WHISPER_BEAM_SIZE,
+        language=language,
+        initial_prompt=_initial_prompt(),
+    )
 
 
 def _get_whisper():
@@ -96,7 +148,7 @@ def _get_whisper():
         logger.error("faster-whisper not installed: %s", e)
         return None
     # int8 quantization keeps memory low on CPU; on first run faster-whisper
-    # downloads ~150MB to ~/.cache/huggingface/hub.
+    # downloads the model (~150MB base, ~480MB small.en) to ~/.cache/huggingface/hub.
     try:
         _whisper_model = WhisperModel(
             _WHISPER_MODEL_SIZE, device="cpu", compute_type="int8"
@@ -114,13 +166,8 @@ def transcribe_local(audio_path: str) -> Optional[TranscriptionResult]:
     if model is None:
         return None
     try:
-        # vad_filter=True drops silences which speeds up meeting audio noticeably.
-        # word_timestamps=False — we only need segment-level for click-to-seek.
         segments_iter, info = model.transcribe(
-            audio_path,
-            vad_filter=True,
-            beam_size=1,
-            language=None,  # let it detect
+            audio_path, **_transcribe_kwargs(_WHISPER_LANGUAGE),
         )
         segs: list[TranscriptSegment] = []
         for seg in segments_iter:
@@ -217,7 +264,7 @@ def transcribe_local_chunked(audio_path: str, *, chunk_seconds: int = _CHUNK_SEC
     )
 
     all_segments: list[TranscriptSegment] = []
-    detected_lang: Optional[str] = None
+    detected_lang: Optional[str] = _WHISPER_LANGUAGE
     offset = 0.0
     chunk_idx = 0
     while offset < duration:
@@ -231,14 +278,13 @@ def transcribe_local_chunked(audio_path: str, *, chunk_seconds: int = _CHUNK_SEC
             logger.error("Failed to extract chunk %d of %s at %.1fs", chunk_idx, audio_path, offset)
             return None
         try:
-            # vad_filter + beam_size=1 = fastest settings. Each chunk gets its
-            # own .transcribe() call; the model object is reused so weights
-            # stay loaded.
+            # Each chunk gets its own .transcribe() call; the model object is
+            # reused so weights stay loaded. The vocabulary prompt is re-sent
+            # per chunk since Whisper's context resets at each call.
             segments_iter, info = model.transcribe(
                 chunk_path,
-                vad_filter=True,
-                beam_size=1,
-                language=detected_lang,  # lock language after first chunk
+                # Lock language after first chunk when auto-detecting.
+                **_transcribe_kwargs(_WHISPER_LANGUAGE or detected_lang),
             )
             for seg in segments_iter:
                 text = (seg.text or "").strip()

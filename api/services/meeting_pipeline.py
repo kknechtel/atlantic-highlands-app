@@ -175,6 +175,10 @@ def process_transcribe(meeting_id: str) -> str:
         new_meta = {**meta}
         new_meta["transcript"] = result.to_dict()
         new_meta.pop("transcription_error", None)
+        # A summary of the old transcript is stale; drop it so the summarize
+        # pass regenerates it from the new text.
+        new_meta.pop("summary", None)
+        new_meta.pop("summary_error", None)
         doc.metadata_ = new_meta
         doc.status = "transcribed"
         db.commit()
@@ -280,6 +284,39 @@ def pending_transcribe_ids() -> list[str]:
             "AND status NOT IN ('transcription_failed','transcribing')"
         ),
     )
+
+
+def pending_upgrade_ids() -> list[str]:
+    """Recordings whose transcript came from an older local Whisper model.
+
+    Re-transcribed after new recordings are handled, newest meeting first.
+    YouTube caption transcripts aren't Whisper output and are left alone; a
+    failed upgrade sets transcription_failed (old transcript kept) and drops
+    out of this queue."""
+    from services.transcription_service import whisper_engine_name
+
+    current = whisper_engine_name()
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text(
+                f"SELECT id, metadata->'transcript'->>'engine' FROM documents "
+                f"WHERE doc_type IN {_DOC_TYPES_SQL} "
+                f"  AND strpos(metadata->'transcript'->>'engine', 'faster-whisper-') > 0 "
+                f"  AND status NOT IN ('transcription_failed','transcribing','summarizing') "
+                f"ORDER BY COALESCE((metadata->'recording'->>'meeting_date')::date, created_at::date) DESC"
+            )
+        ).fetchall()
+    finally:
+        db.close()
+    # Engines look like "faster-whisper-base", "faster-whisper-base-chunked",
+    # "yt-dlp+faster-whisper-base".
+    stale = []
+    for doc_id, engine in rows:
+        tail = engine.split("+")[-1].removesuffix("-chunked")
+        if tail != current:
+            stale.append(str(doc_id))
+    return stale
 
 
 def pending_summarize_ids() -> list[str]:

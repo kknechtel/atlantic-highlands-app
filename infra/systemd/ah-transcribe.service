@@ -17,13 +17,16 @@ Environment=MUNICIPALITY=atlantic-highlands-nj
 # Pin Whisper to a writable cache dir under our app root rather than $HOME,
 # which is /root and may be ephemeral on snapshot rotation.
 Environment="HF_HOME=/opt/atlantic-highlands/.cache/huggingface"
-Environment="WHISPER_MODEL=base"
+# small.en + beam 5 + vocabulary prompt (see services/transcription_service.py).
+# ~1.4GB peak RSS; a 2-hour meeting takes ~25 min on 2 vCPUs at full speed.
+Environment="WHISPER_MODEL=small.en"
 
 ExecStart=/opt/atlantic-highlands/api/venv/bin/python -m scripts.transcribe_pending
 
-# Cap wall-clock just past the script's internal budget (90 min) so we
-# never accumulate runaway jobs. systemd will SIGTERM then SIGKILL.
-TimeoutStartSec=6000
+# The script checks its 90-min budget only between steps, so one long
+# transcription can run past it. 4h covers a 3-hour meeting even when a t3
+# instance is throttled to baseline CPU. systemd will SIGTERM then SIGKILL.
+TimeoutStartSec=14400
 
 # Be nice — transcription is CPU-bound and would otherwise starve ah-api
 # (which serves the UI). nice 10 + best-effort idle io class keeps the

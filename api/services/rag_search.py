@@ -12,6 +12,7 @@ functions degrade to keyword-only via tsvector — the chat still works,
 just with worse recall.
 """
 import logging
+import re
 from typing import Optional
 
 from sqlalchemy import text
@@ -47,6 +48,8 @@ def search_chunks(
     use_websearch: bool = False,
     municipality: Optional[str] = None,
     embed_text: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> list[dict]:
     """Return up to top_k chunks ranked by combined semantic + keyword score.
 
@@ -66,11 +69,15 @@ def search_chunks(
       - municipality: atlantic_highlands | highlands | hhrsd | regional | state
       - embed_text: text to embed for the semantic side when `query` carries
         keyword syntax (OR-expansions, operators) that would muddy the vector.
+      - date_from/date_to: YYYY, YYYY-MM or YYYY-MM-DD. Applied inside both
+        retrieval lists (not after ranking). Undated docs match on fiscal-year
+        overlap instead of being dropped.
 
     Ranking is reciprocal rank fusion of the semantic and keyword lists,
     scaled so a doc ranked #1 in both scores 1.0 (#1 in one list ≈ 0.5).
     """
     has_vec = _has_vector_column(db, "document_chunks")
+    dates = date_bounds(date_from, date_to)
 
     if has_vec:
         try:
@@ -78,15 +85,53 @@ def search_chunks(
                 db, query, top_k, semantic_weight, keyword_weight,
                 fiscal_year, category, doc_type, document_id,
                 project_id, department, use_websearch,
-                municipality, embed_text or query,
+                municipality, embed_text or query, dates,
             )
         except Exception as exc:
             log.warning("Hybrid chunk search failed, falling back to keyword: %s", exc)
+            db.rollback()
 
     return _keyword_chunk_search(
         db, query, top_k, fiscal_year, category, doc_type,
-        document_id, project_id, department, use_websearch, municipality,
+        document_id, project_id, department, use_websearch, municipality, dates,
     )
+
+
+_NO_DATES = {"date_from": None, "date_to": None, "year_from": None, "year_to": None}
+
+
+def date_bounds(date_from: Optional[str], date_to: Optional[str]) -> dict:
+    """Normalize YYYY / YYYY-MM / YYYY-MM-DD bounds to strings that compare
+    correctly against ISO `documents.doc_date`, plus year bounds for the
+    fiscal-year fallback on undated docs. Unparseable bounds are ignored."""
+    def year(v: str) -> Optional[int]:
+        return int(v[:4]) if re.match(r"^\d{4}(-\d{2}){0,2}$", v) else None
+
+    out = dict(_NO_DATES)
+    if date_from and (y := year(date_from.strip())):
+        v = date_from.strip()
+        out["date_from"] = v if len(v) == 10 else (v + "-01-01")[:10]
+        out["year_from"] = y
+    if date_to and (y := year(date_to.strip())):
+        v = date_to.strip()
+        # "2024" -> "2024-99-99": sorts after every real 2024 date.
+        out["date_to"] = v if len(v) == 10 else (v + "-99-99")[:10]
+        out["year_to"] = y
+    return out
+
+
+# Shared WHERE fragment for the date window (alias d = documents). Dated
+# docs compare doc_date; undated docs fall back to fiscal-year overlap — a
+# school year "2024-25" spans into 2025.
+_DATE_FILTER = """
+              AND ((:date_from IS NULL AND :date_to IS NULL)
+                   OR (d.doc_date IS NOT NULL
+                       AND (:date_from IS NULL OR d.doc_date >= :date_from)
+                       AND (:date_to IS NULL OR d.doc_date <= :date_to))
+                   OR (d.doc_date IS NULL AND d.fiscal_year ~ '^[0-9]{4}'
+                       AND (:year_from IS NULL OR CAST(left(d.fiscal_year, 4) AS int)
+                            + CASE WHEN d.fiscal_year LIKE '%-%' THEN 1 ELSE 0 END >= :year_from)
+                       AND (:year_to IS NULL OR CAST(left(d.fiscal_year, 4) AS int) <= :year_to)))"""
 
 
 # RRF constant (Cormack et al.). With k=60, 1/(k+1) is the top-rank term;
@@ -98,7 +143,7 @@ RRF_SCALE = (RRF_K + 1) / 2
 def _hybrid_chunk_search(
     db, query, top_k, sem_w, kw_w, fiscal_year, category,
     doc_type, document_id, project_id, department, use_websearch,
-    municipality, embed_text,
+    municipality, embed_text, dates=_NO_DATES,
 ):
     embedding = to_pgvector_literal(embed_query(embed_text))
     tsq_fn = "websearch_to_tsquery" if use_websearch else "plainto_tsquery"
@@ -116,7 +161,7 @@ def _hybrid_chunk_search(
               AND (:document_id IS NULL OR c.document_id = CAST(:document_id AS uuid))
               AND (:project_id IS NULL OR d.project_id = CAST(:project_id AS uuid))
               AND (:department IS NULL OR lower(d.department) = lower(:department))
-              AND (:municipality IS NULL OR d.municipality = :municipality)
+              AND (:municipality IS NULL OR d.municipality = :municipality){_DATE_FILTER}
             ORDER BY c.embedding <=> CAST(:embedding AS vector)
             LIMIT :pool
         ),
@@ -134,7 +179,7 @@ def _hybrid_chunk_search(
               AND (:document_id IS NULL OR c.document_id = CAST(:document_id AS uuid))
               AND (:project_id IS NULL OR d.project_id = CAST(:project_id AS uuid))
               AND (:department IS NULL OR lower(d.department) = lower(:department))
-              AND (:municipality IS NULL OR d.municipality = :municipality)
+              AND (:municipality IS NULL OR d.municipality = :municipality){_DATE_FILTER}
             ORDER BY kw_rank
             LIMIT :pool
         ),
@@ -179,6 +224,7 @@ def _hybrid_chunk_search(
         "rrf_k": RRF_K,
         "rrf_scale": RRF_SCALE,
         "municipality": municipality,
+        **dates,
     }).fetchall()
     return [dict(r._mapping) for r in rows]
 
@@ -186,6 +232,7 @@ def _hybrid_chunk_search(
 def _keyword_chunk_search(
     db, query, top_k, fiscal_year, category, doc_type,
     document_id, project_id, department, use_websearch, municipality=None,
+    dates=_NO_DATES,
 ):
     """tsvector-only fallback. Works without pgvector or embeddings."""
     tsq_fn = "websearch_to_tsquery" if use_websearch else "plainto_tsquery"
@@ -207,7 +254,7 @@ def _keyword_chunk_search(
           AND (:document_id IS NULL OR c.document_id = CAST(:document_id AS uuid))
           AND (:project_id IS NULL OR d.project_id = CAST(:project_id AS uuid))
           AND (:department IS NULL OR lower(d.department) = lower(:department))
-          AND (:municipality IS NULL OR d.municipality = :municipality)
+          AND (:municipality IS NULL OR d.municipality = :municipality){_DATE_FILTER}
         ORDER BY score DESC
         LIMIT :top_k
     """)
@@ -219,6 +266,7 @@ def _keyword_chunk_search(
         "department": department,
         "municipality": municipality,
         "top_k": top_k,
+        **dates,
     }).fetchall()
     return [dict(r._mapping) for r in rows]
 
@@ -328,6 +376,16 @@ def get_document_excerpt(db: Session, document_id: str, max_chars: int = 12000) 
                substring(extracted_text from 1 for :n) AS excerpt
         FROM documents WHERE id = CAST(:id AS uuid)
     """), {"id": str(document_id), "n": max_chars}).fetchone()
+    return dict(row._mapping) if row else None
+
+
+def get_document_text(db: Session, document_id: str) -> Optional[dict]:
+    """Metadata + the full extracted text, for paging and in-document find."""
+    row = db.execute(text("""
+        SELECT id, filename, title, doc_date, doc_type, category, fiscal_year,
+               notes, page_count, COALESCE(extracted_text, '') AS body
+        FROM documents WHERE id = CAST(:id AS uuid)
+    """), {"id": str(document_id)}).fetchone()
     return dict(row._mapping) if row else None
 
 

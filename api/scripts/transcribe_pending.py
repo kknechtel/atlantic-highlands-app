@@ -5,9 +5,10 @@ Runs as a systemd timer (`ah-transcribe.timer`). Each invocation:
   1. Transcodes every pending .wma/.wmv recording to .mp3 (fast — ~30s per
      90-min meeting on CPU). Drains ALL pending so playback comes online
      immediately across the whole library.
-  2. Transcribes ONE pending recording (slow — ~1x realtime on CPU with
-     faster-whisper base/int8, so ~1hr per 1hr meeting). YouTube
-     recordings prioritized since their captions API is instant.
+  2. Transcribes ONE pending recording (slow — roughly 0.2x realtime on
+     2 vCPUs with faster-whisper small.en/int8/beam 5, more if the instance
+     is out of CPU credits). New recordings first; when none are waiting,
+     re-transcribes one whose transcript came from an older model.
   3. Summarizes whatever has a fresh transcript but no summary yet (fast).
 
 Why one transcription per tick: keeps memory steady, lets systemd OOM-kill
@@ -46,12 +47,22 @@ def _within_budget(start: float) -> bool:
 
 def main() -> int:
     from services.meeting_pipeline import (
+        fix_future_meeting_dates,
         process_playback_ready, process_summarize, process_transcribe,
         pending_playback_ids, pending_summarize_ids, pending_transcribe_ids,
+        pending_upgrade_ids,
         reingest_pending,
     )
 
     started = time.monotonic()
+
+    # ── 0a. Correct meeting dates with a mistyped future year.
+    try:
+        n = fix_future_meeting_dates()
+        if n:
+            logger.info("Corrected %d future-dated recording(s)", n)
+    except Exception as e:
+        logger.exception("Future-date repair errored: %s", e)
 
     # ── 0. Re-ingest any recordings that have extracted_text but no chunks
     # (transcript landed but vector pipeline crashed, or text predates the
@@ -77,9 +88,9 @@ def main() -> int:
         except Exception as e:
             logger.exception("Unhandled error transcoding %s: %s", mid, e)
 
-    # ── 2. Transcribe one. Audio first (always works from our S3), YouTube
-    # second (frequently blocked from EC2 IPs — see comment in
-    # services/transcription_service.py::transcribe_youtube).
+    # ── 2. Transcribe one. Board of Education first, then town audio (always
+    # works from our S3), then other YouTube (frequently blocked from EC2
+    # IPs — see comment in services/transcription_service.py::transcribe_youtube).
     if _within_budget(started):
         candidates = pending_transcribe_ids()
         from sqlalchemy import text as sql_text
@@ -89,27 +100,45 @@ def main() -> int:
             try:
                 rows = db.execute(
                     sql_text(
-                        "SELECT id, metadata->'recording'->>'platform' AS p "
+                        "SELECT id, metadata->'recording'->>'platform' AS p, doc_type "
                         "FROM documents WHERE id::text = ANY(:ids)"
                     ),
                     {"ids": candidates},
                 ).fetchall()
-                yt = [str(r[0]) for r in rows if r[1] == "youtube"]
-                audio = [str(r[0]) for r in rows if r[1] != "youtube"]
+                # Keep the newest-first order from pending_transcribe_ids().
+                order = {mid: i for i, mid in enumerate(candidates)}
+                rows = sorted(rows, key=lambda r: order.get(str(r[0]), 0))
+                boe = [str(r[0]) for r in rows if r[2] == "recording_school_board"]
+                yt = [str(r[0]) for r in rows if r[1] == "youtube" and r[2] != "recording_school_board"]
+                audio = [str(r[0]) for r in rows if r[1] != "youtube" and r[2] != "recording_school_board"]
             finally:
                 db.close()
 
-            target = (audio or yt)[0] if (audio or yt) else None
+            target = (boe or audio or yt)[0] if (boe or audio or yt) else None
             if target:
                 logger.info(
-                    "Transcribing 1 of %d pending (audio=%d, yt=%d): %s",
-                    len(candidates), len(audio), len(yt), target,
+                    "Transcribing 1 of %d pending (boe=%d, audio=%d, yt=%d): %s",
+                    len(candidates), len(boe), len(audio), len(yt), target,
                 )
                 try:
                     outcome = process_transcribe(target)
                     logger.info("Transcribe %s → %s", target, outcome)
                 except Exception as e:
                     logger.exception("Unhandled error transcribing %s: %s", target, e)
+        else:
+            # Nothing new — spend the tick upgrading an old transcript.
+            upgrades = pending_upgrade_ids()
+            if upgrades:
+                target = upgrades[0]
+                logger.info(
+                    "Re-transcribing 1 of %d older-model transcript(s): %s",
+                    len(upgrades), target,
+                )
+                try:
+                    outcome = process_transcribe(target)
+                    logger.info("Re-transcribe %s → %s", target, outcome)
+                except Exception as e:
+                    logger.exception("Unhandled error re-transcribing %s: %s", target, e)
 
     # ── 3. Summarize anything that has a fresh transcript.
     if _within_budget(started):

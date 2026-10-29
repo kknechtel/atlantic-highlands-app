@@ -175,6 +175,10 @@ def process_transcribe(meeting_id: str) -> str:
         new_meta = {**meta}
         new_meta["transcript"] = result.to_dict()
         new_meta.pop("transcription_error", None)
+        # A summary of the old transcript is stale; drop it so the summarize
+        # pass regenerates it from the new text.
+        new_meta.pop("summary", None)
+        new_meta.pop("summary_error", None)
         doc.metadata_ = new_meta
         doc.status = "transcribed"
         db.commit()
@@ -280,6 +284,74 @@ def pending_transcribe_ids() -> list[str]:
             "AND status NOT IN ('transcription_failed','transcribing')"
         ),
     )
+
+
+def fix_future_meeting_dates() -> int:
+    """Correct recordings already stored with a mistyped future year.
+
+    The crawler corrects these on ingest now (services/meeting_dates.py);
+    this repairs rows saved before that. Keeps the original in
+    recording.meeting_date_raw. Returns the number of rows changed."""
+    from services.meeting_dates import correct_future_date, year_from_url
+
+    db = SessionLocal()
+    try:
+        docs = (
+            db.query(Document)
+            .filter(Document.doc_type.in_(_RECORDING_DOC_TYPES))
+            .filter(text("(metadata->'recording'->>'meeting_date') > to_char(current_date, 'YYYY-MM-DD')"))
+            .all()
+        )
+        changed = 0
+        for doc in docs:
+            meta = doc.metadata_ or {}
+            rec = meta.get("recording") or {}
+            raw = rec.get("meeting_date")
+            fixed = correct_future_date(raw, url_year=year_from_url(meta.get("source_url") or ""))
+            if not fixed:
+                continue
+            logger.info("Meeting %s: future date %s → %s", doc.id, raw, fixed)
+            doc.metadata_ = {**meta, "recording": {**rec, "meeting_date": fixed, "meeting_date_raw": raw}}
+            changed += 1
+        db.commit()
+        return changed
+    finally:
+        db.close()
+
+
+def pending_upgrade_ids() -> list[str]:
+    """Recordings whose transcript came from an older local Whisper model.
+
+    Re-transcribed after new recordings are handled: Board of Education
+    first, then everything else, newest meeting first within each.
+    YouTube caption transcripts aren't Whisper output and are left alone; a
+    failed upgrade sets transcription_failed (old transcript kept) and drops
+    out of this queue."""
+    from services.transcription_service import whisper_engine_name
+
+    current = whisper_engine_name()
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text(
+                f"SELECT id, metadata->'transcript'->>'engine' FROM documents "
+                f"WHERE doc_type IN {_DOC_TYPES_SQL} "
+                f"  AND strpos(metadata->'transcript'->>'engine', 'faster-whisper-') > 0 "
+                f"  AND status NOT IN ('transcription_failed','transcribing','summarizing') "
+                f"ORDER BY (doc_type = 'recording_school_board') DESC, "
+                f"  COALESCE((metadata->'recording'->>'meeting_date')::date, created_at::date) DESC"
+            )
+        ).fetchall()
+    finally:
+        db.close()
+    # Engines look like "faster-whisper-base", "faster-whisper-base-chunked",
+    # "yt-dlp+faster-whisper-base".
+    stale = []
+    for doc_id, engine in rows:
+        tail = engine.split("+")[-1].removesuffix("-chunked")
+        if tail != current:
+            stale.append(str(doc_id))
+    return stale
 
 
 def pending_summarize_ids() -> list[str]:

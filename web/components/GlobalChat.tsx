@@ -4,8 +4,9 @@ import { TOWN, SCHOOL_ENTITY, SCHOOL_ABBR, KIND_LABEL, FILE_PREFIX } from "@/lib
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { searchDocuments, resolveCitation, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, type Document } from "@/lib/api";
+import { searchDocuments, resolveCitation, getDocumentViewUrl, getChatSessions, getChatHistory, uploadDocument, shareChatAnswer, type Document } from "@/lib/api";
 import { useIsMobile } from "@/lib/hooks";
+import { useAuth } from "@/app/contexts/AuthContext";
 import EnhancedMessageComponent, { type ChatMessage, type ToolActivity } from "@/components/EnhancedMessageComponent";
 import FilePreviewModal from "@/components/FilePreviewModal";
 import { useDeckChat, type DeckProposal } from "@/app/contexts/DeckChatContext";
@@ -206,6 +207,8 @@ export default function GlobalChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepThinking, setDeepThinking] = useState(false);
+  const { user } = useAuth();
+  const canDeepThink = !!(user?.is_admin || user?.can_deep_think);
   // reportMode kept in state (still passed to backend) so existing chat sessions
   // don't break, but the toggle UI is gone — presentations replace formal reports.
   const reportMode = false;
@@ -484,6 +487,14 @@ export default function GlobalChat() {
   };
 
   /** Send an assistant message body to the active deck as a new narrative section. */
+  // Chips only on the newest answer; older ones would branch the conversation.
+  const lastAssistantId = [...messages].reverse().find(m => m.role === "assistant")?.id;
+
+  const handleShareMessage = async (msg: ChatMessage): Promise<string> => {
+    const { token } = await shareChatAnswer(sessionId, msg.content);
+    return `${window.location.origin}/s/${token}`;
+  };
+
   const handleSendMessageToDeck = async (msg: ChatMessage) => {
     if (!activeDeck) {
       setMessages(prev => [...prev, {
@@ -584,8 +595,8 @@ export default function GlobalChat() {
     }
   };
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text || isStreaming) return;
     setInput(""); setShowDocPicker(false); setShowHistory(false);
     ensureNotifyPermission();
@@ -609,7 +620,7 @@ export default function GlobalChat() {
         model: "claude",
         session_id: sessionId,
         web_search: webSearchEnabled,
-        deep_thinking: deepThinking,
+        deep_thinking: deepThinking && canDeepThink,
         report_mode: reportMode,
         scope_type: chatScope.type,
         scope_id: chatScope.id,
@@ -648,6 +659,11 @@ export default function GlobalChat() {
         } else {
           throw netErr;
         }
+      }
+      if (!response.ok) {
+        // Budget / permission errors come back as JSON, not an SSE stream.
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.detail || `Chat request failed (${response.status})`);
       }
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -724,6 +740,28 @@ export default function GlobalChat() {
               patchMessage(assistantMsg.id, { content: full, statusText: undefined });
               break;
 
+            case "narration": {
+              // Text written before a tool call is working notes, not the
+              // answer: move it from the answer into the activity log.
+              const note: string = d.text || "";
+              if (note && full.endsWith(note)) full = full.slice(0, full.length - note.length);
+              patchMessage(assistantMsg.id, m => ({
+                content: full,
+                toolActivity: note.trim()
+                  ? [...(m.toolActivity || []), { name: "note", description: note.trim(), status: "done" as const }]
+                  : m.toolActivity,
+              }));
+              break;
+            }
+
+            case "followups":
+              patchMessage(assistantMsg.id, { followups: Array.isArray(d.questions) ? d.questions : [] });
+              break;
+
+            case "clarification":
+              patchMessage(assistantMsg.id, { followups: Array.isArray(d.options) ? d.options : [] });
+              break;
+
             case "thinking":
               patchMessage(assistantMsg.id, {
                 thinking: d.status === "done" ? "done" : "started",
@@ -764,6 +802,10 @@ export default function GlobalChat() {
               patchMessage(assistantMsg.id, m => ({
                 isStreaming: false,
                 statusText: undefined,
+                checks: {
+                  unverified: Array.isArray(d.unverified_figures) ? d.unverified_figures : [],
+                  removed: Array.isArray(d.citations_removed) ? d.citations_removed : [],
+                },
                 cost: {
                   input_tokens: d.input_tokens,
                   output_tokens: d.output_tokens,
@@ -1031,6 +1073,7 @@ export default function GlobalChat() {
             "School (...) only") wraps onto a second row instead of pushing
             the doc-scope button off-screen. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 md:px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0 text-[11px]">
+          {canDeepThink && (
           <label
             className={`flex items-center gap-1.5 cursor-pointer ${deepThinking ? "font-semibold" : "text-gray-500"}`}
             style={deepThinking ? { color: brandColor } : undefined}
@@ -1040,6 +1083,7 @@ export default function GlobalChat() {
             <LightBulbIcon className="w-3 h-3" />
             Deep
           </label>
+          )}
           <label
             className={`flex items-center gap-1.5 cursor-pointer ${webSearchEnabled ? "font-semibold" : "text-gray-500"}`}
             style={webSearchEnabled ? { color: brandColor } : undefined}
@@ -1174,6 +1218,8 @@ export default function GlobalChat() {
               onSendMessageToDeck={activeDeck ? handleSendMessageToDeck : undefined}
               activeDeckTitle={activeDeck?.title}
               onMessageToNewPresentation={!activeDeck && !convertingDeck ? handleMessageToNewPresentation : undefined}
+              onFollowup={!isStreaming && msg.id === lastAssistantId ? (q => handleSend(q)) : undefined}
+              onShare={handleShareMessage}
             />
           ))}
           <div ref={messagesEndRef} />
@@ -1260,7 +1306,7 @@ export default function GlobalChat() {
               disabled={isStreaming}
             />
             <button
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={!input.trim() || isStreaming}
               className={`text-white rounded-xl hover:opacity-90 disabled:opacity-50 shadow-lg ${isMobile ? "min-w-[44px] min-h-[44px] flex items-center justify-center" : "px-3 py-2"}`}
               style={{ backgroundColor: brandColor }}

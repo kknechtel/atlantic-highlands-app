@@ -23,8 +23,11 @@ logger = logging.getLogger(__name__)
 # Gemini: https://ai.google.dev/pricing
 _RATES: dict[str, tuple[float, float]] = {
     # input, output
-    "claude-opus-4-7": (15.0, 75.0),
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-opus-4-7": (5.0, 25.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
     "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-5-5": (0.10, 0.50),
     "claude-haiku-4-5-20251001": (1.0, 5.0),
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-flash-lite": (0.10, 0.40),
@@ -37,29 +40,34 @@ _RATES: dict[str, tuple[float, float]] = {
 }
 
 
-def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Estimate USD cost for `model` at the given token counts. Falls back
-    to Sonnet pricing if the model isn't in the rate table — better to log a
-    rough number than zero, but warn so we notice unknown models."""
+def rates_for(model: str) -> tuple[float, float]:
+    """(input, output) USD per million tokens. Falls back by model family
+    — better to log a rough number than zero, but warn so we notice."""
     rates = _RATES.get(model)
-    if rates is None:
-        # Best-effort fuzzy match.
-        m = model.lower()
-        if "opus" in m:
-            rates = _RATES["claude-opus-4-7"]
-        elif "haiku" in m:
-            rates = _RATES["claude-haiku-4-5-20251001"]
-        elif "sonnet" in m or "claude" in m:
-            rates = _RATES["claude-sonnet-4-6"]
-        elif "gemini" in m and "pro" in m:
-            rates = _RATES["gemini-2.5-pro"]
-        elif "gemini" in m:
-            rates = _RATES["gemini-2.5-flash"]
-        else:
-            logger.warning("estimate_cost: unknown model %r — defaulting to Sonnet rates", model)
-            rates = _RATES["claude-sonnet-4-6"]
-    in_rate, out_rate = rates
-    return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
+    if rates is not None:
+        return rates
+    m = model.lower()
+    if "opus" in m:
+        return _RATES["claude-opus-4-7"]
+    if "haiku" in m:
+        return _RATES["claude-haiku-4-5-20251001"]
+    if "sonnet" in m or "claude" in m:
+        return _RATES["claude-sonnet-4-6"]
+    if "gemini" in m and "pro" in m:
+        return _RATES["gemini-2.5-pro"]
+    if "gemini" in m:
+        return _RATES["gemini-2.5-flash"]
+    logger.warning("estimate_cost: unknown model %r — defaulting to Sonnet rates", model)
+    return _RATES["claude-sonnet-4-6"]
+
+
+def estimate_cost(model: str, input_tokens: int, output_tokens: int,
+                  cache_read: int = 0, cache_write: int = 0) -> float:
+    """Estimate USD cost. Anthropic reports cached tokens separately from
+    input_tokens: cache reads bill at ~0.1x input, cache writes at 1.25x."""
+    in_rate, out_rate = rates_for(model)
+    return (input_tokens * in_rate + cache_write * in_rate * 1.25
+            + cache_read * in_rate * 0.1 + output_tokens * out_rate) / 1_000_000
 
 
 def record_usage(

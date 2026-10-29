@@ -137,7 +137,7 @@ export default function LoginForm() {
           {isInviteFlow && (
             <div className="mb-4 p-3 rounded-lg border" style={{ borderColor: brandColor, backgroundColor: `${brandColor}08` }}>
               <p className="text-sm text-center font-medium" style={{ color: brandColor }}>
-                You&apos;ve been invited! Set your password below.
+                You&apos;ve been invited! {HAS_GOOGLE ? "Continue with Google, or set a password below." : "Set your password below."}
               </p>
             </div>
           )}

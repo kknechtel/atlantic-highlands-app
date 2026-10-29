@@ -7,7 +7,7 @@ iteratively call:
 
   - search_documents(query, fiscal_year?, category?)
   - search_chunks(query, fiscal_year?, category?)        ← passage-level
-  - read_document(document_id, max_chars?)
+  - read_document(document_id, offset?, max_chars?, find?)
   - get_financial_summary(entity?, fiscal_year?)
   - list_recent_documents(doc_type?)
   - web_search(query)                                    ← when enabled
@@ -37,13 +37,19 @@ from sqlalchemy import desc, text as sql_text
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
-from config import api_key
+from config import api_key, setting
+from services.chat_budget import enforce_budget, may_deep_think
 from database import SessionLocal, get_db
 from models.financial import FinancialStatement
 from models.user import User
 from municipality import TOWN, context, entities, entity_ids
+from services.chat_citations import AnswerFilter, CitationIndex, unverified_figures
+from services import chat_research
+from services.doc_reader import find_lines, read_window
 from services.rag_search import (
     get_document_excerpt,
+    get_document_text,
+    get_texts_by_filename,
     list_recent_documents,
     search_chunks,
     search_documents,
@@ -149,7 +155,7 @@ After share_plan, follow the plan: call the search/read tools, then write the fi
 
 For every non-trivial question:
 1. Call `search_chunks` with the user's question (verbatim or rephrased) — this returns the most relevant passages from across the entire document corpus.
-2. If the chunks point to a document worth reading in full, call `read_document` with that document's ID.
+2. If the chunks point to a document worth reading in full, call `read_document` with that document's ID. To check one figure, name or phrase inside a long document, use `read_document` with `find` instead of reading it all; to search a single document by topic, pass `document_id` to `search_chunks`.
 3. If the question concerns budgets, taxes, debt, or fund balances:
    - For HEADLINE figures, call `get_financial_summary`.
    - For ANALYSIS (revenue composition, expenditure breakdown, fund-balance health, debt position, red flags), call `get_drill_results` for the relevant statement_id. The drill is far richer than the summary — use it.
@@ -158,7 +164,12 @@ For every non-trivial question:
 4. For VENDOR / CONTRACT questions, call `search_contracts` and/or `get_vendor_summary`.
 5. MEETING RECORDINGS — `search_chunks` already covers them. They show up as `doc_type=recording_council`, `recording_planning`, `recording_harbor`, or `recording_school_board`. Each chunk's text is prefixed with `[HH:MM:SS]` markers from the transcript. When citing a moment from a meeting, INCLUDE the timestamp in your answer (e.g. "At [01:23:45] the council voted 5-0…"). The frontend turns these into seek-to links on the meeting page. Use `read_document` to scroll the full transcript when you need broader context than the chunks give.
 6. Apply the ANALYSIS NOTES from the background (accounting basis, fiscal years, predecessor entities, statutory caps) before comparing or summing figures.
-7. Cite every fact with `[source: filename.pdf]` — these become clickable links.
+7. Cite every fact with `[source: filename.pdf]` — these become clickable links. Use only a `filename` a tool returned this turn (or one already cited earlier in this chat): never a document ID, a description, or a page number inside the tag. Tags that don't match a retrieved document are removed before the reader sees them, and cited dollar figures are checked against the document text, so copy figures exactly.
+8. "LATEST / MOST RECENT / LAST" questions: call `list_recent_documents` first (newest first by meeting/document date; doc_type e.g. minutes, agenda, recording) so you know what the newest records are before searching.
+9. TABLES: if a figure comes from a table and the extracted text is jumbled, or you can't tell which year/fund column it belongs to, call `view_document_page` on that page instead of guessing.
+10. BROAD questions spanning many years or documents ("history of X", "how has Y changed since 2018"): call `research_topic` once, then write the answer from its findings (verify key figures with search_chunks/read_document if they matter).
+11. AMBIGUOUS questions where the answer depends on something unstated (which tax: municipal, school or county; which year; which board): call `request_clarification` instead of guessing. Don't use it when a reasonable reading exists — answer that and note the assumption.
+12. End EVERY answer with a hidden line `<!--followups:["...", "..."]-->` holding 2-3 short follow-up questions this reader would plausibly ask next (a JSON array of strings). The reader sees them as buttons, not text.
 
 ## Output style
 
@@ -278,8 +289,9 @@ def _tool_defs() -> list[dict]:
                     "doc_type": {"type": "string", "description": "e.g. minutes, agenda, budget, audit, ordinance, resolution, bill_list, planning"},
                     "department": {"type": "string"},
                     "fiscal_year": {"type": "string"},
-                    "date_from": {"type": "string", "description": "YYYY-MM-DD; only documents dated on/after"},
-                    "date_to": {"type": "string", "description": "YYYY-MM-DD; only documents dated on/before"},
+                    "date_from": {"type": "string", "description": "YYYY, YYYY-MM or YYYY-MM-DD; only documents dated on/after"},
+                    "date_to": {"type": "string", "description": "YYYY, YYYY-MM or YYYY-MM-DD; only documents dated on/before"},
+                    "document_id": {"type": "string", "description": "Search inside this one document only."},
                     "top_k": {"type": "integer", "default": 8, "minimum": 1, "maximum": 20},
                 },
                 "required": ["query"],
@@ -287,11 +299,18 @@ def _tool_defs() -> list[dict]:
         },
         {
             "name": "read_document",
-            "description": "Read a specific document by ID. Use this AFTER search_documents/search_chunks identifies a document you need to inspect more carefully.",
+            "description": (
+                "Read a specific document by ID, after search_documents/search_chunks identifies one worth inspecting. "
+                "Returns a window of text; if `next_offset` is set, call again with offset=next_offset to continue. "
+                "Pass `find` to get only the lines containing a word, name or dollar figure (with page numbers) "
+                "instead of reading the whole document."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "document_id": {"type": "string"},
+                    "find": {"type": "string", "description": "Return only lines containing this text (case-insensitive)."},
+                    "offset": {"type": "integer", "default": 0, "minimum": 0, "description": "Character offset to start reading from."},
                     "max_chars": {"type": "integer", "default": 12000, "maximum": 30000},
                 },
                 "required": ["document_id"],
@@ -310,13 +329,67 @@ def _tool_defs() -> list[dict]:
         },
         {
             "name": "list_recent_documents",
-            "description": "List recent documents, optionally filtered by doc_type (budget, audit, minutes, resolution, ordinance). Use for browsing-style questions.",
+            "description": (
+                "List the newest documents, sorted by the date they are about (meeting date, budget "
+                "date), newest first. Use FIRST for 'latest / most recent / last meeting' questions. "
+                "doc_type filters: minutes, agenda, budget, audit, resolution, ordinance, planning, "
+                "recording (all meeting recordings) or a specific one like recording_council."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "doc_type": {"type": "string"},
+                    "municipality": {"type": "string", "enum": entity_ids()},
                     "limit": {"type": "integer", "default": 20, "maximum": 50},
                 },
+            },
+        },
+        {
+            "name": "view_document_page",
+            "description": (
+                "Look at up to 3 pages of a PDF as images and report what is printed there. Use when a "
+                "table's extracted text is jumbled or you can't tell which year/fund column a figure "
+                "belongs to. Pages are 1-based (search results give page_start/page_end)."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "document_id": {"type": "string"},
+                    "pages": {"type": "array", "items": {"type": "integer"}, "minItems": 1, "maxItems": 3},
+                    "question": {"type": "string", "description": "What to read off the page(s)."},
+                },
+                "required": ["document_id", "pages", "question"],
+            },
+        },
+        {
+            "name": "research_topic",
+            "description": (
+                "For broad questions that span many years or documents: splits the question into "
+                "sub-questions, searches each, and returns sourced findings plus the documents used. "
+                "Call once, then write your answer from the findings."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "municipality": {"type": "string", "enum": entity_ids()},
+                },
+                "required": ["question"],
+            },
+        },
+        {
+            "name": "request_clarification",
+            "description": (
+                "Ask the reader ONE short clarifying question with 2-6 answer options, then stop. "
+                "Only when the question is ambiguous in a way that changes the answer."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "options": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 6},
+                },
+                "required": ["question", "options"],
             },
         },
         {
@@ -475,9 +548,13 @@ CHUNK_CHARS = 1500
 
 
 def _exec_search_chunks(db: Session, args: dict) -> dict:
-    """Same ranking pipeline as /api/search (parse, expand, hybrid RRF, rerank)."""
+    """Same ranking pipeline as /api/search (parse, expand, hybrid RRF, rerank).
+    Passages come back with their doc header; each source document is listed
+    once with its summary, so the model rarely needs a separate
+    search_documents call."""
     from routes.search import rank_chunks
     top_k = min(int(args.get("top_k", 8)), 20)
+    date_from, date_to = args.get("date_from"), args.get("date_to")
     rows, _, _, _ = rank_chunks(
         db, args["query"],
         fiscal_year=args.get("fiscal_year"),
@@ -485,47 +562,82 @@ def _exec_search_chunks(db: Session, args: dict) -> dict:
         doc_type=args.get("doc_type"),
         department=args.get("department"),
         municipality=args.get("municipality"),
+        document_id=args.get("document_id"),
+        date_from=date_from,
+        date_to=date_to,
         pool_size=max(top_k * 3, 30),
     )
-    date_from, date_to = args.get("date_from"), args.get("date_to")
-    if date_from or date_to:
-        rows = [r for r in rows if r.get("doc_date")
-                and (not date_from or r["doc_date"] >= date_from)
-                and (not date_to or r["doc_date"] <= date_to)]
     rows = rows[:top_k]
-    return {
+    documents: dict[str, dict] = {}
+    for r in rows:
+        did = str(r["document_id"])
+        if did not in documents:
+            documents[did] = {
+                "document_id": did,
+                "filename": r["filename"],
+                "title": r.get("title"),
+                "doc_date": r.get("doc_date"),
+                "fiscal_year": r.get("fiscal_year"),
+                "municipality": r.get("municipality"),
+                "doc_type": r.get("doc_type"),
+                "summary": (r.get("notes") or "")[:400],
+            }
+    out = {
         "count": len(rows),
         "chunks": [
             {
                 "document_id": str(r["document_id"]),
                 "filename": r["filename"],
-                "title": r.get("title"),
-                "doc_date": r.get("doc_date"),
-                "municipality": r.get("municipality"),
-                "doc_type": r.get("doc_type"),
+                "context": r.get("context"),
                 "page_start": r.get("page_start"),
                 "page_end": r.get("page_end"),
                 "content": (r.get("content") or "")[:CHUNK_CHARS],
             }
             for r in rows
         ],
+        "documents": list(documents.values()),
     }
+    if not rows:
+        scope = []
+        if date_from or date_to:
+            scope.append(f"dated {date_from or 'any time'} to {date_to or 'now'}")
+        if args.get("document_id"):
+            scope.append("in that document")
+        out["note"] = (
+            "No matching passages" + (f" {' and '.join(scope)}" if scope else "")
+            + ". Try fewer filters or different words before concluding the records don't exist."
+        )
+    return out
 
 
 def _exec_read_document(db: Session, args: dict) -> dict:
-    doc = get_document_excerpt(db, args["document_id"], max_chars=int(args.get("max_chars", 12000)))
+    doc = get_document_text(db, args["document_id"])
     if not doc:
         return {"error": "not_found"}
-    return {
+    out = {
         "document_id": str(doc["id"]),
         "filename": doc["filename"],
+        "title": doc.get("title"),
+        "doc_date": doc.get("doc_date"),
         "doc_type": doc.get("doc_type"),
         "fiscal_year": doc.get("fiscal_year"),
         "category": doc.get("category"),
         "page_count": doc.get("page_count"),
-        "summary": doc.get("notes"),
-        "excerpt": doc.get("excerpt") or "",
     }
+    find = (args.get("find") or "").strip()
+    if find:
+        out.update(find_lines(doc["body"], find))
+        return out
+    offset = int(args.get("offset") or 0)
+    window = read_window(doc["body"], offset, min(int(args.get("max_chars") or 12000), 30000))
+    if offset == 0:
+        out["summary"] = doc.get("notes")
+    out.update(window)
+    if window["next_offset"] is not None:
+        out["note"] = (f"Showing characters {window['offset']}-{window['next_offset']} of "
+                       f"{window['total_chars']}. Call read_document with offset={window['next_offset']} "
+                       "to continue, or use find to jump to specific text.")
+    return out
 
 
 def _exec_get_financial_summary(db: Session, args: dict) -> dict:
@@ -571,13 +683,17 @@ def _exec_get_financial_summary(db: Session, args: dict) -> dict:
 
 
 def _exec_list_recent_documents(db: Session, args: dict) -> dict:
-    rows = list_recent_documents(db, doc_type=args.get("doc_type"), limit=int(args.get("limit", 20)))
+    rows = list_recent_documents(db, doc_type=args.get("doc_type"), limit=int(args.get("limit", 20)),
+                                 municipality=args.get("municipality"))
     return {
         "count": len(rows),
         "documents": [
             {
                 "document_id": str(r["id"]),
                 "filename": r["filename"],
+                "title": r.get("title"),
+                "doc_date": r.get("doc_date"),
+                "municipality": r.get("municipality"),
                 "doc_type": r.get("doc_type"),
                 "category": r.get("category"),
                 "fiscal_year": r.get("fiscal_year"),
@@ -772,6 +888,10 @@ def _execute_tool(name: str, args: dict, db: Session) -> dict:
             # via a dedicated SSE event; the tool result is a plain ack so
             # the model can narrate around it without echoing the full body.
             return {"ok": True, "ack": "Proposal sent to the deck editor."}
+        if name == "research_topic":
+            return chat_research.research_topic(db, args, model=_chat_model(deep=False))
+        if name == "view_document_page":
+            return chat_research.view_document_page(db, args, model=_chat_model(deep=False))
         if name == "search_documents":
             return _exec_search_documents(db, args)
         if name == "search_chunks":
@@ -830,6 +950,96 @@ def get_chat_history(
             for r in rows
         ],
     }
+
+
+class ShareRequest(BaseModel):
+    session_id: str
+    answer: str  # the answer text as shown; must match a saved answer in this session
+
+
+_SHARE_HITS: dict[str, list[float]] = {}
+_SHARE_LIMIT_PER_MIN = 60
+
+
+def _share_rate_ok(request: Request) -> bool:
+    """Per-IP limit on the public share route (nginx sets X-Forwarded-For)."""
+    import time
+    ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (
+        request.client.host if request.client else "?")
+    now = time.monotonic()
+    hits = [t for t in _SHARE_HITS.get(ip, []) if now - t < 60]
+    if len(hits) >= _SHARE_LIMIT_PER_MIN:
+        _SHARE_HITS[ip] = hits
+        return False
+    hits.append(now)
+    _SHARE_HITS[ip] = hits
+    if len(_SHARE_HITS) > 10000:
+        _SHARE_HITS.clear()
+    return True
+
+
+@router.post("/share")
+def create_share(req: ShareRequest, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    """Publish one answer (and the question before it) at a public link.
+    The text comes from the saved chat, never from the client."""
+    import secrets
+    from datetime import datetime, timedelta
+    from models.chat_share import ChatShare
+
+    rows = db.execute(sql_text(
+        "SELECT role, content, user_id, created_at FROM chat_history "
+        "WHERE session_id = :sid ORDER BY created_at"
+    ), {"sid": req.session_id}).fetchall()
+    if not rows or (not user.is_admin and any(
+            r.user_id is not None and str(r.user_id) != str(user.id) for r in rows)):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    want = req.answer.strip()
+    idx = next((i for i in range(len(rows) - 1, -1, -1)
+                if rows[i].role == "assistant" and (rows[i].content or "").strip() == want), None)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="That answer isn't saved yet. Wait for it to finish, then try again.")
+    question = next((rows[i].content for i in range(idx - 1, -1, -1) if rows[i].role == "user"), "")
+    share = ChatShare(
+        token=secrets.token_urlsafe(16), session_id=req.session_id,
+        question=question or "", answer=rows[idx].content, created_by=user.id,
+        expires_at=datetime.utcnow() + timedelta(days=365),
+    )
+    db.add(share)
+    db.commit()
+    return {"token": share.token, "expires_at": share.expires_at.isoformat()}
+
+
+@router.get("/shared/{token}")
+def read_share(token: str, request: Request, db: Session = Depends(get_db)):
+    """Public (no login). 404 for unknown, revoked or expired links."""
+    from datetime import datetime
+    from models.chat_share import ChatShare
+
+    if not _share_rate_ok(request):
+        raise HTTPException(status_code=429, detail="Too many requests, try again in a minute.")
+    share = db.get(ChatShare, token)
+    if (share is None or share.revoked_at is not None
+            or (share.expires_at and share.expires_at < datetime.utcnow())):
+        raise HTTPException(status_code=404, detail="This link has expired or was removed.")
+    share.view_count = (share.view_count or 0) + 1
+    db.commit()
+    return {"question": share.question, "answer": share.answer,
+            "created_at": share.created_at.isoformat()}
+
+
+@router.delete("/share/{token}")
+def revoke_share(token: str, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    from datetime import datetime
+    from models.chat_share import ChatShare
+
+    share = db.get(ChatShare, token)
+    if share is None or (not user.is_admin and str(share.created_by) != str(user.id)):
+        raise HTTPException(status_code=404, detail="Link not found")
+    share.revoked_at = datetime.utcnow()
+    db.commit()
+    return {"revoked": True}
 
 
 @router.get("/sessions")
@@ -969,11 +1179,17 @@ def _attached_doc_context(db: Session, document_id: Optional[str]) -> str:
     doc = get_document_excerpt(db, document_id, max_chars=30000)
     if not doc:
         return ""
+    excerpt = doc.get("excerpt") or ""
+    more = ""
+    if len(excerpt) >= 30000:
+        more = (f"\n\n(Only the first 30,000 characters are shown. Use read_document with "
+                f"document_id={doc['id']} and `find` or `offset`, or search_chunks with this "
+                f"document_id, to see the rest.)")
     return (
         f"## ATTACHED DOCUMENT (inline)\n\n"
-        f"**{doc['filename']}** (FY {doc.get('fiscal_year') or '?'}, "
+        f"**{doc['filename']}** (document_id {doc['id']}, FY {doc.get('fiscal_year') or '?'}, "
         f"{doc.get('doc_type') or 'document'})\n\n"
-        f"{doc.get('excerpt') or ''}\n"
+        f"{excerpt}{more}\n"
     )
 
 
@@ -996,7 +1212,14 @@ def _describe_tool_call(name: str, input_args: dict) -> str:
     if name == "web_search" and q:
         return f"Web search: “{q[:80]}”"
     if name == "read_document":
+        if args.get("find"):
+            return f"Looking for “{str(args['find'])[:60]}” in document"
         return "Reading document"
+    if name == "research_topic":
+        return f"Researching: “{str(args.get('question') or '')[:80]}”"
+    if name == "view_document_page":
+        pages = ", ".join(str(p) for p in (args.get("pages") or []))
+        return f"Looking at page{'s' if ',' in pages else ''} {pages} of document"
     if name == "get_financial_summary":
         ent = args.get("entity") or "all"
         fy = args.get("fiscal_year")
@@ -1051,6 +1274,10 @@ async def chat_stream(
             ), {"sid": session_id}).fetchone()
             if owner is not None and owner[0] is not None and str(owner[0]) != user_id_str:
                 raise HTTPException(status_code=404, detail="Session not found")
+
+        enforce_budget(setup_db, user)
+        if req.deep_thinking and not may_deep_think(user):
+            req.deep_thinking = False  # Opus mode is per-user; fall back silently
 
         doc_context = _attached_doc_context(setup_db, req.document_id)
         history_rows = setup_db.execute(sql_text(
@@ -1113,6 +1340,16 @@ async def _stream_claude(
     messages: list[dict] = list(history[-30:])
     messages.append({"role": "user", "content": req.query})
 
+    # Citations may name any document a tool returned this turn, or one
+    # already cited earlier in the conversation (those were checked then).
+    index = CitationIndex()
+    for h in history:
+        if h.get("role") == "assistant":
+            index.add_from_text(h.get("content") or "")
+    answer = AnswerFilter(index)
+    tool_texts: dict[str, list[str]] = {}
+    chat_research.CURRENT_USER.set(user_id)
+
     accumulated_text = ""
     tool_calls_made = 0
     total_input_tokens = 0
@@ -1128,20 +1365,73 @@ async def _stream_claude(
     # is steered via output_config.effort (low/medium/high/xhigh/max).
     output_config_cfg: Optional[dict] = None
     if req.deep_thinking:
-        model = "claude-opus-4-7"
+        model = _chat_model(deep=True)
         max_tokens = 32000
         thinking_cfg: Optional[dict] = {"type": "adaptive"}
         output_config_cfg = {"effort": "high"}
     else:
-        model = "claude-sonnet-4-6"
+        model = _chat_model(deep=False)
         max_tokens = 16000
         thinking_cfg = None
+        if effort := _chat_effort():
+            output_config_cfg = {"effort": effort}
+
+    def finish(stop_reason: str) -> list[str]:
+        """Flush the answer, check cited figures, save, and build the closing events."""
+        nonlocal accumulated_text
+        events = []
+        tail = answer.flush()
+        if tail:
+            accumulated_text += tail
+            events.append(_sse("delta", {"content": tail, "session_id": session_id}))
+        save_db = SessionLocal()
+        try:
+            unverified = []
+            if answer.cited:
+                texts = get_texts_by_filename(save_db, answer.cited)
+                for f in answer.cited:
+                    texts[f] = texts.get(f, "") + "\n".join(tool_texts.get(f, []))
+                unverified = unverified_figures(accumulated_text, texts)
+            _save_message(save_db, session_id, "assistant", accumulated_text,
+                          req.scope_type, req.scope_id, user_id=user_id)
+            from services.usage import record_usage
+            record_usage(
+                save_db, source="chat", model=model,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                estimated_cost_usd=_estimate_cost(
+                    model, total_input_tokens, total_output_tokens,
+                    total_cache_read, total_cache_write),
+                user_id=user_id,
+                resource_type="chat_session", resource_id=session_id,
+                metadata={"tool_calls": tool_calls_made,
+                          "stop_reason": stop_reason,
+                          "cache_read_tokens": total_cache_read,
+                          "cache_write_tokens": total_cache_write,
+                          "citations_dropped": len(answer.dropped),
+                          "figures_unverified": len(unverified)},
+            )
+        finally:
+            save_db.close()
+        if answer.followups:
+            events.append(_sse("followups", {"questions": answer.followups}))
+        cost = _estimate_cost(model, total_input_tokens, total_output_tokens,
+                              total_cache_read, total_cache_write)
+        events.append(_sse("done", {"session_id": session_id,
+                                    "tool_calls_made": tool_calls_made,
+                                    "stop_reason": stop_reason,
+                                    "input_tokens": total_input_tokens,
+                                    "output_tokens": total_output_tokens,
+                                    "estimated_cost_usd": round(cost, 4),
+                                    "citations_removed": answer.dropped[:10],
+                                    "unverified_figures": unverified[:20]}))
+        return events
 
     try:
         yield _sse("session", {"session_id": session_id})
         yield _sse("status", {"text": "Building context…", "stage": "context"})
 
-        for iteration in range(8):
+        for iteration in range(MAX_TOOL_ROUNDS):
             if await request.is_disconnected():
                 return
 
@@ -1159,16 +1449,21 @@ async def _stream_claude(
                 "system": system_blocks,
                 "tools": tools,
                 "messages": messages,
-                # 1M-token context window beta. Tiered pricing — first 200K at
-                # standard rate, the rest at premium. Anthropic's policy.
-                "extra_headers": {"anthropic-beta": "context-1m-2025-08-07"},
             }
+            if "4-6" in model:
+                # 1M-token context window beta for the 4.6 models (5.x have
+                # 1M by default). Above 200K input bills at a premium rate.
+                api_kwargs["extra_headers"] = {"anthropic-beta": "context-1m-2025-08-07"}
             if thinking_cfg:
                 api_kwargs["thinking"] = thinking_cfg
             if output_config_cfg:
                 api_kwargs["output_config"] = output_config_cfg
+            if iteration == MAX_TOOL_ROUNDS - 1:
+                # Last round: no more tools, so the user always gets an answer
+                # instead of the narration that preceded the next tool call.
+                api_kwargs["tool_choice"] = {"type": "none"}
 
-            iter_text = ""
+            iter_emitted = ""  # this round's text as the reader saw it
             thinking_active = False
             last_keepalive = asyncio.get_event_loop().time()
 
@@ -1201,10 +1496,11 @@ async def _stream_claude(
                                 yield ": keepalive\n\n"
                                 last_keepalive = now
                         elif dt == "text_delta":
-                            chunk = getattr(delta, "text", "")
-                            iter_text += chunk
-                            accumulated_text += chunk
-                            yield _sse("delta", {"content": chunk, "session_id": session_id})
+                            chunk = answer.feed(getattr(delta, "text", ""))
+                            if chunk:
+                                iter_emitted += chunk
+                                accumulated_text += chunk
+                                yield _sse("delta", {"content": chunk, "session_id": session_id})
 
                 final_message = await stream.get_final_message()
                 if thinking_active:
@@ -1226,13 +1522,12 @@ async def _stream_claude(
                 # back and let it resume seamlessly. We bound this to
                 # max_continuations to avoid runaway loops.
                 if stop_reason == "max_tokens":
-                    has_tool_use = any(
-                        getattr(b, "type", None) == "tool_use" for b in final_message.content
-                    )
-                    if (iter_text and not has_tool_use
+                    if (iter_emitted and not tool_blocks
                             and continuation_count < max_continuations):
                         continuation_count += 1
-                        messages.append({"role": "assistant", "content": iter_text})
+                        # Send the turn back as-is (thinking blocks included):
+                        # newer models reject edited assistant turns.
+                        messages.append({"role": "assistant", "content": final_message.content})
                         messages.append({
                             "role": "user",
                             "content": "Continue exactly where you left off. Do not repeat or summarize what you've already written.",
@@ -1243,42 +1538,39 @@ async def _stream_claude(
                         })
                         continue
                     # Out of continuations or had a pending tool_use — wrap up.
-                    if iter_text:
+                    if iter_emitted:
                         truncation_note = "\n\n---\n\n*Response reached the token limit. Ask a follow-up to continue, or open a new chat for more depth.*"
                         accumulated_text += truncation_note
                         yield _sse("delta", {"content": truncation_note, "session_id": session_id})
 
                 if not tool_blocks or stop_reason != "tool_use":
-                    # Final answer reached.
-                    save_db = SessionLocal()
-                    try:
-                        _save_message(save_db, session_id, "assistant", accumulated_text,
-                                      req.scope_type, req.scope_id, user_id=user_id)
-                        from services.usage import record_usage
-                        record_usage(
-                            save_db, source="chat", model=model,
-                            input_tokens=total_input_tokens,
-                            output_tokens=total_output_tokens,
-                            estimated_cost_usd=_estimate_cost(
-                                model, total_input_tokens, total_output_tokens,
-                                total_cache_read, total_cache_write),
-                            user_id=user_id,
-                            resource_type="chat_session", resource_id=session_id,
-                            metadata={"tool_calls": tool_calls_made,
-                                      "stop_reason": stop_reason,
-                                      "cache_read_tokens": total_cache_read,
-                                      "cache_write_tokens": total_cache_write},
-                        )
-                    finally:
-                        save_db.close()
-                    cost = _estimate_cost(model, total_input_tokens, total_output_tokens,
-                                          total_cache_read, total_cache_write)
-                    yield _sse("done", {"session_id": session_id,
-                                        "tool_calls_made": tool_calls_made,
-                                        "stop_reason": stop_reason,
-                                        "input_tokens": total_input_tokens,
-                                        "output_tokens": total_output_tokens,
-                                        "estimated_cost_usd": round(cost, 4)})
+                    for ev in finish(stop_reason):
+                        yield ev
+                    return
+
+                # Text written before tool calls is working narration, not the
+                # answer: move it out of the answer into the activity log.
+                held = answer.flush()
+                if held:
+                    iter_emitted += held
+                    accumulated_text += held
+                    yield _sse("delta", {"content": held, "session_id": session_id})
+                if iter_emitted:
+                    accumulated_text = accumulated_text[:len(accumulated_text) - len(iter_emitted)]
+                    if iter_emitted.strip():
+                        yield _sse("narration", {"text": iter_emitted})
+
+                clarify = next((tb for tb in tool_blocks if tb.name == "request_clarification"), None)
+                if clarify is not None:
+                    ask = dict(clarify.input or {})
+                    question = (ask.get("question") or "Could you clarify your question?").strip()
+                    options = [str(o).strip()[:120] for o in (ask.get("options") or []) if str(o).strip()][:6]
+                    accumulated_text = question
+                    answer.followups = options
+                    yield _sse("delta", {"content": question, "session_id": session_id})
+                    yield _sse("clarification", {"question": question, "options": options})
+                    for ev in finish("clarification"):
+                        yield ev
                     return
 
                 tool_calls_made += len(tool_blocks)
@@ -1324,6 +1616,8 @@ async def _stream_claude(
                     if tb.name not in ("share_plan", "propose_section"):
                         summary = _summarize_tool_result(tb.name, res)
                         yield _sse("tool_result", {"name": tb.name, "summary": summary})
+                    index.add_tool_result(res)
+                    _collect_texts(res, tool_texts)
                     results.append({
                         "type": "tool_result",
                         "tool_use_id": tb.id,
@@ -1331,38 +1625,16 @@ async def _stream_claude(
                     })
 
                 messages.append({"role": "assistant", "content": final_message.content})
+                if iteration == MAX_TOOL_ROUNDS - 2:
+                    results.append({"type": "text", "text": (
+                        "Tool limit reached. Write your final answer now from what you have found, "
+                        "with citations, and say plainly what you could not find."
+                    )})
                 messages.append({"role": "user", "content": results})
 
-        # Hit the iteration cap — emit what we have.
-        save_db = SessionLocal()
-        try:
-            _save_message(save_db, session_id, "assistant", accumulated_text,
-                          req.scope_type, req.scope_id, user_id=user_id)
-            from services.usage import record_usage
-            record_usage(
-                save_db, source="chat", model=model,
-                input_tokens=total_input_tokens,
-                output_tokens=total_output_tokens,
-                estimated_cost_usd=_estimate_cost(
-                    model, total_input_tokens, total_output_tokens,
-                    total_cache_read, total_cache_write),
-                user_id=user_id,
-                resource_type="chat_session", resource_id=session_id,
-                metadata={"tool_calls": tool_calls_made,
-                          "stop_reason": "iteration_limit",
-                          "cache_read_tokens": total_cache_read,
-                          "cache_write_tokens": total_cache_write},
-            )
-        finally:
-            save_db.close()
-        cost = _estimate_cost(model, total_input_tokens, total_output_tokens,
-                              total_cache_read, total_cache_write)
-        yield _sse("done", {"session_id": session_id,
-                            "tool_calls_made": tool_calls_made,
-                            "stop_reason": "iteration_limit",
-                            "input_tokens": total_input_tokens,
-                            "output_tokens": total_output_tokens,
-                            "estimated_cost_usd": round(cost, 4)})
+        # Only reachable if every round was a max_tokens continuation.
+        for ev in finish("iteration_limit"):
+            yield ev
 
     except anthropic.APIStatusError as exc:
         logger.error("Anthropic API error: %s", exc)
@@ -1379,16 +1651,46 @@ async def _stream_claude(
         yield _sse("error", {"content": str(exc)[:300]})
 
 
+MAX_TOOL_ROUNDS = 8
+
+
+def _chat_model(deep: bool) -> str:
+    """Admin-settable (Settings screen > env > default), read per request."""
+    if deep:
+        return setting("CHAT_DEEP_MODEL", "claude-opus-4-7")
+    return setting("CHAT_MODEL", "claude-sonnet-4-6")
+
+
+def _chat_effort() -> str:
+    return setting("CHAT_EFFORT", "")
+
+
+def _collect_texts(res, out: dict[str, list[str]]) -> None:
+    """Remember the text each tool showed the model, per filename, so cited
+    figures can be checked against what was actually read."""
+    if isinstance(res, list):
+        for item in res:
+            _collect_texts(item, out)
+        return
+    if not isinstance(res, dict):
+        return
+    fn = res.get("filename")
+    if fn:
+        for key in ("content", "excerpt", "reading"):
+            if isinstance(res.get(key), str):
+                out.setdefault(fn, []).append(res[key])
+        for m in res.get("matches") or []:
+            if isinstance(m, dict) and m.get("line"):
+                out.setdefault(fn, []).append(m["line"])
+    for v in res.values():
+        if isinstance(v, (dict, list)):
+            _collect_texts(v, out)
+
+
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int,
                    cache_read: int = 0, cache_write: int = 0) -> float:
-    """Approximate USD. input_tokens excludes cached tokens (Anthropic reports
-    them separately): cache reads bill at 0.1x input, cache writes at 1.25x."""
-    if "opus" in model.lower():
-        in_rate, out_rate = 15.0, 75.0
-    else:
-        in_rate, out_rate = 3.0, 15.0
-    return (input_tokens * in_rate + cache_write * in_rate * 1.25
-            + cache_read * in_rate * 0.1 + output_tokens * out_rate) / 1_000_000
+    from services.usage import estimate_cost
+    return estimate_cost(model, input_tokens, output_tokens, cache_read, cache_write)
 
 
 def _mark_last_message_for_cache(messages: list) -> None:
@@ -1445,7 +1747,14 @@ def _summarize_tool_result(name: str, res: dict) -> str:
     if name == "search_chunks":
         return f"Found {res.get('count', 0)} matching passages"
     if name == "read_document":
+        if "match_count" in res:
+            return f"Found {res['match_count']} line(s) in {res.get('filename', 'document')}"
         return f"Read {res.get('filename', 'document')}"
+    if name == "research_topic":
+        return (f"Researched {len(res.get('sub_questions') or [])} sub-questions across "
+                f"{len(res.get('documents') or [])} documents")
+    if name == "view_document_page":
+        return f"Read page(s) {', '.join(str(p) for p in res.get('pages') or [])} of {res.get('filename', 'document')}"
     if name == "get_financial_summary":
         return f"Loaded {res.get('count', 0)} financial statement(s)"
     if name == "get_drill_results":

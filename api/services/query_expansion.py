@@ -271,6 +271,24 @@ def _llm_paraphrase(query: str) -> list[str]:
         return []
 
 
+_GROUPED_AMOUNT = re.compile(r"(?<![\d,.])\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?(?![\d,])")
+_PLAIN_CENTS = re.compile(r"(?<![\d,.])\d{4,}\.\d{2}(?![\d,])")
+
+
+def amount_variants(query: str) -> list[str]:
+    """Other spellings of exact dollar figures in `query`: "41,206.13" adds
+    "41206.13" and vice versa. Only grouped numbers or numbers with cents,
+    so bare years like 2024 are left alone."""
+    out: list[str] = []
+    for m in _GROUPED_AMOUNT.finditer(query):
+        out.append(m.group(0).replace(",", ""))
+    for m in _PLAIN_CENTS.finditer(query):
+        whole, cents = m.group(0).split(".")
+        out.append(f"{int(whole):,}.{cents}")
+    present = {w.strip("$(),") for w in query.split()}
+    return [v for i, v in enumerate(out) if v not in out[:i] and v not in present]
+
+
 def build_or_query(original: str, expansions: list[str]) -> str:
     """Combine original query and expansion phrases into a websearch_to_tsquery
     string using OR. Quotes multi-word expansions so they match as phrases.

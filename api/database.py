@@ -15,7 +15,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overf
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-EMBEDDING_DIM = 1024  # voyage-3-lite / hash fallback
+EMBEDDING_DIM = 1024  # voyage-3
 
 
 def get_db():
@@ -75,7 +75,7 @@ def rag_health() -> dict:
       1. pgvector extension installed              → semantic search possible
       2. embedding columns exist on docs + chunks  → ingestion can write vectors
       3. VOYAGE_API_KEY set                        → vectors will be SEMANTIC
-                                                     (otherwise hash-vector fallback)
+                                                     (otherwise NULL; search is keyword-only)
     """
     import os
 
@@ -143,7 +143,7 @@ def rag_health() -> dict:
 def _log_rag_health_banner() -> None:
     """Print a hard-to-miss multi-line banner about the RAG pipeline state.
     Helps operators notice when the system is silently running in a degraded
-    mode (keyword-only search, hash-vector fallback)."""
+    mode (keyword-only search, no embedding key)."""
     s = rag_health()
     rule = "=" * 72
 
@@ -176,16 +176,17 @@ def _log_rag_health_banner() -> None:
         lines += [
             "",
             "  pgvector is installed, but VOYAGE_API_KEY is not set.",
-            "  Embeddings will use the SHA-512 hash fallback (deterministic, NOT semantic).",
+            "  Search is keyword-only and new chunks are stored without vectors.",
             "  Keyword search via tsvector still works; chat recall will be okay but not great.",
             "",
-            f"  pgvector v{s['pgvector_version']} · {s['chunks_embedded']}/{s['chunks_total']} chunks embedded (hash)",
+            f"  pgvector v{s['pgvector_version']} · {s['chunks_embedded']}/{s['chunks_total']} chunks have vectors",
             "",
             "  Fix:",
             "    Set VOYAGE_API_KEY (free tier covers a town-sized corpus). Get a key at",
             "      https://dash.voyageai.com",
-            "    Restart the API and re-run ingestion to overwrite hash vectors with",
-            "    real embeddings.",
+            "    New chunks are embedded by the nightly reembed_missing pass; chunks",
+            "    embedded while no key was set hold placeholder vectors and need",
+            "    scripts/reembed_chunks.py --since <date>.",
         ]
     else:
         lines.append("  Unknown state — see status: %s" % s)
@@ -201,6 +202,15 @@ def _migrate():
     """
     new_columns = [
         ("users", "must_change_password", "BOOLEAN DEFAULT FALSE"),
+        # Per-user AI budget (USD/month, NULL = CHAT_DEFAULT_BUDGET_USD) and
+        # the Opus "deep thinking" permission. See services.chat_budget.
+        ("users", "chat_budget_usd", "DOUBLE PRECISION"),
+        ("users", "can_deep_think", "BOOLEAN DEFAULT FALSE"),
+        # Reusable signup links: one token, many signups, each new user
+        # gets the link's chat budget.
+        ("invite_tokens", "max_uses", "INTEGER DEFAULT 1"),
+        ("invite_tokens", "use_count", "INTEGER DEFAULT 0"),
+        ("invite_tokens", "chat_budget_usd", "DOUBLE PRECISION"),
         # Document titles — added 2026-05-19. Populated by
         # services.title_extractor (also runnable as a one-shot via
         # POST /api/documents/backfill-titles). The filename column is the

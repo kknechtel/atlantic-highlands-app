@@ -45,6 +45,7 @@ export interface User {
   is_admin: boolean;
   is_active: boolean;
   must_change_password?: boolean;
+  can_deep_think?: boolean;
 }
 
 export async function updateProfile(payload: {
@@ -74,9 +75,9 @@ export async function login(email: string, password: string) {
 /** Exchange a Google ID token (from Google Identity Services in the browser)
  *  for our JWT. The backend verifies the token server-side via the
  *  GOOGLE_OAUTH_CLIENT_ID env var. */
-export async function loginWithGoogle(idToken: string) {
+export async function loginWithGoogle(idToken: string, inviteToken?: string | null) {
   const data = await request<{ access_token: string; pending_approval?: boolean }>("/api/auth/google", {
-    method: "POST", body: JSON.stringify({ id_token: idToken }),
+    method: "POST", body: JSON.stringify({ id_token: idToken, invite_token: inviteToken || null }),
   });
   localStorage.setItem("ah_token", data.access_token);
   return data;
@@ -1072,10 +1073,14 @@ export interface AdminStats {
 export interface Invite {
   id: string; token: string; email: string | null; is_used: boolean;
   used_by: string | null; expires_at: string; created_at: string;
+  max_uses: number; use_count: number; chat_budget_usd: number | null;
 }
 
 export interface AdminUser extends User {
   created_at: string;
+  chat_budget_usd: number | null;        // explicit budget; null = default
+  effective_budget_usd: number | null;   // enforced cap; null = uncapped (admin)
+  spent_this_month_usd: number;
 }
 
 export async function getAdminStats(): Promise<AdminStats> { return request<AdminStats>("/api/admin/stats"); }
@@ -1084,9 +1089,23 @@ export async function approveUser(userId: string) { return request(`/api/admin/u
 export async function toggleUserActive(userId: string) { return request(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }); }
 export async function toggleUserAdmin(userId: string) { return request(`/api/admin/users/${userId}/toggle-admin`, { method: "PATCH" }); }
 export async function deleteUser(userId: string) { return request(`/api/admin/users/${userId}`, { method: "DELETE" }); }
-export async function createInvite(email?: string, expiresHours: number = 72) {
+export async function createInvite(opts: {
+  email?: string; expiresHours?: number; maxUses?: number; chatBudgetUsd?: number | null;
+} = {}) {
   return request<{ token: string; invite_url: string; email: string | null; expires_at: string }>("/api/admin/invites", {
-    method: "POST", body: JSON.stringify({ email: email || null, expires_hours: expiresHours }),
+    method: "POST",
+    body: JSON.stringify({
+      email: opts.email || null,
+      expires_hours: opts.expiresHours ?? 72,
+      max_uses: opts.maxUses ?? 1,
+      chat_budget_usd: opts.chatBudgetUsd ?? null,
+    }),
+  });
+}
+/** chat_budget_usd: number sets it, null resets to the default, undefined leaves it. */
+export async function updateUserAISettings(userId: string, settings: { chat_budget_usd?: number | null; can_deep_think?: boolean }) {
+  return request<AdminUser>(`/api/admin/users/${userId}/ai-settings`, {
+    method: "PATCH", body: JSON.stringify(settings),
   });
 }
 export async function getInvites() { return request<Invite[]>("/api/admin/invites"); }
@@ -1110,6 +1129,28 @@ export async function saveAppSetting(key: string, value: string) {
 }
 export async function clearAppSetting(key: string) {
   return request<AppSettingView>(`/api/admin/settings/${key}`, { method: "DELETE" });
+}
+
+// ─── Chat sharing ─────────────────────────────────────────────────────
+
+/** Publish one saved answer at /s/{token}. The server copies the text from
+ *  the saved chat; `answer` only identifies which answer. */
+export async function shareChatAnswer(sessionId: string, answer: string) {
+  return request<{ token: string; expires_at: string }>("/api/chat/share", {
+    method: "POST", body: JSON.stringify({ session_id: sessionId, answer }),
+  });
+}
+export async function revokeChatShare(token: string) {
+  return request<{ revoked: boolean }>(`/api/chat/share/${token}`, { method: "DELETE" });
+}
+export interface SharedAnswer { question: string; answer: string; created_at: string }
+export async function getSharedAnswer(token: string) {
+  const res = await fetch(`/api/chat/shared/${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.detail || "This link has expired or was removed.");
+  }
+  return (await res.json()) as SharedAnswer;
 }
 
 // ─── Admin: corpus health ─────────────────────────────────────────────

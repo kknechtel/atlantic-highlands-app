@@ -7,6 +7,7 @@ import {
   Paperclip, Brain, Image as ImageIcon, FileText,
 } from 'lucide-react';
 import MarkdownWithCharts from '@/components/MarkdownWithCharts';
+import { useAuth } from '@/app/contexts/AuthContext';
 
 import type { DeckSection } from '@/lib/presentationsApi';
 import type { DeckProposal } from '@/app/contexts/DeckChatContext';
@@ -59,6 +60,8 @@ export default function AskAIPanel({
   const [busy, setBusy] = useState(false);
   const [targetSectionId, setTargetSectionId] = useState<string | null>(initialTargetSectionId);
   const [deepThinking, setDeepThinking] = useState(false);
+  const { user } = useAuth();
+  const canDeepThink = !!(user?.is_admin || user?.can_deep_think);
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -203,13 +206,17 @@ export default function AskAIPanel({
           message,
           history,
           target_section_id: targetSectionId,
-          deep_thinking: deepThinking,
+          deep_thinking: deepThinking && canDeepThink,
           attachments: requestAttachments.map(a => ({
             type: a.type, media_type: a.media_type, data_base64: a.data_base64,
             filename: a.filename,
           })),
         }),
       });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        throw new Error(err?.detail || `AI chat failed (${resp.status})`);
+      }
       const reader = resp.body?.getReader();
       if (!reader) throw new Error('No response stream');
       const decoder = new TextDecoder();
@@ -313,7 +320,7 @@ export default function AskAIPanel({
           </select>
           <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
-        <button
+        {canDeepThink && <button
           type="button"
           onClick={() => setDeepThinking(v => !v)}
           className={`flex items-center gap-1 px-2 py-1 rounded border ${
@@ -322,7 +329,7 @@ export default function AskAIPanel({
           title="Use Opus 4.7 with adaptive extended thinking"
         >
           <Brain className="w-3 h-3" /> Think
-        </button>
+        </button>}
       </div>
 
       {targetSection && (

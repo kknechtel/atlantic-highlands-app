@@ -47,6 +47,35 @@ SETTINGS = {
                 "Sign in with Google; password login still works.",
         "secret": False,
     },
+    "CHAT_MODEL": {
+        "label": "Chat model",
+        "help": "Claude model for normal chat, e.g. claude-sonnet-4-6 (default), "
+                "claude-sonnet-5-5 or claude-haiku-5-5 (cheapest).",
+        "secret": False,
+    },
+    "CHAT_DEEP_MODEL": {
+        "label": "Deep-thinking chat model",
+        "help": "Model for the Deep toggle (only users allowed Deep mode). Default claude-opus-4-7.",
+        "secret": False,
+    },
+    "CHAT_EFFORT": {
+        "label": "Chat effort",
+        "help": "Optional: low, medium or high. Lower is cheaper and faster. "
+                "Blank uses the model's default.",
+        "secret": False,
+    },
+    "CHAT_DEFAULT_BUDGET_USD": {
+        "label": "Default monthly AI budget (USD)",
+        "help": "Per-user cap for anyone without their own budget. Default 5. "
+                "Admins are uncapped; per-user budgets are set on the Users tab.",
+        "secret": False,
+    },
+    "CHAT_OPEN_SIGNUP_BUDGET_USD": {
+        "label": "AI budget for open Google sign-ups (USD)",
+        "help": "Monthly budget for people who sign in with Google without a signup link. "
+                "Default 0 (no chat).",
+        "secret": False,
+    },
 }
 
 _lock = threading.Lock()

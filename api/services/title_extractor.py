@@ -438,3 +438,19 @@ def derive(
     if doc_date:
         out["doc_date"] = doc_date
     return out
+
+
+def fill_missing(doc) -> list[str]:
+    """Set title / doc_date / department on `doc` where they are empty, from
+    derive(). Never overwrites a value that is already there. Returns the
+    names of the fields it filled."""
+    if doc.title and doc.doc_date and doc.department:
+        return []
+    result = derive(filename=doc.filename, extracted_text=doc.extracted_text,
+                    metadata=getattr(doc, "metadata_", None))
+    filled = []
+    for field in ("title", "doc_date", "department"):
+        if not getattr(doc, field) and result.get(field):
+            setattr(doc, field, result[field])
+            filled.append(field)
+    return filled

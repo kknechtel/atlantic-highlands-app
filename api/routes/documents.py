@@ -66,6 +66,10 @@ class DocumentListItem(BaseModel):
     municipality: str | None = None
     status: str
     created_at: str
+    # Canonical names the library filters use (same as /api/search/facets),
+    # so "HHRSD" or "Police" matches every spelling stored on documents.
+    department_label: str | None = None
+    fiscal_year_label: str | None = None
 
     class Config:
         from_attributes = True
@@ -104,7 +108,9 @@ def list_documents(
         query = query.filter(Document.category == category)
     if doc_type:
         query = query.filter(Document.doc_type == doc_type)
-    docs = query.order_by(Document.created_at.desc()).offset(offset).limit(limit).all()
+    from routes.search import _normalize_dept, _normalize_year
+    # id breaks created_at ties so offset pages never skip or repeat a row.
+    docs = query.order_by(Document.created_at.desc(), Document.id).offset(offset).limit(limit).all()
     return [
         DocumentListItem(
             id=str(d.id),
@@ -120,6 +126,8 @@ def list_documents(
             municipality=d.municipality,
             status=d.status,
             created_at=d.created_at.isoformat() if d.created_at else "",
+            department_label=_normalize_dept(d.department),
+            fiscal_year_label=_normalize_year(d.fiscal_year),
         )
         for d in docs
     ]

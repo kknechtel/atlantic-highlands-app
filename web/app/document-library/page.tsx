@@ -81,6 +81,19 @@ interface GroupNode {
  * Until that data is cleaned, hide values that aren't a valid YYYY or
  * YYYY-(YY|YYYY) school year ending in year+1.
  */
+/** Department name as the filter shows it (server-canonicalized when available). */
+function deptLabel(d: Document): string {
+  return (d.department_label || d.department || "").trim();
+}
+
+/** Sortable recency: the document date, else the start of its fiscal year
+ *  ("2026-00-00" sorts below every real 2026 date), else nothing. */
+function recencyKey(d: Document): string {
+  if (d.doc_date) return d.doc_date;
+  const fy = displayFiscalYear(d.fiscal_year_label || d.fiscal_year);
+  return fy ? `${fy.slice(0, 4)}-00-00` : "";
+}
+
 function displayFiscalYear(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const s = raw.trim();
@@ -223,8 +236,8 @@ export default function DocumentLibraryPage() {
     return map;
   }, [searchResults]);
 
-  // Filter documents
-  const displayDocs = useMemo(() => {
+  // Filter documents (department is applied separately below)
+  const docsBeforeDept = useMemo(() => {
     let docs = documents || [];
     if (search.length > 1 && searchResults) {
       const ids = new Set(searchResults.map((r) => r.id));
@@ -234,16 +247,28 @@ export default function DocumentLibraryPage() {
       docs = docs.filter((d) => entityOf(d) === entityFilter);
     }
     if (yearFilter) {
-      docs = docs.filter((d) => d.fiscal_year === yearFilter);
-    }
-    if (deptFilter) {
-      // Case-insensitive comparison — the dropdown shows server-deduped names,
-      // but underlying records may still vary in casing/whitespace.
-      const target = deptFilter.toLowerCase().trim();
-      docs = docs.filter((d) => (d.department || "").toLowerCase().trim() === target);
+      docs = docs.filter((d) => (d.fiscal_year_label ?? d.fiscal_year) === yearFilter);
     }
     return docs;
-  }, [documents, search, searchResults, entityFilter, yearFilter, deptFilter]);
+  }, [documents, search, searchResults, entityFilter, yearFilter]);
+
+  // Departments present in the current view (after entity/year/search), so
+  // the dropdown never offers an option that shows nothing. Labels are the
+  // server's canonical names ("Police" covers "Police Department", "PD", …).
+  const deptCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of docsBeforeDept) {
+      const label = deptLabel(d);
+      if (label) counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return counts;
+  }, [docsBeforeDept]);
+
+  const displayDocs = useMemo(() => {
+    if (!deptFilter) return docsBeforeDept;
+    const target = deptFilter.toLowerCase();
+    return docsBeforeDept.filter((d) => (deptLabel(d) || "").toLowerCase() === target);
+  }, [docsBeforeDept, deptFilter]);
 
   // Use server-deduped facet lists (4-digit years, case-insensitive depts).
   const availableYears = useMemo(
@@ -251,8 +276,13 @@ export default function DocumentLibraryPage() {
     [facets],
   );
   const availableDepts = useMemo(
-    () => Object.keys(facets?.departments || {}),
-    [facets],
+    () => {
+      const depts = Array.from(deptCounts.entries()).sort((a, b) => b[1] - a[1]).map(([d]) => d);
+      // Keep the current choice listed even if nothing in view matches it.
+      if (deptFilter && !deptCounts.has(deptFilter)) depts.unshift(deptFilter);
+      return depts;
+    },
+    [deptCounts, deptFilter],
   );
 
   const hasActiveFilters = !!(entityFilter || docTypeFilter || yearFilter || deptFilter);
@@ -285,14 +315,14 @@ export default function DocumentLibraryPage() {
       entityNode.children.get(docType)!.docs.push(doc);
     }
 
-    // Sort docs within each group by (cleaned) fiscal year desc, then filename
+    // Newest first: by the document's own date; undated docs sort after the
+    // dated ones of their fiscal year, then by title.
     root.forEach((entityNode) => {
       entityNode.children.forEach((typeNode) => {
         typeNode.docs.sort((a, b) => {
-          const ya = displayFiscalYear(a.fiscal_year) || "";
-          const yb = displayFiscalYear(b.fiscal_year) || "";
-          if (ya !== yb) return yb.localeCompare(ya);
-          return a.filename.localeCompare(b.filename);
+          const ka = recencyKey(a), kb = recencyKey(b);
+          if (ka !== kb) return kb.localeCompare(ka);
+          return (a.title || a.filename).localeCompare(b.title || b.filename);
         });
       });
     });
@@ -412,7 +442,7 @@ export default function DocumentLibraryPage() {
             <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}
               className="px-2 py-1 border border-gray-300 rounded text-[11px] bg-white min-w-0">
               <option value="">All departments</option>
-              {availableDepts.map((d) => <option key={d} value={d}>{d}</option>)}
+              {availableDepts.map((d) => <option key={d} value={d}>{d} ({deptCounts.get(d) ?? 0})</option>)}
             </select>
           </div>
 

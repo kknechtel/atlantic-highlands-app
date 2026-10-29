@@ -10,6 +10,7 @@ Usage (on the server, from the api/ directory):
     python scripts/backfill_titles.py --all          # everything
     python scripts/backfill_titles.py --limit 100    # first N only
     python scripts/backfill_titles.py --overwrite-department
+    python scripts/backfill_titles.py --fill-missing # any empty title/date/department, never overwrites
 """
 import argparse
 import logging
@@ -34,6 +35,8 @@ def main() -> int:
         help="Replace department even when already set (filename patterns are usually more reliable)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print but don't commit")
+    parser.add_argument("--fill-missing", action="store_true",
+                        help="Fill empty title, doc_date or department on any doc; never overwrite")
     args = parser.parse_args()
 
     from database import SessionLocal
@@ -43,7 +46,10 @@ def main() -> int:
     db = SessionLocal()
     try:
         q = db.query(Document)
-        if not args.all:
+        if args.fill_missing:
+            q = q.filter((Document.title.is_(None)) | (Document.doc_date.is_(None))
+                         | (Document.department.is_(None)))
+        elif not args.all:
             q = q.filter(Document.title.is_(None))
         if args.limit:
             q = q.limit(args.limit)
@@ -63,6 +69,17 @@ def main() -> int:
         processed = 0
 
         for doc in docs:
+            if args.fill_missing:
+                filled = title_extractor.fill_missing(doc)
+                processed += 1
+                titles_updated += "title" in filled
+                date_updated += "doc_date" in filled
+                dept_updated += "department" in filled
+                if processed % 500 == 0:
+                    db.rollback() if args.dry_run else db.commit()
+                    log.info("  progress: %d/%d  titles+=%d dept+=%d date+=%d",
+                             processed, total, titles_updated, dept_updated, date_updated)
+                continue
             result = title_extractor.derive(
                 filename=doc.filename,
                 extracted_text=doc.extracted_text,

@@ -192,6 +192,9 @@ export interface Document {
   title?: string | null;
   doc_date?: string | null;
   municipality?: string | null;
+  /** Canonical department / year, matching the filter dropdowns. */
+  department_label?: string | null;
+  fiscal_year_label?: string | null;
 }
 
 /** Admin: trigger the title/department/date backfill across the corpus. */

@@ -131,6 +131,11 @@ def ingest_document(db: Session, doc: Document, force: bool = False) -> dict:
     if not doc.extracted_text or len(doc.extracted_text) < 100:
         return {"document_id": str(doc.id), "skipped": True, "reason": "no_text"}
 
+    # Title / date / department feed the chunk headers below and the library
+    # sort, so fill them first (only where empty).
+    from services import title_extractor
+    title_extractor.fill_missing(doc)
+
     # Delete existing chunks to keep this idempotent.
     db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).delete()
 

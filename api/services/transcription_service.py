@@ -349,6 +349,12 @@ def engine_rank(engine: str) -> int:
     Accepts the stored forms: "faster-whisper-base-chunked",
     "yt-dlp+faster-whisper-small.en", "deepinfra-whisper-large-v3"."""
     tail = (engine or "").split("+")[-1].removesuffix("-chunked")
+    # Human-made captions are left alone; auto-captions have no punctuation
+    # and break mid-sentence, so even local small.en beats them.
+    if tail == "youtube-captions-manual":
+        return 4
+    if tail == "youtube-captions-auto":
+        return 0
     if tail.startswith("deepinfra-") or tail == "openai-whisper-1":
         return 3
     model = tail.removeprefix("faster-whisper-")

@@ -354,9 +354,10 @@ def pending_upgrade_ids() -> list[str]:
 
     Re-transcribed after new recordings are handled: Board of Education
     first, then everything else, newest meeting first within each.
-    YouTube caption transcripts aren't ours and are left alone; a failed
-    upgrade sets transcription_failed (old transcript kept) and drops out
-    of this queue."""
+    YouTube auto-captions count as the lowest rank. A YouTube recording is
+    only eligible once its audio is in S3 (scripts/sync_youtube_audio.py),
+    since EC2 can't download from YouTube. A failed upgrade keeps the old
+    transcript and waits a day."""
     from services.transcription_service import current_engine_name, engine_rank
 
     engine_now = current_engine_name()
@@ -368,8 +369,9 @@ def pending_upgrade_ids() -> list[str]:
             text(
                 f"SELECT id, metadata->'transcript'->>'engine', metadata->'upgrade_failed' FROM documents "
                 f"WHERE doc_type IN {_DOC_TYPES_SQL} "
-                f"  AND (strpos(metadata->'transcript'->>'engine', 'faster-whisper-') > 0 "
-                f"       OR strpos(metadata->'transcript'->>'engine', 'deepinfra-') > 0) "
+                f"  AND (metadata->'transcript'->>'engine') IS NOT NULL "
+                f"  AND (COALESCE(metadata->'recording'->>'platform', 'audio') <> 'youtube' "
+                f"       OR (metadata->'recording'->>'transcribe_from_s3_key') IS NOT NULL) "
                 f"  AND status NOT IN ('transcription_failed','transcribing','summarizing') "
                 f"ORDER BY (doc_type = 'recording_school_board') DESC, "
                 f"  COALESCE((metadata->'recording'->>'meeting_date')::date, created_at::date) DESC"

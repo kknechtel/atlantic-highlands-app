@@ -21,6 +21,10 @@ It will:
   5. Reset the doc's status to `uploaded` so the worker retries
      transcription.
 
+A meeting that already has a YouTube auto-caption transcript is then
+re-transcribed from that audio by the worker's upgrade pass (Whisper
+large-v3 when a DeepInfra key is set), Board of Education first.
+
 Requires AWS creds in your local env (same bucket as prod) and a working
 yt-dlp installation locally.
 """

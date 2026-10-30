@@ -14,6 +14,8 @@ def test_engine_rank_orders_stored_engine_names():
     assert ts.engine_rank("faster-whisper-small.en-chunked") == 1
     assert ts.engine_rank("deepinfra-whisper-large-v3") == 3
     assert ts.engine_rank("yt-dlp+deepinfra-whisper-large-v3") == 3
+    assert ts.engine_rank("youtube-captions-auto") < ts.engine_rank("faster-whisper-small.en")
+    assert ts.engine_rank("youtube-captions-manual") > ts.engine_rank("deepinfra-whisper-large-v3")
 
 
 @pytest.fixture

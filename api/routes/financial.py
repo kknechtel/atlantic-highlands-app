@@ -15,12 +15,10 @@ from models.user import User
 from auth import get_current_user
 from config import api_key
 from municipality import TOWN
+from services.financial_overview import doc_variant, statement_rank
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# County DLGS filings carry the county name in entity_name.
-_COUNTY_WORD = TOWN.county.lower().replace(" county", "").strip()
 
 
 def _entity_name(entity_type: str) -> str:
@@ -519,31 +517,7 @@ def fy_view(
     if not matches:
         raise HTTPException(status_code=404, detail=f"No statements for {entity_type} FY {fiscal_year}")
 
-    # Source priority — most authoritative first
-    PRIORITY = {
-        "audit": 0, "acfr": 0, "annual_report": 1, "financial_statement": 1,
-        "ufb": 2, "budget": 3,
-    }
-
-    def _variant(name: str | None) -> str:
-        n = (name or "").lower()
-        if "advertised" in n or "tentative" in n:
-            return "advertised"
-        if "adopted" in n or "final" in n:
-            return "adopted"
-        if _COUNTY_WORD and _COUNTY_WORD in n:
-            return "dlgs_filing"
-        if "presentation" in n:
-            return "presentation"
-        return "primary"
-
-    def _stmt_priority(s):
-        type_pri = PRIORITY.get((s.statement_type or "").lower(), 9)
-        # Among same type: adopted > dlgs > primary > advertised > presentation
-        variant_pri = {"adopted": 0, "dlgs_filing": 1, "primary": 2, "advertised": 3, "presentation": 4}.get(_variant(s.entity_name), 5)
-        return (type_pri, variant_pri)
-
-    sorted_stmts = sorted(matches, key=_stmt_priority)
+    sorted_stmts = sorted(matches, key=statement_rank)
     primary = sorted_stmts[0]
 
     def best(field: str):
@@ -576,7 +550,7 @@ def fy_view(
                 "budget_amount": it.budget_amount, "yoy_change_pct": it.yoy_change_pct,
                 "fund": it.fund, "account_code": it.account_code, "is_total_row": it.is_total_row,
                 "from_statement_id": str(s.id),
-                "from_doc_variant": _variant(s.entity_name),
+                "from_doc_variant": doc_variant(s.entity_name),
             })
 
     # What's missing? List authoritative document types we don't have
@@ -616,7 +590,7 @@ def fy_view(
                 "statement_id": str(s.id),
                 "statement_type": s.statement_type,
                 "entity_name": s.entity_name,
-                "variant": _variant(s.entity_name),
+                "variant": doc_variant(s.entity_name),
                 "status": s.status,
                 "reconcile_status": s.reconcile_status,
                 "has_revenue": s.total_revenue is not None,

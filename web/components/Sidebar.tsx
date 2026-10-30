@@ -1,43 +1,95 @@
 "use client";
 import { TOWN, SITE_HOST, EVENTS_URL } from "@/lib/municipality";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/contexts/AuthContext";
 import {
   FolderIcon, ChartBarIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon,
-  DocumentTextIcon, BuildingOfficeIcon, AcademicCapIcon, GlobeAltIcon,
+  BuildingOfficeIcon, AcademicCapIcon, GlobeAltIcon,
   CalendarDaysIcon,
   ChevronLeftIcon, ChevronRightIcon, UserIcon,
   ClipboardDocumentListIcon, PresentationChartLineIcon,
   MicrophoneIcon, HomeModernIcon, BellIcon, ArrowTopRightOnSquareIcon,
+  HomeIcon, TableCellsIcon, WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 
 const brandColor = TOWN.brand_color;
 
-const navItems = [
-  { name: "Dashboard", href: "/", icon: ChartBarIcon },
-  { name: "Documents", href: "/document-library", icon: FolderIcon },
+type NavItem = {
+  name: string;
+  href: string;
+  icon: typeof ChartBarIcon;
+  children?: { name: string; href: string; icon: typeof ChartBarIcon }[];
+};
+
+const navGroups: { label?: string; adminOnly?: boolean; items: NavItem[] }[] = [
   {
-    name: "Financials",
-    href: "/financial-analysis",
-    icon: DocumentTextIcon,
-    children: [
-      { name: "Statements", href: "/financial-analysis/statements", icon: DocumentTextIcon },
-      { name: "Narrative", href: "/financial-analysis/narrative", icon: DocumentTextIcon },
-      { name: "Town", href: "/financial-analysis?entity=town", icon: BuildingOfficeIcon },
-      { name: "School", href: "/financial-analysis?entity=school", icon: AcademicCapIcon },
+    items: [
+      { name: "Home", href: "/", icon: HomeIcon },
+      { name: "Borough", href: "/town", icon: BuildingOfficeIcon },
+      { name: "School District", href: "/school", icon: AcademicCapIcon },
+      {
+        name: "Finances",
+        href: "/financial-analysis",
+        icon: ChartBarIcon,
+        children: [
+          { name: "Borough", href: "/financial-analysis?entity=town", icon: BuildingOfficeIcon },
+          { name: "School", href: "/financial-analysis?entity=school", icon: AcademicCapIcon },
+          { name: "Line items", href: "/financial-analysis/statements", icon: TableCellsIcon },
+        ],
+      },
+      { name: "Meetings", href: "/meetings", icon: MicrophoneIcon },
+      { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon },
+      { name: "Documents", href: "/document-library", icon: FolderIcon },
+      { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
     ],
   },
-  { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
-  { name: "Calendar", href: "/calendar", icon: CalendarDaysIcon },
-  { name: "Meetings", href: "/meetings", icon: MicrophoneIcon },
-  { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
-  { name: "Alerts", href: "/alerts", icon: BellIcon },
-  { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
-  { name: "Scraper", href: "/scraper", icon: GlobeAltIcon },
+  {
+    label: "Tools",
+    items: [
+      { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
+      { name: "Alerts", href: "/alerts", icon: BellIcon },
+      { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
+    ],
+  },
+  {
+    label: "Admin",
+    adminOnly: true,
+    items: [
+      { name: "Financial data", href: "/financial-analysis/data", icon: WrenchScrewdriverIcon },
+      { name: "Scraper", href: "/scraper", icon: GlobeAltIcon },
+    ],
+  },
 ];
+
+// A child is active when its path matches and every query param it names
+// matches too. Lives in its own component because useSearchParams needs a
+// Suspense boundary in the App Router.
+function NavChildren({ items }: { items: NonNullable<NavItem["children"]> }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  return (
+    <div className="ml-8 mt-0.5 space-y-0.5">
+      {items.map((child) => {
+        const [path, query] = child.href.split("?");
+        const childActive = pathname === path &&
+          Array.from(new URLSearchParams(query ?? "")).every(([k, v]) => (params.get(k) ?? "town") === v);
+        return (
+          <Link key={child.name} href={child.href}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors ${
+              childActive ? "font-medium" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+            }`}
+            style={childActive ? { color: brandColor } : {}}
+          >
+            <child.icon className="w-3.5 h-3.5" /><span>{child.name}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -81,42 +133,43 @@ export default function Sidebar() {
 
       {/* Nav — Admin link moved to the bottom panel next to email/logout. */}
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-          const Icon = item.icon;
+        {navGroups.filter((g) => !g.adminOnly || user.is_admin).map((group, gi) => (
+          <div key={gi} className={gi ? "pt-3" : ""}>
+            {group.label && !collapsed && (
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{group.label}</p>
+            )}
+            {group.label && collapsed && <div className="mx-3 mb-2 border-t border-gray-200" />}
+            {group.items.map((item) => {
+              const isActive = item.href === "/"
+                ? pathname === "/"
+                : pathname === item.href || pathname.startsWith(item.href + "/");
+              // Finances children stay visible on its sub-pages; Financial data
+              // has its own entry so it shouldn't also light up Finances.
+              const ownedElsewhere = item.href === "/financial-analysis" && pathname.startsWith("/financial-analysis/data");
+              const Icon = item.icon;
 
-          return (
-            <div key={item.name}>
-              <Link href={item.href}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  isActive ? "text-white shadow-md" : "text-gray-700 hover:bg-gray-50"
-                }`}
-                style={isActive ? { backgroundColor: brandColor } : {}}
-                title={collapsed ? item.name : undefined}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && <span className="font-medium">{item.name}</span>}
-              </Link>
-              {!collapsed && item.children && isActive && (
-                <div className="ml-8 mt-0.5 space-y-0.5">
-                  {item.children.map((child) => {
-                    const childActive = pathname === child.href;
-                    return (
-                      <Link key={child.name} href={child.href}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors ${
-                          childActive ? "font-medium" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                        }`}
-                        style={childActive ? { color: brandColor } : {}}
-                      >
-                        <child.icon className="w-3.5 h-3.5" /><span>{child.name}</span>
-                      </Link>
-                    );
-                  })}
+              return (
+                <div key={item.name}>
+                  <Link href={item.href}
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                      isActive && !ownedElsewhere ? "text-white shadow-md" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                    style={isActive && !ownedElsewhere ? { backgroundColor: brandColor } : {}}
+                    title={collapsed ? item.name : undefined}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {!collapsed && <span className="font-medium">{item.name}</span>}
+                  </Link>
+                  {!collapsed && item.children && isActive && !ownedElsewhere && (
+                    <Suspense fallback={null}>
+                      <NavChildren items={item.children} />
+                    </Suspense>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Cross-app link to the community subdomain. External href (not next/Link)

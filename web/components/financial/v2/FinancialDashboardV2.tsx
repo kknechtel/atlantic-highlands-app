@@ -63,18 +63,17 @@ export default function FinancialDashboardV2() {
 
   const selected = filtered.find(s => s.id === selectedId);
 
-  // Top-level KPIs from filtered statements
+  // Counts only: summing dollars across statements would add up several
+  // years and count budgets and audits of the same year twice.
   const totals = useMemo(() => {
-    let revenue = 0, expenditures = 0, fundBalance = 0, debt = 0, count = 0;
-    for (const s of filtered) {
-      if (s.status !== "extracted" && s.status !== "drilled" && s.status !== "verified") continue;
-      revenue += s.total_revenue ?? 0;
-      expenditures += s.total_expenditures ?? 0;
-      fundBalance += s.fund_balance ?? 0;
-      debt += s.total_debt ?? 0;
-      count++;
-    }
-    return { revenue, expenditures, fundBalance, debt, count };
+    const done = filtered.filter(s => ["extracted", "drilled", "verified"].includes(s.status));
+    const years = Array.from(new Set(done.map(s => s.fiscal_year).filter(Boolean))).sort();
+    return {
+      count: done.length,
+      drilled: done.filter(s => s.status === "drilled" || s.status === "verified").length,
+      pending: filtered.length - done.length,
+      years: years.length ? `${years[0]} – ${years[years.length - 1]}` : "—",
+    };
   }, [filtered]);
 
   return (
@@ -176,13 +175,12 @@ export default function FinancialDashboardV2() {
       )}
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          ["Statements", String(totals.count)],
-          ["Total Revenue", `$${Math.round(totals.revenue).toLocaleString()}`],
-          ["Total Expenditures", `$${Math.round(totals.expenditures).toLocaleString()}`],
-          ["Fund Balance", `$${Math.round(totals.fundBalance).toLocaleString()}`],
-          ["Total Debt", `$${Math.round(totals.debt).toLocaleString()}`],
+          ["Extracted statements", String(totals.count)],
+          ["Drilled", String(totals.drilled)],
+          ["Pending or failed", String(totals.pending)],
+          ["Fiscal years", totals.years],
         ].map(([label, value], i) => (
           <div key={i} className="bg-white rounded-xl border p-4">
             <p className="text-[10px] uppercase font-semibold tracking-wide text-gray-500">{label}</p>

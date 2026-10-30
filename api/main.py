@@ -52,6 +52,7 @@ from routes.community_chat import router as community_chat_router
 from routes.bands import router as bands_router
 from routes.event_submissions import router as event_submissions_router
 from routes.event_ingest import router as event_ingest_router
+from routes.overview import router as overview_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
@@ -79,6 +80,7 @@ app.include_router(community_chat_router, prefix="/api/community/chat", tags=["c
 app.include_router(bands_router, prefix="/api/bands", tags=["bands"])
 app.include_router(event_submissions_router, prefix="/api/event-submissions", tags=["event-submissions"])
 app.include_router(event_ingest_router, prefix="/api/event-ingest", tags=["event-ingest"])
+app.include_router(overview_router, prefix="/api/overview", tags=["overview"])
 
 
 @app.on_event("startup")

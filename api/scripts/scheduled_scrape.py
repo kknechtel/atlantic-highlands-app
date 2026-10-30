@@ -8,6 +8,8 @@ out the next:
      Tags the scraper_runs row with triggered_by="schedule".
   2. Town event calendar — `run_events_scrape()` against the source's
      events_calendar page for current month + 12 ahead.
+     2b. School district calendar — `run_school_calendar_scrape()` reads
+     the source's events_ical feed.
   3. Live-music scrape — `run_music_scrape()` iterates the venue registry
      (Squarespace + WordPress Tribe Events adapters).
 
@@ -69,6 +71,13 @@ async def main() -> int:
         logger.info("Town events scrape done: %s", events_summary)
     except Exception as exc:
         logger.exception("town events scrape failed: %s", exc)
+
+    # Step 2b — school district calendar (iCal feed).
+    try:
+        from services.school_calendar import run_school_calendar_scrape
+        logger.info("School calendar scrape done: %s", run_school_calendar_scrape())
+    except Exception as exc:
+        logger.exception("school calendar scrape failed: %s", exc)
 
     # Step 3 — live-music venue scrape.
     try:

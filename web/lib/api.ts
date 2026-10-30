@@ -519,6 +519,65 @@ export async function getStatementAnomalies(statementId: string): Promise<{ stat
   return request(`/api/financial/statements/${statementId}/anomalies`);
 }
 
+// ─── Overview (home page + town/school hubs) ──────────────────────────
+
+export type OverviewEntity = "town" | "school";
+
+export interface FinanceYear {
+  fiscal_year: string;
+  revenue: number | null;
+  expenditures: number | null;
+  surplus: number | null;
+  fund_balance: number | null;
+  debt: number | null;
+  kind: "actual" | "budget";
+  statement_type: string;
+  statement_id: string;
+  document_id: string;
+}
+
+export interface OverviewFinances {
+  years: FinanceYear[];
+  latest: FinanceYear | null;
+  changes?: Record<"revenue" | "expenditures" | "fund_balance" | "debt", number | null>;
+  previous_year?: string | null;
+  reserves?: { pct: number; status: "ok" | "watch" | "low" | null; note: string } | null;
+  headline: { text: string | null; source: "ai" | "template" | null };
+  flags?: { code: string; severity: "warn" | "high"; title: string; detail: string }[];
+  line_flag_count?: number;
+  top_lines?: { revenue: { name: string; amount: number }[]; spending: { name: string; amount: number }[] };
+  source?: { document_id: string; statement_id: string; statement_type: string; title: string | null };
+  accounting_basis?: string | null;
+  trend_note: string | null;
+}
+
+export interface OverviewMeeting {
+  id: string;
+  title: string;
+  body: string;
+  date: string | null;
+  has_summary: boolean;
+  tldr: string | null;
+  decisions: { description: string; vote: string | null }[];
+  legislation: { number: string | null; description: string; outcome: string | null }[];
+}
+
+export interface Overview {
+  entity: OverviewEntity;
+  label: string;
+  short_label: string;
+  about: string | null;
+  meetings: OverviewMeeting[];
+  legislation: (OverviewMeeting["legislation"][number] & { meeting_id: string; meeting_body: string; meeting_date: string })[];
+  upcoming: { id: string; date: string; title: string; time: string | null; location: string | null; url: string | null; event_type: string | null }[];
+  documents: { id: string; title: string; doc_type: string | null; department: string | null; created_at: string | null }[];
+  finances: OverviewFinances;
+}
+
+export async function getOverview(entity: OverviewEntity): Promise<Overview> {
+  return request<Overview>(`/api/overview/${entity}`);
+}
+
 // ─── Contracts + Vendors (Phase 3) ────────────────────────────────────
 
 export interface VendorSummary {
@@ -781,7 +840,7 @@ export async function generateReport(reportType: string, entityType?: string, cu
 //   event_type='general'    — legacy, pre-classification. Backfill in
 //                             database.py reclassifies these on next API restart.
 
-export type EventType = "govt" | "community" | "live_music" | "general";
+export type EventType = "govt" | "community" | "live_music" | "general" | "school";
 
 // Same keyword list as api/scripts/scrape_events._GOVT_KEYWORDS. Used as a
 // fallback so events tagged 'general' (pre-backfill) get classified

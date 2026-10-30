@@ -18,6 +18,9 @@ import {
   Cog6ToothIcon,
   ChatBubbleLeftRightIcon,
   ArrowRightOnRectangleIcon,
+  BuildingOfficeIcon,
+  AcademicCapIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import {
   ChartBarIcon as ChartBarSolid,
@@ -41,10 +44,13 @@ const mainTabs = [
 type MoreItem = { name: string; href: string; icon: typeof FolderIcon; adminOnly?: boolean };
 
 const moreItems: MoreItem[] = [
-  { name: "Financials", href: "/financial-analysis", icon: DocumentTextIcon },
+  { name: "Borough", href: "/town", icon: BuildingOfficeIcon },
+  { name: "School District", href: "/school", icon: AcademicCapIcon },
+  { name: "Finances", href: "/financial-analysis", icon: DocumentTextIcon },
   { name: "Property & Tax", href: "/parcels", icon: HomeModernIcon },
   { name: "Presentations", href: "/presentations", icon: PresentationChartLineIcon },
   { name: "OPRA Requests", href: "/opra", icon: ClipboardDocumentListIcon },
+  { name: "Financial data", href: "/financial-analysis/data", icon: WrenchScrewdriverIcon, adminOnly: true },
   { name: "Scraper", href: "/scraper", icon: GlobeAltIcon, adminOnly: true },
   { name: "Admin", href: "/admin", icon: Cog6ToothIcon, adminOnly: true },
 ];

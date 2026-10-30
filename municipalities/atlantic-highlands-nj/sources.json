@@ -119,6 +119,7 @@
       ],
       "entity": "hhrsd",
       "crawler": "edlio",
+      "events_ical": "/apps/events/ical/?id=0",
       "site_key": "tri",
       "summary": "HHRSD + AHES + HES + HHRS — BOE Agendas/Minutes, Budget, Curriculum, Performance Reports"
     },

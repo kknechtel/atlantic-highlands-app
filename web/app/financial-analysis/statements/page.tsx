@@ -1,7 +1,7 @@
 "use client";
 import { TOWN } from "@/lib/municipality";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getStatements,
@@ -33,6 +33,11 @@ const fmtShort = (n: number) => {
 
 export default function StatementsPage() {
   const [activeEntity, setActiveEntity] = useState<"town" | "school">("town");
+  // Links from the Finances page carry ?entity=. Read window.location so the
+  // page doesn't need a Suspense boundary for useSearchParams.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("entity") === "school") setActiveEntity("school");
+  }, []);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["revenue", "expenditures", "balance"]));
   const [selectedStmt, setSelectedStmt] = useState<string | null>(null);
 
@@ -96,8 +101,8 @@ export default function StatementsPage() {
     <div className="p-3 md:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 md:mb-6">
         <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Financial Statements</h1>
-          <p className="text-xs md:text-sm text-gray-500">P&L, Balance Sheet, and Detailed Analysis</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Line-Item Detail</h1>
+          <p className="text-xs md:text-sm text-gray-500">Every extracted line from each statement, with charts and an Excel download</p>
         </div>
         <div className="flex gap-3">
           <a

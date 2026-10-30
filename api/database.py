@@ -586,4 +586,20 @@ def _migrate():
             except Exception as e:
                 logger.warning(f"search_query_log index skipped: {e}")
 
+        # 9. Cached plain-language finance headlines, keyed by a hash of the
+        # facts they were written from (services/financial_headline.py).
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS entity_headlines (
+                    entity_type VARCHAR NOT NULL,
+                    facts_hash VARCHAR NOT NULL,
+                    text TEXT NOT NULL,
+                    source VARCHAR NOT NULL,
+                    created_at TIMESTAMP DEFAULT now(),
+                    PRIMARY KEY (entity_type, facts_hash)
+                )
+            """))
+        except Exception as e:
+            logger.warning(f"entity_headlines create failed: {e}")
+
         conn.commit()

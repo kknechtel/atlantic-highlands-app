@@ -78,6 +78,10 @@ def get_calendar_events(
     if event_type:
         conditions.append("event_type = :event_type")
         params["event_type"] = event_type
+    else:
+        # School-district events only appear when asked for, so they don't
+        # flood the community events app (which lists every non-govt type).
+        conditions.append("event_type IS DISTINCT FROM 'school'")
     if city:
         conditions.append("city = :city")
         params["city"] = city

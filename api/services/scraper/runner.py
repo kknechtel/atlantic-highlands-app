@@ -435,6 +435,10 @@ async def run_scraper(
         existing_docs = db.query(Document.s3_key).filter(Document.project_id == project.id).all()
         for (key,) in existing_docs:
             existing_keys.add(key)
+            # sync_youtube_audio.py renames recordings/youtube/<id> to
+            # <id>.<ext>; keep matching the crawler's key or the video is re-added.
+            if key and key.startswith("recordings/youtube/"):
+                existing_keys.add(os.path.splitext(key)[0])
 
         # Also track existing filenames for dedup
         existing_filenames = set()

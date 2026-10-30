@@ -1,0 +1,100 @@
+- generic [ref=f58e4]:
+  - generic [ref=f58e5]:
+    - generic [ref=f58e6]:
+      - generic:
+        - link:
+          - /url: /ahnj/_top
+          - img [ref=f58e7] [cursor=pointer]
+          - img [ref=f58e8] [cursor=pointer]
+    - textbox "search" [ref=f58e17]
+    - list [ref=f58e20]:
+      - listitem [ref=f58e21]:
+        - link "Government" [ref=f58e22] [cursor=pointer]:
+          - /url: /ahnj/Government
+      - listitem [ref=f58e23]:
+        - link "Departments" [ref=f58e24] [cursor=pointer]:
+          - /url: /ahnj/Departments
+      - listitem [ref=f58e25]:
+        - link "Community" [ref=f58e26] [cursor=pointer]:
+          - /url: /ahnj/Community
+      - listitem [ref=f58e27]:
+        - link "Court" [ref=f58e28] [cursor=pointer]:
+          - /url: /ahnj/Court
+      - listitem [ref=f58e29]:
+        - link "Contact Us" [ref=f58e30] [cursor=pointer]:
+          - /url: /ahnj/Contact%20Us
+      - listitem [ref=f58e31]:
+        - link "Emergency" [ref=f58e32] [cursor=pointer]:
+          - /url: /ahnj/Emergency
+      - listitem [ref=f58e33]:
+        - link "Quick Links" [ref=f58e34] [cursor=pointer]:
+          - /url: /ahnj/Quick%20Links
+  - generic [ref=f58e38]:
+    - text: Announcements
+    - list [ref=f58e39]:
+      - listitem [ref=f58e40]:
+        - link "2026 Fall Hydrant Flushing Block Ad_ (1) (1) (doc)" [ref=f58e41] [cursor=pointer]:
+          - /url: /ahnj/Announcements/2026%20Fall%20Hydrant%20Flushing%20Block%20Ad_%20%281%29%20%281%29.doc
+      - listitem [ref=f58e42]:
+        - link "DPW Storm Cleanup Memo 9282026 (1) (doc)" [ref=f58e43] [cursor=pointer]:
+          - /url: /ahnj/Announcements/DPW%20Storm%20Cleanup%20Memo%209282026%20%281%29.doc
+      - listitem [ref=f58e44]:
+        - link "Prepare for This Weekends Storm" [ref=f58e45] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Prepare%20for%20This%20Weekends%20Storm.png/_top
+      - listitem [ref=f58e46]:
+        - link "House Contest (1) (pdf)" [ref=f58e47] [cursor=pointer]:
+          - /url: /ahnj/Announcements/House%20Contest%20%281%29.pdf?1793354787
+      - listitem [ref=f58e48]:
+        - link "Halloween Parade (pdf)" [ref=f58e49] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Halloween%20Parade.pdf?1793354787
+      - listitem [ref=f58e50]:
+        - link "NEW OFFICE HOURS - BOROUGH HALL" [ref=f58e51] [cursor=pointer]:
+          - /url: /ahnj/Announcements/NEW%20OFFICE%20HOURS%20-%20BOROUGH%20HALL.txt/_top
+      - listitem [ref=f58e52]:
+        - link "Prospect Circle Residents (pdf)" [ref=f58e53] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Prospect%20Circle%20Residents.pdf?1793354787
+      - listitem [ref=f58e54]:
+        - link "Borough Offices - Summer Hours" [ref=f58e55] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Borough%20Offices%20-%20Summer%20Hours.txt/_top
+      - listitem [ref=f58e56]:
+        - link "Voting Locations Have Changed" [ref=f58e57] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Voting%20Locations%20Have%20Changed.txt/_top
+      - listitem [ref=f58e58]:
+        - link "Citizen Leadership Volunteer Application" [ref=f58e59] [cursor=pointer]:
+          - /url: https://main.govpilot.com/web/public/99b9ef9d-403_Citizen-Leadership-App-ahadmin?uid=6865&ust=NJ&pu=1&id=1
+      - listitem [ref=f58e60]:
+        - link "Council Office Hours" [ref=f58e61] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Council%20Office%20Hours.txt/_top
+      - listitem [ref=f58e62]:
+        - link "Lead Based Paint Inspections" [ref=f58e63] [cursor=pointer]:
+          - /url: /ahnj/Announcements/Lead%20Based%20Paint%20Inspections.html/_top
+      - listitem [ref=f58e64]:
+        - link "FEMA Flood Mapping (pdf)" [ref=f58e65] [cursor=pointer]:
+          - /url: /ahnj/Announcements/FEMA%20Flood%20Mapping.pdf?1793354787
+      - listitem [ref=f58e66]:
+        - link "News Archives" [ref=f58e67] [cursor=pointer]:
+          - /url: /ahnj/Announcements/News%20Archives/
+  - generic [ref=f58e68]:
+    - link [ref=f58e70] [cursor=pointer]:
+      - /url: /ahnj/_login
+    - paragraph [ref=f58e72]:
+      - text: If you have any questions or concerns about the content of this website, please email the
+      - link "Borough Clerk." [ref=f58e73] [cursor=pointer]:
+        - /url: mailto:clerk@ahnj.com
+      - link "Accessibility Policy and Information" [ref=f58e74] [cursor=pointer]:
+        - /url: /ahnj/Accessibility/
+    - paragraph [ref=f58e75]:
+      - strong [ref=f58e76]: Borough of Atlantic Highlands
+      - text: "| 100 First Avenue, Atlantic Highlands, NJ 07716 Phone:"
+      - link "732-291-1444" [ref=f58e77] [cursor=pointer]:
+        - /url: "#"
+      - text: "Fax:"
+      - link "732-291-9725" [ref=f58e78] [cursor=pointer]:
+        - /url: "#"
+  - generic [ref=f58e80]:
+    - img "zumu logo" [ref=f58e81]
+    - link "Powered by Zumu Software" [ref=f58e82] [cursor=pointer]:
+      - /url: http://www.zumu.com/zumu
+    - text: Post it with Zumu.
+    - link "www.zumu.com" [ref=f58e83] [cursor=pointer]:
+      - /url: http://www.zumu.com/zumu

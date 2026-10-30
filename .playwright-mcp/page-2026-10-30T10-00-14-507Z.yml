@@ -1,0 +1,136 @@
+- generic [ref=f39e2]:
+  - table [ref=f39e3]:
+    - rowgroup [ref=f39e4]:
+      - row [ref=f39e5]:
+        - cell [ref=f39e6]
+  - generic [ref=f39e7]: Legal Research Search Results
+  - text: 7 matches returned
+  - table [ref=f39e8]:
+    - rowgroup [ref=f39e9]:
+      - row [ref=f39e10]:
+        - cell [ref=f39e11]:
+          - link "Back to Search" [ref=f39e12] [cursor=pointer]:
+            - /url: ""
+        - cell [ref=f39e13]:
+          - link "Back" [ref=f39e14] [cursor=pointer]:
+            - /url: ""
+  - table [ref=f39e16]:
+    - rowgroup [ref=f39e17]:
+      - row [ref=f39e18]:
+        - columnheader [ref=f39e19]
+        - columnheader "Fiscal Year" [ref=f39e20]
+        - columnheader [ref=f39e21]
+        - columnheader "Decision" [ref=f39e22]
+        - columnheader [ref=f39e23]
+        - columnheader [ref=f39e24]
+        - columnheader "Employer" [ref=f39e25]
+        - columnheader [ref=f39e26]
+        - columnheader "Date" [ref=f39e27]
+        - columnheader [ref=f39e28]
+      - row [ref=f39e29]:
+        - cell [ref=f39e30]:
+          - img "80%" [ref=f39e31]
+        - cell [ref=f39e32]
+        - cell [ref=f39e33]
+        - cell [ref=f39e34]:
+          - link "PERC 2014-057" [ref=f39e35] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257C8300705546/$File/PERC 2014 57.pdf?OpenElement
+        - cell [ref=f39e36]
+        - cell [ref=f39e37]
+        - cell "Henry Hudson Reg B/E" [ref=f39e38]
+        - cell [ref=f39e39]
+        - cell "02/27/2014" [ref=f39e40]
+        - cell [ref=f39e41]
+      - row [ref=f39e42]:
+        - cell [ref=f39e43]:
+          - img "57%" [ref=f39e44]
+        - cell [ref=f39e45]
+        - cell [ref=f39e46]
+        - cell [ref=f39e47]:
+          - link "PERC 2023-017" [ref=f39e48] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C2104852588EF0070A4CF/$File/PERC 2023 17.pdf?OpenElement
+        - cell [ref=f39e49]
+        - cell [ref=f39e50]
+        - cell "Rutgers; The State University of NJ" [ref=f39e51]
+        - cell [ref=f39e52]
+        - cell "11/22/2022" [ref=f39e53]
+        - cell [ref=f39e54]
+      - row [ref=f39e55]:
+        - cell [ref=f39e56]:
+          - img "56%" [ref=f39e57]
+        - cell [ref=f39e58]
+        - cell [ref=f39e59]
+        - cell [ref=f39e60]:
+          - link "PERC 2026-027" [ref=f39e61] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485258D9C00659022/$File/PERC 2026 27.pdf?OpenElement
+        - cell [ref=f39e62]
+        - cell [ref=f39e63]
+        - cell "Newark" [ref=f39e64]
+        - cell [ref=f39e65]
+        - cell "02/26/2026" [ref=f39e66]
+        - cell [ref=f39e67]
+      - row [ref=f39e68]:
+        - cell [ref=f39e69]:
+          - img "54%" [ref=f39e70]
+        - cell [ref=f39e71]
+        - cell [ref=f39e72]
+        - cell [ref=f39e73]:
+          - link "PERC 90-069" [ref=f39e74] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/256C107F670D531285256CB4006D8E8D/$File/PERC 90-069.pdf?OpenElement
+        - cell [ref=f39e75]
+        - cell [ref=f39e76]
+        - cell "Rutgers" [ref=f39e77]
+        - cell [ref=f39e78]
+        - cell "02/01/90" [ref=f39e79]
+        - cell [ref=f39e80]
+      - row [ref=f39e81]:
+        - cell [ref=f39e82]:
+          - img "53%" [ref=f39e83]
+        - cell [ref=f39e84]
+        - cell [ref=f39e85]
+        - cell [ref=f39e86]:
+          - link "PERC 86-050" [ref=f39e87] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/69A0A52FA875851C85256CB4006D8348/$File/PERC 86-050.pdf?OpenElement
+        - cell [ref=f39e88]
+        - cell [ref=f39e89]
+        - cell "Collingswood B/E" [ref=f39e90]
+        - cell [ref=f39e91]
+        - cell "10/18/85" [ref=f39e92]
+        - cell [ref=f39e93]
+      - row [ref=f39e94]:
+        - cell [ref=f39e95]:
+          - img "53%" [ref=f39e96]
+        - cell [ref=f39e97]
+        - cell [ref=f39e98]
+        - cell [ref=f39e99]:
+          - link "PERC-077" [ref=f39e100] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/3B9DC64890A0C46785256CB4006D7A3A/$File/PERC-077.pdf?OpenElement
+        - cell [ref=f39e101]
+        - cell [ref=f39e102]
+        - cell "W Paterson B/E" [ref=f39e103]
+        - cell [ref=f39e104]
+        - cell "09/14/73" [ref=f39e105]
+        - cell [ref=f39e106]
+      - row [ref=f39e107]:
+        - cell [ref=f39e108]:
+          - img "53%" [ref=f39e109]
+        - cell [ref=f39e110]
+        - cell [ref=f39e111]
+        - cell [ref=f39e112]:
+          - link "PERC-058" [ref=f39e113] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/C44F6803EFC6CCA985256CB4006D7A27/$File/PERC-058.pdf?OpenElement
+        - cell [ref=f39e114]
+        - cell [ref=f39e115]
+        - cell "Burlington Cty BCF" [ref=f39e116]
+        - cell [ref=f39e117]
+        - cell "08/11/71" [ref=f39e118]
+        - cell [ref=f39e119]
+  - table [ref=f39e121]:
+    - rowgroup [ref=f39e122]:
+      - row [ref=f39e123]:
+        - cell [ref=f39e124]:
+          - link "Back to Search" [ref=f39e125] [cursor=pointer]:
+            - /url: ""
+        - cell [ref=f39e126]:
+          - link "Back" [ref=f39e127] [cursor=pointer]:
+            - /url: ""

@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -323,7 +324,7 @@ def transcribe_local_chunked(audio_path: str, *, chunk_seconds: int = _CHUNK_SEC
 # audio minute. Native endpoint; params per
 # https://api.deepinfra.com/models/openai/whisper-large-v3 (txt_docs).
 _DEEPINFRA_URL = "https://api.deepinfra.com/v1/inference/openai/whisper-large-v3"
-_DEEPINFRA_ENGINE = "deepinfra-whisper-large-v3"
+_DEEPINFRA_ENGINE = "deepinfra-whisper-large-v3-vad"
 # 10-min mono MP3 chunks at 48 kbps are ~3.6MB: small uploads, short
 # requests, and a failed chunk is cheap to retry.
 _API_CHUNK_SECONDS = int(os.getenv("DEEPINFRA_CHUNK_SECONDS", "600"))
@@ -352,31 +353,88 @@ def engine_rank(engine: str) -> int:
     # Human-made captions are left alone; auto-captions have no punctuation
     # and break mid-sentence, so even local small.en beats them.
     if tail == "youtube-captions-manual":
-        return 4
+        return 5
     if tail == "youtube-captions-auto":
         return 0
-    if tail.startswith("deepinfra-") or tail == "openai-whisper-1":
+    # "-vad": silence cut out before sending, so no invented "Thank you." runs.
+    if tail.startswith("deepinfra-"):
+        return 4 if tail.endswith("-vad") else 3
+    if tail == "openai-whisper-1":
         return 3
     model = tail.removeprefix("faster-whisper-")
     return {"tiny": 0, "tiny.en": 0, "base": 0, "base.en": 0,
             "small": 1, "small.en": 1, "medium": 2, "medium.en": 2}.get(model, 2)
 
 
-def _encode_mp3_chunk(src_path: str, *, start: float, duration: float, out_path: str) -> bool:
+def _decode_pcm(src_path: str, *, start: float, duration: float):
+    """[start, start+duration) of src as 16kHz mono float32, or None."""
+    import numpy as np
+
     if not shutil.which("ffmpeg"):
-        return False
+        return None
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-loglevel", "error",
+             "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+             "-i", src_path, "-vn", "-ar", "16000", "-ac", "1", "-f", "s16le", "-"],
+            capture_output=True, timeout=600,
+        )
+    except subprocess.SubprocessError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return np.frombuffer(proc.stdout, np.int16).astype(np.float32) / 32768.0
+
+
+def _speech_only(audio):
+    """Cut silence out with Silero VAD (the filter faster-whisper uses).
+
+    Whisper large-v3 invents "Thank you." over silence, applause and music;
+    without this, a fifth to a third of every meeting transcript was that
+    phrase. Returns (speech audio, SpeechTimestampsMap), or (None, None)
+    when there's no speech."""
+    import numpy as np
+    from faster_whisper.vad import SpeechTimestampsMap, get_speech_timestamps
+
+    stamps = get_speech_timestamps(audio)
+    if not stamps:
+        return None, None
+    speech = np.concatenate([audio[t["start"]:t["end"]] for t in stamps])
+    return speech, SpeechTimestampsMap(stamps, 16000)
+
+
+def _encode_mp3(audio, out_path: str) -> bool:
+    import numpy as np
+
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
     try:
         proc = subprocess.run(
             ["ffmpeg", "-y", "-loglevel", "error",
-             "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-             "-i", src_path, "-vn",
-             "-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "48k",
-             out_path],
-            capture_output=True, text=True, timeout=600,
+             "-f", "s16le", "-ar", "16000", "-ac", "1", "-i", "-",
+             "-c:a", "libmp3lame", "-b:a", "48k", out_path],
+            input=pcm, capture_output=True, timeout=600,
         )
-        return proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
-    except subprocess.SubprocessError:
+        return proc.returncode == 0 and os.path.getsize(out_path) > 0
+    except (subprocess.SubprocessError, OSError):
         return False
+
+
+_FILLER = {"thank you", "thank you thank you", "thank you very much", "thanks for watching",
+           "thank you for watching", "thanks", "you", "bye"}
+
+
+def _collapse_filler_runs(segs: list[TranscriptSegment]) -> list[TranscriptSegment]:
+    """Keep one line of a run of identical filler lines ("Thank you." x14)
+    that slips past VAD."""
+    out: list[TranscriptSegment] = []
+    prev = None
+    for seg in segs:
+        norm = " ".join(re.sub(r"[^\w' ]", " ", seg.text.lower()).split())
+        if norm in _FILLER and norm == prev:
+            continue
+        out.append(seg)
+        prev = norm
+    return out
 
 
 def _deepinfra_request(key: str, mp3_path: str) -> dict:
@@ -425,35 +483,42 @@ def transcribe_deepinfra(audio_path: str) -> Optional[TranscriptionResult]:
     offset, idx = 0.0, 0
     try:
         while offset < duration:
-            chunk_path = audio_path + f".api{idx:03d}.mp3"
-            try:
-                if not _encode_mp3_chunk(audio_path, start=offset,
-                                         duration=min(_API_CHUNK_SECONDS, duration - offset),
-                                         out_path=chunk_path):
-                    logger.error("DeepInfra: failed to encode chunk %d of %s", idx, audio_path)
-                    return None
-                data = _deepinfra_request(key, chunk_path)
-            finally:
+            audio = _decode_pcm(audio_path, start=offset,
+                                duration=min(_API_CHUNK_SECONDS, duration - offset))
+            if audio is None:
+                logger.error("DeepInfra: failed to decode chunk %d of %s", idx, audio_path)
+                return None
+            speech, ts_map = _speech_only(audio)
+            if speech is not None:
+                chunk_path = audio_path + f".api{idx:03d}.mp3"
                 try:
-                    os.unlink(chunk_path)
-                except OSError:
-                    pass
-            for seg in data.get("segments") or []:
-                text = (seg.get("text") or "").strip()
-                if not text:
-                    continue
-                segs.append(TranscriptSegment(
-                    start=float(seg.get("start") or 0) + offset,
-                    end=float(seg.get("end") or 0) + offset,
-                    text=text,
-                ))
-            cost += float((data.get("inference_status") or {}).get("cost") or 0)
+                    if not _encode_mp3(speech, chunk_path):
+                        logger.error("DeepInfra: failed to encode chunk %d of %s", idx, audio_path)
+                        return None
+                    data = _deepinfra_request(key, chunk_path)
+                finally:
+                    try:
+                        os.unlink(chunk_path)
+                    except OSError:
+                        pass
+                for seg in data.get("segments") or []:
+                    text = (seg.get("text") or "").strip()
+                    if not text:
+                        continue
+                    # Times come back relative to the speech-only audio.
+                    segs.append(TranscriptSegment(
+                        start=ts_map.get_original_time(float(seg.get("start") or 0)) + offset,
+                        end=ts_map.get_original_time(float(seg.get("end") or 0), is_end=True) + offset,
+                        text=text,
+                    ))
+                cost += float((data.get("inference_status") or {}).get("cost") or 0)
             offset += _API_CHUNK_SECONDS
             idx += 1
     except Exception as e:
         logger.warning("DeepInfra transcription of %s failed: %s", audio_path, e)
         return None
 
+    segs = _collapse_filler_runs(segs)
     logger.info("DeepInfra transcribed %.0fs in %d chunk(s), cost $%.4f", duration, idx, cost)
     return TranscriptionResult(
         text=_segments_to_timestamped_text(segs),

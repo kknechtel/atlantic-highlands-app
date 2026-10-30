@@ -1,0 +1,229 @@
+- generic [active] [ref=f38e1]:
+  - generic:
+    - generic [ref=f38e2]:
+      - banner [ref=f38e4]:
+        - link [ref=f38e6] [cursor=pointer]:
+          - /url: https://www.monmouthcountyvotes.gov
+      - generic [ref=f38e8]:
+        - navigation [ref=f38e9]:
+          - generic [ref=f38e10]: Main Menu
+          - list [ref=f38e11]:
+            - listitem [ref=f38e12]:
+              - link "Home" [ref=f38e13] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/
+            - listitem [ref=f38e14]:
+              - link "Contact" [ref=f38e15] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/contact/
+            - listitem [ref=f38e16]:
+              - link "Pollworkers" [ref=f38e17] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/pollworkers/
+            - listitem [ref=f38e18]:
+              - link "Voter Information" [ref=f38e19] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/voter-information/
+            - listitem [ref=f38e20]:
+              - link "Elections" [ref=f38e21] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/elections/
+            - listitem [ref=f38e22]:
+              - link "Candidates" [ref=f38e23] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/candidates/
+        - generic [ref=f38e24]: Quick Links
+        - navigation [ref=f38e25]:
+          - list [ref=f38e26]:
+            - listitem [ref=f38e27]:
+              - link "Pollworkers" [ref=f38e28] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/pollworkers/
+            - listitem [ref=f38e30]:
+              - link "Voter Registration" [ref=f38e31] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/voter-information/voter-registration/
+            - listitem [ref=f38e33]:
+              - link "Request a Ballot" [ref=f38e34] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/voter-information/vote-by-mail/
+            - listitem [ref=f38e36]:
+              - link "Where do I vote?" [ref=f38e37] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/voter-information/polling-places/
+            - listitem [ref=f38e39]:
+              - link "Election Results" [ref=f38e40] [cursor=pointer]:
+                - /url: https://results.enr.clarityelections.com/NJ/Monmouth/126520/
+      - generic [ref=f38e43]:
+        - main [ref=f38e44]:
+          - article [ref=f38e46]:
+            - heading "Past Election Results" [level=1] [ref=f38e48]
+            - generic [ref=f38e49]:
+              - link "2026 Election Results" [ref=f38e51] [cursor=pointer]:
+                - /url: "#"
+              - link "2025 Election Results" [ref=f38e54] [cursor=pointer]:
+                - /url: "#"
+              - link "2024 Election Results" [ref=f38e57] [cursor=pointer]:
+                - /url: "#"
+              - link "2023 Election Results" [ref=f38e60] [cursor=pointer]:
+                - /url: "#"
+              - link "2022 Election Results" [ref=f38e63] [cursor=pointer]:
+                - /url: "#"
+              - link "2021 Election Results" [ref=f38e66] [cursor=pointer]:
+                - /url: "#"
+              - link "2020 Election Results" [ref=f38e69] [cursor=pointer]:
+                - /url: "#"
+              - link "2019 Election Results" [ref=f38e72] [cursor=pointer]:
+                - /url: "#"
+              - link "2018 Election Results" [ref=f38e75] [cursor=pointer]:
+                - /url: "#"
+              - link "2017 Election Results" [ref=f38e78] [cursor=pointer]:
+                - /url: "#"
+              - link "2016 Election Results" [ref=f38e81] [cursor=pointer]:
+                - /url: "#"
+              - link "2015 Election Results" [ref=f38e84] [cursor=pointer]:
+                - /url: "#"
+              - link "2014 Election Results" [ref=f38e87] [cursor=pointer]:
+                - /url: "#"
+              - link "2013 Election Results" [ref=f38e90] [cursor=pointer]:
+                - /url: "#"
+              - link "2012 Election Results" [ref=f38e93] [cursor=pointer]:
+                - /url: "#"
+              - link "2011 Election Results" [ref=f38e96] [cursor=pointer]:
+                - /url: "#"
+              - link "2010 Election Results" [ref=f38e99] [cursor=pointer]:
+                - /url: "#"
+              - link "2009 Election Results" [ref=f38e102] [cursor=pointer]:
+                - /url: "#"
+              - link "2008 Election Results" [ref=f38e105] [cursor=pointer]:
+                - /url: "#"
+              - link "2007 Election Results" [ref=f38e108] [cursor=pointer]:
+                - /url: "#"
+              - link "2006 Election Results" [ref=f38e111] [cursor=pointer]:
+                - /url: "#"
+              - link "2005 Election Results" [ref=f38e114] [cursor=pointer]:
+                - /url: "#"
+              - link "2004 Election Results" [ref=f38e117] [cursor=pointer]:
+                - /url: "#"
+              - link "2003 Election Results" [ref=f38e120] [cursor=pointer]:
+                - /url: "#"
+              - link "2002 Election Results" [ref=f38e123] [cursor=pointer]:
+                - /url: "#"
+              - link "2001 Election Results" [ref=f38e126] [cursor=pointer]:
+                - /url: "#"
+              - link "2000 Election Results" [ref=f38e129] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=f38e131]:
+          - complementary [ref=f38e132]:
+            - search [ref=f38e133]:
+              - generic:
+                - textbox [ref=f38e134]: Search...
+                - button [ref=f38e135] [cursor=pointer]
+          - complementary [ref=f38e136]:
+            - heading "Connect with Us" [level=2] [ref=f38e137]
+            - list:
+              - listitem [ref=f38e138]:
+                - link "Facebook" [ref=f38e139] [cursor=pointer]:
+                  - /url: http://www.facebook.com/MonmouthCountyClerk
+              - listitem [ref=f38e140]:
+                - link "Twitter" [ref=f38e141] [cursor=pointer]:
+                  - /url: https://twitter.com/MonmouthCoClerk
+              - listitem [ref=f38e142]:
+                - link "Instagram" [ref=f38e143] [cursor=pointer]:
+                  - /url: http://www.Instagram.com/MonmouthCountyClerk
+              - listitem [ref=f38e144]:
+                - link "Youtube" [ref=f38e145] [cursor=pointer]:
+                  - /url: https://www.youtube.com/channel/UCuvaoq7KaCRjiBNj-XRJ05g
+              - listitem [ref=f38e146]:
+                - link "Flickr" [ref=f38e147] [cursor=pointer]:
+                  - /url: https://www.flickr.com/photos/monmouthcountyclerk/
+              - listitem [ref=f38e148]:
+                - link "County Clerk" [ref=f38e149] [cursor=pointer]:
+                  - /url: http://MonmouthCountyClerk.com
+              - listitem [ref=f38e150]:
+                - link "County" [ref=f38e151] [cursor=pointer]:
+                  - /url: http://visitmonmouth.com/
+              - listitem [ref=f38e152]:
+                - link "Monmouth 250" [ref=f38e153] [cursor=pointer]:
+                  - /url: https://monmouthnj250.org/
+          - complementary [ref=f38e154]:
+            - paragraph [ref=f38e156]:
+              - link "Election Dates" [ref=f38e157] [cursor=pointer]:
+                - /url: /election-timelines/
+          - complementary [ref=f38e158]:
+            - paragraph [ref=f38e160]:
+              - link "Early Voting" [ref=f38e161] [cursor=pointer]:
+                - /url: /early-voting/
+          - complementary [ref=f38e162]:
+            - paragraph [ref=f38e164]:
+              - link "Vote by Mail Opt Out Form" [ref=f38e165] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/wp-content/uploads/2026/01/Fillable-Voter-Mail-In-Ballot-Opt-Out-Form-January-23-2026.pdf
+          - complementary [ref=f38e166]:
+            - heading "What’s New" [level=2] [ref=f38e167]
+            - list [ref=f38e168]:
+              - listitem [ref=f38e169]:
+                - link "Monmouth County Election Offices to Hold Extended Hours" [ref=f38e170] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyclerk.gov/press-releases/monmouth-county-election-offices-to-hold-extended-hours-to-assist-mail-in-ballot-voters/
+              - listitem [ref=f38e172]:
+                - link "Monmouth County Clerk Hanlon Advises Drop Boxes Are Available" [ref=f38e173] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyclerk.gov/press-releases/monmouth-county-clerk-hanlon-advises-drop-boxes-are-available-for-2026-general-election-mail-in-ballots/
+              - listitem [ref=f38e175]:
+                - link "Mail-In Ballots for the 2026 General Election Are Available for Monmouth County Voters" [ref=f38e176] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyclerk.gov/press-releases/mail-in-ballots-for-the-2026-general-election-are-available-for-monmouth-county-voters/
+              - listitem [ref=f38e178]:
+                - link "Opt-Out Deadline for Vote-by-Mail in the 2026 General Election is Monday, August 31" [ref=f38e179] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyclerk.gov/press-releases/opt-out-deadline-for-vote-by-mail-in-the-2026-general-election-is-monday-august-31/
+              - listitem [ref=f38e181]:
+                - link "New Law Expands Primary Election Voting to 17-Year-Olds in New Jersey’s Upcoming Primary Election" [ref=f38e182] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyclerk.gov/press-releases/new-law-expands-primary-election-voting-to-17-year-olds-in-new-jerseys-upcoming-primary-election/
+              - listitem [ref=f38e184]:
+                - link "New Law Now Permits New Jersey Voters to Apply for Mail-in Ballots Online" [ref=f38e185] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyclerk.gov/press-releases/new-law-now-permits-new-jersey-voters-to-apply-for-mail-in-ballots-online/
+              - listitem [ref=f38e187]:
+                - link "Election Video Tutorials" [ref=f38e188] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyvotes.gov/welcome-2/videos/
+              - listitem [ref=f38e190]:
+                - link "Poll Workers Wanted" [ref=f38e191] [cursor=pointer]:
+                  - /url: https://www.monmouthcountyvotes.gov/board-of-elections-ads/
+          - complementary [ref=f38e193]:
+            - heading "Download our Free Mobile Elections App!" [level=2] [ref=f38e194]
+            - generic [ref=f38e195]:
+              - paragraph
+              - link [ref=f38e197] [cursor=pointer]:
+                - /url: https://www.monmouthcountyvotes.gov/mobile-app-download/
+              - strong [ref=f38e199]:
+                - emphasis [ref=f38e200]: Monmouth County Votes
+              - strong [ref=f38e202]: "Mobile App:"
+              - link "Apple App Store" [ref=f38e204] [cursor=pointer]:
+                - /url: https://itunes.apple.com/us/app/monmouth-votes/id1281739449?ls=1&mt=8
+              - link "Google Play Store" [ref=f38e206] [cursor=pointer]:
+                - /url: https://play.google.com/store/apps/details?id=com.monmouthvotes.android.gp
+              - paragraph
+          - complementary [ref=f38e207]:
+            - link "Election Videos & Tutorials" [ref=f38e209] [cursor=pointer]:
+              - /url: /videos/
+          - complementary [ref=f38e210]:
+            - link "Contact Us" [ref=f38e212] [cursor=pointer]:
+              - /url: /contact-us/
+      - contentinfo [ref=f38e213]:
+        - complementary [ref=f38e215]:
+          - paragraph [ref=f38e217]:
+            - text: Copyright © 2026 Monmouth County Clerk –
+            - link "Privacy Policy" [ref=f38e218] [cursor=pointer]:
+              - /url: https://co.monmouth.nj.us/page.aspx?Id=1836
+            - text: –
+            - link "Social Media Policy" [ref=f38e219] [cursor=pointer]:
+              - /url: https://www.monmouthcountyvotes.gov/social-media-policy/
+            - text: "– Powered by:"
+            - link "SOE Software" [ref=f38e220] [cursor=pointer]:
+              - /url: https://soesoftware.com/
+      - generic [ref=f38e221]:
+        - navigation [ref=f38e222]:
+          - generic [ref=f38e223] [cursor=pointer]:
+            - generic [aria-hidden] [ref=f38e224]: 
+            - generic [ref=f38e225]: Menu
+          - link "Home" [ref=f38e226] [cursor=pointer]:
+            - /url: https://www.monmouthcountyvotes.gov
+            - generic [aria-hidden] [ref=f38e227]: 
+          - generic [ref=f38e229] [cursor=pointer]:
+            - generic [aria-hidden] [ref=f38e230]: 
+            - generic [ref=f38e231]: Search
+        - search [ref=f38e232]:
+          - textbox [ref=f38e233]: Search...
+          - button [ref=f38e234] [cursor=pointer]:
+            - generic [aria-hidden] [ref=f38e235]: 
+    - status:
+      - status:
+        - generic [ref=f38e237]:
+          - generic [ref=f38e238]: Monmouth County election offices will be open on Saturday, October 31, from 9 a.m. to 1 p.m. to assist voters.
+          - button "Close" [ref=f38e240] [cursor=pointer]

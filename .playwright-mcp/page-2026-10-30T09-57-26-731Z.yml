@@ -1,0 +1,337 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - main [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e8]:
+          - generic [ref=e9]:
+            - button "Menu" [ref=e10] [cursor=pointer]
+            - link [ref=e13] [cursor=pointer]:
+              - /url: /home
+              - img "Citizen Portal" [ref=e15]
+          - link "Sign in" [ref=e17] [cursor=pointer]:
+            - /url: /auth/login?redirectTo=%2Farticles%2F8393425%2FNew-Jersey%2FSchool-Districts%2FHenry-Hudson-Regional-School-District%2FHenry-Hudson-board-hears-presentation-on-proposed-cellphone-tower-public-raises-health-and-ethics-concerns
+        - generic [ref=e21]:
+          - button "Search scope" [ref=e22]:
+            - generic [ref=e26]: All
+          - textbox "Ask anything about your government..." [ref=e29]
+          - button "Search" [ref=e30]
+        - navigation "Your pages" [ref=e35]:
+          - link [ref=e36] [cursor=pointer]:
+            - /url: /home
+            - strong [ref=e37]: Front Page
+          - link [ref=e38] [cursor=pointer]:
+            - /url: /feed/2979/federal
+            - strong [ref=e39]: National
+          - link [ref=e40] [cursor=pointer]:
+            - /url: /following
+            - strong [ref=e41]: Following
+          - link [ref=e42] [cursor=pointer]:
+            - /url: /favorites
+            - strong [ref=e43]: Favorites
+        - generic [ref=e45]:
+          - generic [ref=e48]:
+            - link "Daily News One paper per town Run your town’s paper Learn more →" [ref=e51] [cursor=pointer]:
+              - /url: https://ads.citizenportal.ai/www/delivery/cl.php?bannerid=102&zoneid=10&sig=1dfe17a5cf0525fbe6354be6982647d9560cf5424ee498f7e400fc39c4735ac9&dest=https%3A%2F%2Fdaily-news.ai%2F%3Fcpad%3Ddn1v5run%26utm_source%3Dcitizenportal%26utm_medium%3Drevive%26utm_campaign%3Ddaily-news%26utm_content%3Ddn1-v5-run
+              - generic [ref=e52]:
+                - generic [ref=e53]: Daily News
+                - generic [ref=e54]: One paper per town
+              - generic [ref=e55]: Run your town’s paper
+              - generic [ref=e56]: Learn more →
+            - generic [ref=e58]:
+              - generic [ref=e59]:
+                - navigation "Breadcrumb" [ref=e60]:
+                  - link "New Jersey" [ref=e61] [cursor=pointer]:
+                    - /url: /feed/2293
+                  - text: /
+                  - link "School Districts" [ref=e62] [cursor=pointer]:
+                    - /url: /feed/13244
+                  - text: /
+                  - link "Henry Hudson Regional School District" [ref=e63] [cursor=pointer]:
+                    - /url: /feed/118932
+                - heading "Henry Hudson board hears presentation on proposed cell‑phone tower; public raises health and ethics concerns" [level=1] [ref=e64]
+                - paragraph [ref=e65]: Sep 17, 2025
+                - generic [ref=e66]:
+                  - navigation "Jump to a section" [ref=e67]:
+                    - link "Full story" [ref=e68] [cursor=pointer]:
+                      - /url: "#what-happened"
+                  - toolbar "Article actions" [ref=e69]:
+                    - button "Favorite" [ref=e70] [cursor=pointer]
+                    - button "Follow" [ref=e74] [cursor=pointer]
+                    - button "Share" [ref=e78] [cursor=pointer]
+                - region "Summary" [ref=e86]:
+                  - paragraph [ref=e87]: At the Sept. 17 meeting the board received a public presentation from Declan O'Scanlon of FSD Enterprises proposing a cell-phone tower on district property. O'Scanlon estimated district revenue between $50,000 and $180,000 per year; community members raised health, exposure and potential conflict-of-interest concerns. No board action was taken; the proposal will go to committee and future public hearings.
+                - navigation "Hot topics in this story" [ref=e88]:
+                  - generic [ref=e89]:
+                    - link "Cell-Site Simulators" [ref=e90] [cursor=pointer]:
+                      - /url: /cell-site-simulators
+                    - link "5G Small Cell Towers" [ref=e91] [cursor=pointer]:
+                      - /url: /5g-small-cell-towers
+                    - link "Public Comment Rules" [ref=e92] [cursor=pointer]:
+                      - /url: /public-comment-rules
+                    - link "City Social Media Policy" [ref=e93] [cursor=pointer]:
+                      - /url: /city-social-media-policy
+                - generic [ref=e94]:
+                  - heading "The full story" [level=2] [ref=e96]
+                  - paragraph [ref=e97]: Declan O'Scanlon of FSD Enterprises presented a proposal to the Henry Hudson Regional PK–12 Board of Education on Sept. 17 to locate a cell‑phone tower on school property. O'Scanlon said the site would help fill local coverage gaps and estimated district revenue from colocation and lease payments "between $50,000 and $180,000 a year," adding that initial contracts are typically five years with renewable terms and modest annual increases.
+                - region "Keep reading" [ref=e98]:
+                  - region [ref=e99]:
+                    - generic [ref=e100]: Free account
+                    - heading "Sign up to keep reading." [level=2] [ref=e101]
+                    - paragraph [ref=e102]: Your free Citizen Portal account lets you follow what your city council, county, and school board discussed and decided.
+                    - generic [ref=e103]:
+                      - button "Continue with Google" [ref=e104] [cursor=pointer]
+                      - generic [ref=e110]: or
+                      - generic [ref=e113]:
+                        - generic [ref=e114]: Email address
+                        - textbox "Email address" [ref=e115]:
+                          - /placeholder: Your email
+                        - button "Create free account" [ref=e116] [cursor=pointer]: Create free account →
+                    - link "Already have an account? Sign in" [ref=e117] [cursor=pointer]:
+                      - /url: /auth/login?redirectTo=%2Farticles%2F8393425%2FNew-Jersey%2FSchool-Districts%2FHenry-Hudson-Regional-School-District%2FHenry-Hudson-board-hears-presentation-on-proposed-cellphone-tower-public-raises-health-and-ethics-concerns
+              - complementary "Officials and related stories" [ref=e118]:
+                - generic [ref=e119]:
+                  - region "Daily News" [ref=e120]:
+                    - heading "Run Middletown’s daily paper." [level=3] [ref=e121]: Run Middletown’sdaily paper.
+                    - paragraph [ref=e122]: Turn what you know about Middletown into local news your neighbors read every day. Research tools track every public meeting for you. Plans from $200 a month, or buy it outright.
+                    - link "Be your town’s editor-in-chief" [ref=e123] [cursor=pointer]:
+                      - /url: /go?k=article%3Adaily-news%3Apitch%3Aa&to=https%3A%2F%2Fdaily-news.ai%2F%3Futm_source%3Dcitizenportal%26utm_medium%3Darticle_rail%26utm_campaign%3Ddaily-news%26utm_content%3Dsidebar-a%26utm_term%3D8393425%26area%3D07716
+                    - generic [ref=e124]:
+                      - 'link "See one in action: Upriver News →" [ref=e125] [cursor=pointer]':
+                        - /url: /go?k=article%3Adaily-news%3Aexample&to=https%3A%2F%2Fdaily-news.ai%2Fupriver-news%2F3%3Futm_source%3Dcitizenportal%26utm_medium%3Darticle_rail%26utm_campaign%3Ddaily-news%26utm_content%3Dsidebar-a_example%26utm_term%3D8393425
+                      - button "Know someone who should run it? →" [ref=e126] [cursor=pointer]
+                    - generic [ref=e129]:
+                      - generic [ref=e130]: Daily News
+                      - generic [ref=e131]: daily-news.ai
+                  - region [ref=e132]:
+                    - heading "Also happening" [level=2] [ref=e134]
+                    - link "Cell-Site Simulators" [ref=e137] [cursor=pointer]:
+                      - /url: /cell-site-simulators
+                    - paragraph [ref=e138]:
+                      - text: Being decided in
+                      - strong [ref=e139]: 40 places
+                      - text: across the country
+                    - list [ref=e140]:
+                      - listitem [ref=e141]:
+                        - generic [ref=e142]: Hollywood City, Florida
+                        - generic [ref=e143]: Oct 20
+                      - listitem [ref=e144]:
+                        - generic [ref=e145]: Vienna, Virginia
+                        - generic [ref=e146]: Oct 19
+                      - listitem [ref=e147]:
+                        - generic [ref=e148]: Marine Mammal Commission, Federal
+                        - generic [ref=e149]: Sep 25
+                    - link "See all 40 on the map →" [ref=e150] [cursor=pointer]:
+                      - /url: /cell-site-simulators
+                  - region "Daily Crossword" [ref=e151]:
+                    - button "Play today's crossword" [ref=e204] [cursor=pointer]
+                  - generic [ref=e205]:
+                    - generic [ref=e206]: Officials
+                    - generic [ref=e207]:
+                      - generic [ref=e208]: In this story
+                      - generic [ref=e209]:
+                        - generic [ref=e210]: DO
+                        - generic [ref=e211]:
+                          - text: Declan O'Scanlon
+                          - generic [ref=e212]: Representative
+                      - generic [ref=e213]:
+                        - generic [ref=e214]: RC
+                        - generic [ref=e215]:
+                          - text: Richard Colangelo
+                          - generic [ref=e216]: Board President
+                      - generic [ref=e217]:
+                        - generic [ref=e218]: DT
+                        - generic [ref=e219]:
+                          - text: Dr. Tara Beams
+                          - generic [ref=e220]: Superintendent
+                      - generic [ref=e221]:
+                        - generic [ref=e222]: CW
+                        - generic [ref=e223]:
+                          - text: Chelsea Witkowski
+                          - generic [ref=e224]: Resident
+                    - generic [ref=e225]:
+                      - link "All your representatives →" [ref=e226] [cursor=pointer]:
+                        - /url: /my-representatives
+                      - generic [ref=e227]: Messages are sent through CivIQ.
+              - region [ref=e229]:
+                - heading "More on this" [level=2] [ref=e231]
+                - list [ref=e232]:
+                  - listitem [ref=e233]:
+                    - link [ref=e234] [cursor=pointer]:
+                      - /url: /articles/8393430/henry-hudson-board-approves-202530-strategic-plan-81-routine-consent-items-also-passed
+                      - heading "Henry Hudson board approves 2025–30 strategic plan 8–1; routine consent items also passed" [level=3] [ref=e236]
+                      - paragraph [ref=e237]: On Sept. 17 the Henry Hudson Regional PK-12 Board of Education approved its 2025–2030 strategic plan on an 8–1 vote after a brief debate and recorded several routine consent approvals, including facility-use requests and staff travel. Board member Melnyk cast the lone dissent.
+          - generic [ref=e238]:
+            - generic [ref=e239]:
+              - generic [ref=e240]:
+                - img "Citizen Portal" [ref=e241]
+                - generic [ref=e242]: See government, clearly.
+                - generic [ref=e243]:
+                  - link "Follow us on LinkedIn" [ref=e244] [cursor=pointer]:
+                    - /url: https://www.linkedin.com/company/citizen-portal-ai/
+                  - link "Follow us on TikTok" [ref=e245] [cursor=pointer]:
+                    - /url: https://www.tiktok.com/@citizenportalai_official
+                  - link "Follow us on Instagram" [ref=e246] [cursor=pointer]:
+                    - /url: https://www.instagram.com/citizenportalai_official
+                  - link "Follow us on YouTube" [ref=e247] [cursor=pointer]:
+                    - /url: https://www.youtube.com/@CitizenPortalAI_Official
+                  - link "Follow us on Twitter" [ref=e248] [cursor=pointer]:
+                    - /url: https://twitter.com/citizenportalai?s=21&t=_oBJIc1v_8Ojwz2e4hEayA
+                  - link "Follow us on Facebook" [ref=e249] [cursor=pointer]:
+                    - /url: https://www.facebook.com/profile.php?id=100093227401453&mibextid=LQQJ4d
+                  - link "Follow us on Mastodon" [ref=e250] [cursor=pointer]:
+                    - /url: https://mastodon.social/@citizenportal_ai
+              - generic [ref=e251]:
+                - heading "Platform" [level=6] [ref=e252]
+                - link "About us" [ref=e253] [cursor=pointer]:
+                  - /url: /about-us
+                - link "For cities" [ref=e254] [cursor=pointer]:
+                  - /url: /solutions/government
+                - link "Topics" [ref=e255] [cursor=pointer]:
+                  - /url: /topics
+                - link "News" [ref=e256] [cursor=pointer]:
+                  - /url: /news
+                - link "Diminished Fourth Estate" [ref=e257] [cursor=pointer]:
+                  - /url: https://fourthestate.citizenportal.ai
+              - generic [ref=e258]:
+                - heading "Support" [level=6] [ref=e259]
+                - link "Help center" [ref=e260] [cursor=pointer]:
+                  - /url: /help
+                - button "Contact us" [ref=e261] [cursor=pointer]
+                - button "Report an issue" [ref=e262] [cursor=pointer]
+              - generic [ref=e263]:
+                - heading "Community" [level=6] [ref=e264]
+                - link "Affiliate program" [ref=e265] [cursor=pointer]:
+                  - /url: /affiliate
+                - link "Support CP" [ref=e266] [cursor=pointer]:
+                  - /url: /back-our-mission
+                - link "Volunteer" [ref=e267] [cursor=pointer]:
+                  - /url: /volunteer
+              - generic [ref=e268]:
+                - heading "Legal" [level=6] [ref=e269]
+                - link "Privacy" [ref=e270] [cursor=pointer]:
+                  - /url: /privacy
+                - link "Terms" [ref=e271] [cursor=pointer]:
+                  - /url: /terms
+            - generic [ref=e272]:
+              - heading "Find your state" [level=6] [ref=e273]
+              - generic [ref=e274]:
+                - link "AL" [ref=e275] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AL
+                - link "AK" [ref=e276] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AK
+                - link "AR" [ref=e277] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AR
+                - link "AZ" [ref=e278] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AZ
+                - link "CA" [ref=e279] [cursor=pointer]:
+                  - /url: /SummaryBrowse/CA
+                - link "CO" [ref=e280] [cursor=pointer]:
+                  - /url: /SummaryBrowse/CO
+                - link "CT" [ref=e281] [cursor=pointer]:
+                  - /url: /SummaryBrowse/CT
+                - link "DE" [ref=e282] [cursor=pointer]:
+                  - /url: /SummaryBrowse/DE
+                - link "DC" [ref=e283] [cursor=pointer]:
+                  - /url: /SummaryBrowse/DC
+                - link "FL" [ref=e284] [cursor=pointer]:
+                  - /url: /SummaryBrowse/FL
+                - link "GA" [ref=e285] [cursor=pointer]:
+                  - /url: /SummaryBrowse/GA
+                - link "HI" [ref=e286] [cursor=pointer]:
+                  - /url: /SummaryBrowse/HI
+                - link "IA" [ref=e287] [cursor=pointer]:
+                  - /url: /SummaryBrowse/IA
+                - link "ID" [ref=e288] [cursor=pointer]:
+                  - /url: /SummaryBrowse/ID
+                - link "IL" [ref=e289] [cursor=pointer]:
+                  - /url: /SummaryBrowse/IL
+                - link "IN" [ref=e290] [cursor=pointer]:
+                  - /url: /SummaryBrowse/IN
+                - link "KS" [ref=e291] [cursor=pointer]:
+                  - /url: /SummaryBrowse/KS
+                - link "KY" [ref=e292] [cursor=pointer]:
+                  - /url: /SummaryBrowse/KY
+                - link "LA" [ref=e293] [cursor=pointer]:
+                  - /url: /SummaryBrowse/LA
+                - link "MA" [ref=e294] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MA
+                - link "MD" [ref=e295] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MD
+                - link "ME" [ref=e296] [cursor=pointer]:
+                  - /url: /SummaryBrowse/ME
+                - link "MI" [ref=e297] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MI
+                - link "MN" [ref=e298] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MN
+                - link "MO" [ref=e299] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MO
+                - link "MS" [ref=e300] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MS
+                - link "MT" [ref=e301] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MT
+                - link "NE" [ref=e302] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NE
+                - link "NH" [ref=e303] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NH
+                - link "NJ" [ref=e304] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NJ
+                - link "NM" [ref=e305] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NM
+                - link "NV" [ref=e306] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NV
+                - link "NY" [ref=e307] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NY
+                - link "NC" [ref=e308] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NC
+                - link "ND" [ref=e309] [cursor=pointer]:
+                  - /url: /SummaryBrowse/ND
+                - link "OH" [ref=e310] [cursor=pointer]:
+                  - /url: /SummaryBrowse/OH
+                - link "OK" [ref=e311] [cursor=pointer]:
+                  - /url: /SummaryBrowse/OK
+                - link "OR" [ref=e312] [cursor=pointer]:
+                  - /url: /SummaryBrowse/OR
+                - link "PA" [ref=e313] [cursor=pointer]:
+                  - /url: /SummaryBrowse/PA
+                - link "RI" [ref=e314] [cursor=pointer]:
+                  - /url: /SummaryBrowse/RI
+                - link "SC" [ref=e315] [cursor=pointer]:
+                  - /url: /SummaryBrowse/SC
+                - link "SD" [ref=e316] [cursor=pointer]:
+                  - /url: /SummaryBrowse/SD
+                - link "TN" [ref=e317] [cursor=pointer]:
+                  - /url: /SummaryBrowse/TN
+                - link "TX" [ref=e318] [cursor=pointer]:
+                  - /url: /SummaryBrowse/TX
+                - link "UT" [ref=e319] [cursor=pointer]:
+                  - /url: /SummaryBrowse/UT
+                - link "VA" [ref=e320] [cursor=pointer]:
+                  - /url: /SummaryBrowse/VA
+                - link "VT" [ref=e321] [cursor=pointer]:
+                  - /url: /SummaryBrowse/VT
+                - link "WA" [ref=e322] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WA
+                - link "WI" [ref=e323] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WI
+                - link "WV" [ref=e324] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WV
+                - link "WY" [ref=e325] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WY
+                - link "PR" [ref=e326] [cursor=pointer]:
+                  - /url: /SummaryBrowse/PR
+                - link "GU" [ref=e327] [cursor=pointer]:
+                  - /url: /SummaryBrowse/GU
+                - link "AS" [ref=e328] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AS
+                - link "VI" [ref=e329] [cursor=pointer]:
+                  - /url: /SummaryBrowse/VI
+            - generic [ref=e330]: © 2026 Citizen Portal. Meeting records and summaries sourced from the public record.
+    - region "Notifications alt+T"
+  - dialog "Cookie consent" [ref=e331]:
+    - generic [ref=e332]:
+      - paragraph [ref=e333]: We use cookies to analyze site usage and improve your experience.
+      - generic [ref=e334]:
+        - paragraph [ref=e335]: You can change your preference any time.
+        - generic [ref=e336]:
+          - button "Deny" [ref=e337] [cursor=pointer]
+          - button "Accept" [ref=e338] [cursor=pointer]

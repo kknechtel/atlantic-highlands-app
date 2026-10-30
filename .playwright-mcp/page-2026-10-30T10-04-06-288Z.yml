@@ -1,0 +1,207 @@
+- generic [ref=f43e2]:
+  - generic:
+    - generic:
+      - banner:
+        - generic:
+          - generic "Site Header"
+  - main [ref=f43e3]:
+    - generic [ref=f43e14]:
+      - heading "Search NJ Law Administrative Decisions" [level=2] [ref=f43e15]
+      - generic [ref=f43e17]:
+        - textbox "Enter search terms..." [ref=f43e18]
+        - combobox [ref=f43e19]:
+          - option "All Agencies" [selected]
+          - option "ABC Alcoholic Beverage Control"
+          - option "AGR Agriculture Development Committee"
+          - option "ATG Attorney General Office"
+          - option "BDS Professional Boards"
+          - option "BKG Division of Banking"
+          - option "BKI Banking and Insurance"
+          - option "BOS Bureau of Securities"
+          - option "BRC Regulatory Commissioners"
+          - option "CAF Community Affairs"
+          - option "CAH Council on Affordable Housing"
+          - option "CCC Casino Control"
+          - option "CFB Community Affairs"
+          - option "CLG Local Government Services"
+          - option "CMA Consumer Affairs"
+          - option "COR Corrections"
+          - option "CRT Civil Rights"
+          - option "CSR Police and Fire Removal"
+          - option "CSV Civil Service"
+          - option "CTV Cable Television"
+          - option "EDE Board of Examiners"
+          - option "EDS Special Education"
+          - option "EDU Education"
+          - option "EEC School Ethics Commission"
+          - option "EFG Fish, Game and Wildlife"
+          - option "ELE Election Law"
+          - option "ELU Land Use"
+          - option "ENH Natural and Historic Resources"
+          - option "EPC Pinelands Commission"
+          - option "ECA Environmental Protection"
+          - option "ECE Environmental Compliance and Enforcement"
+          - option "EED Environmental Protection"
+          - option "EEQ Environmental Protection"
+          - option "EER Environmental Regulation"
+          - option "ESW Environmental Solid Waste/option>"
+          - option "EWR Environmental Water Resources"
+          - option "EAP Environmental Air Quality Protection"
+          - option "ESA Environmental Coastal Resources"
+          - option "ESR Environmental Site Remediation"
+          - option "EHW Environmental Hazardous Waste Management"
+          - option "ETH Ethiacal Standards"
+          - option "FGC Fish, Game and Wildlife"
+          - option "GRC Government Records Council"
+          - option "HAP Human Services - Pharmaceutical Assistance for the Aged"
+          - option "HDD Human Services - Developmental Disabilities"
+          - option "HDY Human Services - Youth and Family Services"
+          - option "HEA Higher Education Assistance"
+          - option "HEC Higher Education"
+          - option "HED Higher Education"
+          - option "HFA Housing and Mortgage"
+          - option "HLB Health and Senior Services"
+          - option "HLT Health"
+          - option "HMA Human Services - Medical Assistance and Health"
+          - option "HMD Hackensack Meadowlands"
+          - option "HPW Human Services - Economic Assistance"
+          - option "HSL Human Services - Developmental Disabilities"
+          - option "HVB Human Services - Blind and Vision Impaired"
+          - option "IHC Individual Health Benefits"
+          - option "INS Insurance"
+          - option "LID Labor and Industry"
+          - option "MVH Motor Vehicles"
+          - option "POL State Police"
+          - option "PRC Public Employment Relations (P.E.R.C.)"
+          - option "PTC Police Training"
+          - option "PUC Public Utilities"
+          - option "RAC Racing Commission"
+          - option "REC Real Estate Commission"
+          - option "STE State Department"
+          - option "TRP Transportation"
+          - option "TYP Pensions"
+          - option "UCC Unemployment Compensation"
+          - option "WCC Workers' Compensation"
+        - generic [ref=f43e20]:
+          - button "Search Initial Decisions" [ref=f43e21] [cursor=pointer]
+          - button "Search Final Decisions" [ref=f43e22] [cursor=pointer]
+  - contentinfo [ref=f43e23]:
+    - heading "Site Footer" [level=2] [ref=f43e24]
+    - generic "Site Footer" [ref=f43e25]:
+      - generic [ref=f43e27]:
+        - generic [ref=f43e28]:
+          - link "Back to home" [ref=f43e31] [cursor=pointer]:
+            - /url: https://law.rutgers.edu/
+            - img "Rutgers logo" [ref=f43e32]
+          - generic:
+            - generic:
+              - navigation
+        - generic [ref=f43e33]:
+          - navigation [ref=f43e36]:
+            - heading "Academics" [level=3] [ref=f43e37]
+            - list [ref=f43e38]:
+              - listitem [ref=f43e39]:
+                - link "Academic Calendars" [ref=f43e40] [cursor=pointer]:
+                  - /url: https://scheduling.rutgers.edu/scheduling/academic-calendar
+              - listitem [ref=f43e41]:
+                - link "Course Catalogs" [ref=f43e42] [cursor=pointer]:
+                  - /url: https://www.rutgers.edu/catalogs#tab=panel-2
+              - listitem [ref=f43e43]:
+                - link "Law Library" [ref=f43e44] [cursor=pointer]:
+                  - /url: https://law.rutgers.edu/academics/library
+              - listitem [ref=f43e45]:
+                - link "Schedule of Classes" [ref=f43e46] [cursor=pointer]:
+                  - /url: https://classes.rutgers.edu//soc/#home
+              - listitem [ref=f43e47]:
+                - link "University Libraries" [ref=f43e48] [cursor=pointer]:
+                  - /url: https://www.libraries.rutgers.edu/
+          - navigation [ref=f43e51]:
+            - heading "Campus" [level=3] [ref=f43e52]
+            - list [ref=f43e53]:
+              - listitem [ref=f43e54]:
+                - link "Visits and Tours" [ref=f43e55] [cursor=pointer]:
+                  - /url: https://law.rutgers.edu/admissions/visiting-virtual-events
+              - listitem [ref=f43e56]:
+                - link "Campus Safety" [ref=f43e57] [cursor=pointer]:
+                  - /url: https://ipo.rutgers.edu/publicsafety
+              - listitem [ref=f43e58]:
+                - link "Calendar of Events" [ref=f43e59] [cursor=pointer]:
+                  - /url: https://law.rutgers.edu/events
+          - generic [ref=f43e60]:
+            - heading "Connect" [level=2] [ref=f43e61]
+            - generic [ref=f43e62]:
+              - navigation [ref=f43e65]:
+                - list [ref=f43e66]:
+                  - listitem [ref=f43e67]:
+                    - link "Apply" [ref=f43e68] [cursor=pointer]:
+                      - /url: https://law.rutgers.edu/admissions/how-to-apply
+                  - listitem [ref=f43e69]:
+                    - link "Work at Rutgers" [ref=f43e70] [cursor=pointer]:
+                      - /url: https://jobs.rutgers.edu/
+              - navigation [ref=f43e73]:
+                - list [ref=f43e74]:
+                  - listitem [ref=f43e75]:
+                    - link "Giving" [ref=f43e76] [cursor=pointer]:
+                      - /url: https://give.rutgersfoundation.org/rutgers-law-school/
+                  - listitem [ref=f43e77]:
+                    - link "News" [ref=f43e78] [cursor=pointer]:
+                      - /url: https://law.rutgers.edu/news
+              - navigation [ref=f43e81]:
+                - list [ref=f43e82]:
+                  - listitem [ref=f43e83]:
+                    - link "Veteran & Military Resources" [ref=f43e84] [cursor=pointer]:
+                      - /url: https://veterans.rutgers.edu/
+          - navigation [ref=f43e87]:
+            - heading "Notices" [level=3] [ref=f43e88]
+            - list [ref=f43e89]:
+              - listitem [ref=f43e90]:
+                - link "Consumer Information (ABA Required Disclosures)" [ref=f43e91] [cursor=pointer]:
+                  - /url: https://law.rutgers.edu/aba-standard-504-and-509-disclosures
+              - listitem [ref=f43e92]:
+                - link "Accessibility" [ref=f43e93] [cursor=pointer]:
+                  - /url: https://law.rutgers.edu/student-life/accessibility-at-rutgers-law
+              - listitem [ref=f43e94]:
+                - link "Commencement" [ref=f43e95] [cursor=pointer]:
+                  - /url: https://law.rutgers.edu/student-life/commencement
+              - listitem [ref=f43e96]:
+                - link "University Operating Status" [ref=f43e97] [cursor=pointer]:
+                  - /url: https://www.rutgers.edu/status
+              - listitem [ref=f43e98]:
+                - link "Privacy" [ref=f43e99] [cursor=pointer]:
+                  - /url: https://www.rutgers.edu/privacy-statement
+        - generic [ref=f43e104]:
+          - heading "Follow Us" [level=3] [ref=f43e105]
+          - list [ref=f43e106]:
+            - listitem [ref=f43e107]:
+              - link "Facebook" [ref=f43e108] [cursor=pointer]:
+                - /url: https://www.facebook.com/RutgersLawSchool
+            - listitem [ref=f43e112]:
+              - link "X (formerly Twitter)" [ref=f43e113] [cursor=pointer]:
+                - /url: https://x.com/rutgerslaw
+            - listitem [ref=f43e116]:
+              - link "Youtube Channel" [ref=f43e117] [cursor=pointer]:
+                - /url: https://www.youtube.com/channel/UC7mt8kdYcQGF8xFkaQA0jCA
+            - listitem [ref=f43e121]:
+              - link "LinkedIn" [ref=f43e122] [cursor=pointer]:
+                - /url: https://www.linkedin.com/school/rutgers-law-school/
+            - listitem [ref=f43e126]:
+              - link "Instagram" [ref=f43e127] [cursor=pointer]:
+                - /url: https://www.instagram.com/rutgers.law
+        - generic [ref=f43e131]:
+          - paragraph [ref=f43e132]:
+            - text: Rutgers is an equal access/equal opportunity institution. Individuals with disabilities are encouraged to direct suggestions, comments, or complaints concerning any accessibility issues with Rutgers websites to
+            - link "accessibility@rutgers.edu" [ref=f43e133] [cursor=pointer]:
+              - /url: mailto:accessibility@rutgers.edu
+            - text: or complete the
+            - link "Report Accessibility Barrier / Provide Feedback" [ref=f43e134] [cursor=pointer]:
+              - /url: https://it.rutgers.edu/it-accessibility-initiative/barrierform/
+            - text: form.
+          - paragraph [ref=f43e135]:
+            - link "Copyright © 2026" [ref=f43e136] [cursor=pointer]:
+              - /url: https://www.rutgers.edu/copyright-information
+            - text: ", Rutgers, The State University of New Jersey. All rights reserved."
+            - link "Contact webmaster" [ref=f43e137] [cursor=pointer]:
+              - /url: https://it.rutgers.edu/camden/service-request-forms/
+            - text: "|"
+            - link "Sitemap" [ref=f43e138] [cursor=pointer]:
+              - /url: https://law.rutgers.edu/sitemap

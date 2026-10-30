@@ -1,0 +1,169 @@
+- generic [active] [ref=f63e1]:
+  - generic [ref=f63e2]:
+    - banner [ref=f63e3]:
+      - navigation [ref=f63e4]:
+        - generic [ref=f63e5]:
+          - link [ref=f63e7] [cursor=pointer]:
+            - /url: /
+          - list [ref=f63e58]:
+            - listitem [ref=f63e59]:
+              - link "About" [ref=f63e60] [cursor=pointer]:
+                - /url: https://free.law/about/
+            - listitem [ref=f63e61]:
+              - link "Sign in / Register" [ref=f63e62] [cursor=pointer]:
+                - /url: /sign-in/?next=/docket/12721159/jp-v-atlantic-highlands-board-of-education/?
+      - navigation [ref=f63e63]:
+        - generic [ref=f63e64]:
+          - generic:
+            - list [ref=f63e65]:
+              - listitem [ref=f63e66]:
+                - link "Case Law" [ref=f63e67] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f63e69]:
+                - link "RECAP Archive PACER" [ref=f63e70] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f63e72]:
+                - link "Oral Arguments" [ref=f63e73] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f63e75]:
+                - link "Judges" [ref=f63e76] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f63e78]:
+                - link "Financial Disclosures" [ref=f63e79] [cursor=pointer]:
+                  - /url: "#"
+            - list [ref=f63e81]:
+              - listitem [ref=f63e82]:
+                - link " Join FLP" [ref=f63e83] [cursor=pointer]:
+                  - /url: https://free.law/membership/
+                  - generic [ref=f63e84]: 
+                  - text: Join FLP
+    - generic [ref=f63e85]:
+      - generic [ref=f63e86]:
+        - heading "J.P. v. ATLANTIC HIGHLANDS BOARD OF EDUCATION (3:10-cv-01632)" [level=1] [ref=f63e87]:
+          - generic [ref=f63e88]: J.P. v. ATLANTIC HIGHLANDS BOARD OF EDUCATION
+          - text: (3:10-cv-01632)
+        - text: 
+        - heading "District Court, D. New Jersey" [level=2] [ref=f63e89]
+        - generic [ref=f63e90]:
+          - button " Add Note" [ref=f63e92] [cursor=pointer]:
+            - generic [ref=f63e93]: 
+            - text: Add Note
+          - generic [ref=f63e95]:
+            - button "toggle tag menu" [ref=f63e96] [cursor=pointer]:
+              - generic [ref=f63e97]: 
+              - text: Tags
+            - text: 
+          - generic [ref=f63e99]:
+            - link " Get Alerts" [ref=f63e100] [cursor=pointer]:
+              - /url: /alert/docket/toggle/
+              - generic [ref=f63e101]: 
+              - text: Get Alerts
+            - generic [ref=f63e102] [cursor=pointer]: Toggle Dropdown
+            - text:   
+          - generic [ref=f63e105]:
+            - link " View on PACER" [ref=f63e106] [cursor=pointer]:
+              - /url: https://ecf.njd.uscourts.gov/cgi-bin/DktRpt.pl?239695
+              - generic [ref=f63e107]: 
+              - text: View on PACER
+            - generic [ref=f63e108] [cursor=pointer]: Toggle Dropdown
+            - text:             
+        - paragraph [ref=f63e111]: "Last Updated: Feb. 4, 2022, 5:41 p.m."
+        - paragraph [ref=f63e112]:
+          - text: "Assigned To:"
+          - link "Anne Elise Thompson" [ref=f63e114] [cursor=pointer]:
+            - /url: /person/3210/anne-elise-thompson/
+        - paragraph [ref=f63e115]:
+          - text: "Referred To:"
+          - link "Tonianne J. Bongiovanni" [ref=f63e117] [cursor=pointer]:
+            - /url: /person/9376/tonianne-j-bongiovanni/
+        - paragraph [ref=f63e118]: "Citation: J.P. v. ATLANTIC HIGHLANDS BOARD OF EDUCATION, 3:10-cv-01632, (D.N.J.)"
+        - paragraph [ref=f63e119]: "Date Filed: March 29, 2010"
+        - paragraph [ref=f63e120]: "Date Terminated: Aug. 2, 2011"
+        - paragraph [ref=f63e121]: "Date of Last Known Filing: Aug. 23, 2011"
+        - paragraph [ref=f63e122]:
+          - text: "Nature of Suit:"
+          - link "440 Civil rights other" [ref=f63e124] [cursor=pointer]:
+            - /url: /?type=r&nature_of_suit=%22440+Civil+rights+other%22
+        - paragraph [ref=f63e125]: "Jurisdiction Type: Federal question"
+      - generic [ref=f63e126]:
+        - tablist [ref=f63e127]:
+          - link " Docket Entries" [ref=f63e128]:
+            - /url: /docket/12721159/jp-v-atlantic-highlands-board-of-education/
+            - generic [ref=f63e129]: 
+            - text: Docket Entries
+          - link " FJC Integrated Database" [ref=f63e130] [cursor=pointer]:
+            - /url: /docket/12721159/idb/jp-v-atlantic-highlands-board-of-education/
+            - generic [ref=f63e131]: 
+            - text: FJC Integrated Database
+        - generic [ref=f63e132]:
+          - paragraph [ref=f63e134]: There are no entries for this docket in the RECAP Archive. Please download the latest from PACER while using the RECAP Extension.
+          - paragraph [ref=f63e136]:
+            - link " Buy Docket on PACER" [ref=f63e137] [cursor=pointer]:
+              - /url: https://ecf.njd.uscourts.gov/cgi-bin/DktRpt.pl?239695
+              - generic [ref=f63e138]: 
+              - text: Buy Docket on PACER
+    - generic [ref=f63e139]:
+      - generic [ref=f63e140]:
+        - paragraph [ref=f63e141]: Newsletter
+        - paragraph [ref=f63e142]: Sign up to receive the Free Law Project newsletter with tips and announcements.
+      - link " Subscribe" [ref=f63e144] [cursor=pointer]:
+        - /url: https://donate.free.law/np/clients/freelawproject/subscribe.jsp?forwardedFromSecureDomain=1&subscription=9
+        - generic [ref=f63e145]: 
+        - text: Subscribe
+    - contentinfo [ref=f63e146]:
+      - generic [ref=f63e148]:
+        - generic [ref=f63e149]:
+          - generic [ref=f63e150]:
+            - link "About" [ref=f63e152] [cursor=pointer]:
+              - /url: https://free.law/about/
+            - link "Help" [ref=f63e154] [cursor=pointer]:
+              - /url: /help/
+            - link "Donate" [ref=f63e156] [cursor=pointer]:
+              - /url: https://donate.free.law/forms/supportflp
+          - generic [ref=f63e157]:
+            - link "About Our Data" [ref=f63e159] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/courtlistener/help/data-coverage
+            - link "APIs & Bulk Data" [ref=f63e161] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/courtlistener/help/api
+            - generic [ref=f63e162]:
+              - link "Feeds" [ref=f63e163] [cursor=pointer]:
+                - /url: https://wiki.free.law/c/courtlistener/help/general/using-atom-and-rss-feeds-for-the-latest-updates
+              - text: "&"
+              - link "Podcasts" [ref=f63e164] [cursor=pointer]:
+                - /url: https://wiki.free.law/c/courtlistener/help/general/custom-podcasts-of-oral-argument-audio-recordings
+              - generic [ref=f63e165]: 
+        - generic [ref=f63e166]:
+          - generic [ref=f63e167]:
+            - link "Blog Posts" [ref=f63e169] [cursor=pointer]:
+              - /url: https://free.law
+            - link "Contact" [ref=f63e171] [cursor=pointer]:
+              - /url: /contact/
+            - link "Data Services" [ref=f63e173] [cursor=pointer]:
+              - /url: https://free.law/data-consulting/
+            - link "Contribute" [ref=f63e175] [cursor=pointer]:
+              - /url: https://free.law/volunteer
+          - generic [ref=f63e176]:
+            - link "Terms & Privacy" [ref=f63e178] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/terms/courtlistener/courtlistenercom-terms-of-service-and-policies
+            - link "Removal" [ref=f63e180] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/terms/courtlistener/courtlistenercom-content-removal-policy
+            - link "Vulnerability Policies" [ref=f63e182] [cursor=pointer]:
+              - /url: https://free.law/vulnerability-disclosure-policy/
+      - link [ref=f63e184] [cursor=pointer]:
+        - /url: https://donate.free.law/forms/supportflp
+        - img "Donate to support our work" [ref=f63e185]
+      - paragraph [ref=f63e187]:
+        - text: CourtListener is sponsored by the non-profit
+        - link "Free Law Project" [ref=f63e188] [cursor=pointer]:
+          - /url: https://free.law
+        - text: .
+  - generic [ref=f63e189]:
+    - link "LinkedIn - Free Law Project (opens in a new tab)" [ref=f63e190] [cursor=pointer]:
+      - /url: https://www.linkedin.com/company/free-law-project/
+    - link "Bluesky - Free Law Project (opens in a new tab)" [ref=f63e194] [cursor=pointer]:
+      - /url: https://bsky.app/profile/free.law
+    - link "GitHub repository (opens in a new tab)" [ref=f63e197] [cursor=pointer]:
+      - /url: https://github.com/freelawproject/courtlistener
+    - link "Subscribe to the Free Law Project newsletter (opens in a new tab)" [ref=f63e201] [cursor=pointer]:
+      - /url: https://donate.free.law/np/clients/freelawproject/subscribe.jsp?subscription=9
+  - text: 

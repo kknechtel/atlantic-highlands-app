@@ -1,0 +1,142 @@
+- generic [active] [ref=f40e1]:
+  - banner "Main Site Header" [ref=f40e2]:
+    - link "Skip to main content" [ref=f40e3] [cursor=pointer]:
+      - /url: "#content_main"
+    - link "Henry Hudson Regional School District" [ref=f40e5] [cursor=pointer]:
+      - /url: /
+    - navigation "Main Site Navigation":
+      - button "Main Menu Toggle" [ref=f40e7] [cursor=pointer]
+      - list [ref=f40e11]:
+        - listitem [ref=f40e12]:
+          - button "About Our District" [ref=f40e13] [cursor=pointer]
+        - listitem [ref=f40e15]:
+          - button "Board of Education" [ref=f40e16] [cursor=pointer]
+        - listitem [ref=f40e18]:
+          - button "District Departments" [ref=f40e19] [cursor=pointer]
+        - listitem [ref=f40e21]:
+          - button "Community" [ref=f40e22] [cursor=pointer]
+        - listitem [ref=f40e24]:
+          - link "Athletics" [ref=f40e25] [cursor=pointer]:
+            - /url: https://hhrs.tridistrict.org/apps/pages/index.jsp?uREC_ID=3760859&type=d&pREC_ID=2440079
+        - listitem [ref=f40e27]:
+          - link "Human Resources" [ref=f40e28] [cursor=pointer]:
+            - /url: https://www.tridistrict.org/apps/pages/index.jsp?uREC_ID=4387358&type=d
+        - listitem [ref=f40e30]:
+          - button "Strategic Planning" [ref=f40e31] [cursor=pointer]
+        - listitem [ref=f40e33]:
+          - button "Contact Us" [ref=f40e34] [cursor=pointer]
+        - listitem [ref=f40e36]:
+          - link "Legal Notices" [ref=f40e37] [cursor=pointer]:
+            - /url: https://www.tridistrict.org/legalnotices
+    - navigation [ref=f40e39]:
+      - list [ref=f40e40]:
+        - listitem [ref=f40e41]:
+          - button "Schools" [ref=f40e42] [cursor=pointer]
+  - main "Main Site Content" [ref=f40e44]:
+    - region "Page hero"
+    - generic [ref=f40e45]:
+      - link "Back to Board of Education" [ref=f40e47] [cursor=pointer]:
+        - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d
+        - text: Board of Education
+      - text: » Contracts
+    - heading "Contracts" [level=1] [ref=f40e48]
+    - generic [ref=f40e49]:
+      - list [ref=f40e53]:
+        - listitem [ref=f40e54]:
+          - link "Superintendent's Contract 2024-2029" [ref=f40e55] [cursor=pointer]:
+            - /url: https://4.files.edl.io/f57d/07/03/24/113722-f9d12909-4060-4fd3-a694-3ec230d40c00.pdf
+        - listitem [ref=f40e56]:
+          - link "2026-2027 BA Contract - Janet Sherlock" [ref=f40e57] [cursor=pointer]:
+            - /url: https://4.files.edl.io/fdeb/10/09/26/113353-e05bcf0b-7697-46e3-90b6-92b7a3675818.pdf
+        - listitem [ref=f40e58]:
+          - link "Henry Hudson Regional Education Association 2024-2027 CONTRACT" [ref=f40e59] [cursor=pointer]:
+            - /url: https://4.files.edl.io/0535/08/06/24/122239-542785f4-82e8-4b79-9dc0-aa258cf839c0.pdf
+      - navigation "Navigation for Board of Education section" [ref=f40e62]:
+        - list [ref=f40e63]:
+          - listitem [ref=f40e64]:
+            - link "Board of Education" [ref=f40e66] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2432532
+          - listitem [ref=f40e68]:
+            - link "Board Members" [ref=f40e70] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593225
+          - listitem [ref=f40e72]:
+            - link "Board Committees" [ref=f40e74] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593533
+          - listitem [ref=f40e76]:
+            - link "Board of Education Meeting Information" [ref=f40e78] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593229
+          - listitem [ref=f40e80]:
+            - link "2026-2027 Board of Education Agendas & Minutes" [ref=f40e82] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2749182
+          - listitem [ref=f40e84]:
+            - link "2025-2026 Board of Education Agendas & Minutes" [ref=f40e86] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2675269
+          - listitem [ref=f40e88]:
+            - link "2024-2025 Board of Education Agendas & Minutes" [ref=f40e90] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593279
+          - listitem [ref=f40e92]:
+            - link "Board Meeting Recordings" [ref=f40e94] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2596745
+          - listitem [ref=f40e96]:
+            - link "School Budget Information" [ref=f40e98] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2580048
+          - listitem [ref=f40e100]:
+            - link "Board Policies" [ref=f40e102] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593278
+          - listitem [ref=f40e104]:
+            - link "Board FAQs" [ref=f40e106] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593227
+          - listitem [ref=f40e108]:
+            - link "Archived Board Agendas & Minutes" [ref=f40e110] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593280
+          - listitem [ref=f40e112]:
+            - link "Contracts" [ref=f40e114] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593281
+          - listitem [ref=f40e116]:
+            - link "OPRA Request Form" [ref=f40e118] [cursor=pointer]:
+              - /url: https://www.tridistrict.org/apps/pages/index.jsp?uREC_ID=3733526&type=d&pREC_ID=2432525
+          - listitem [ref=f40e120]:
+            - link "School Ethics Commission NJDOE - Search Annual Filing" [ref=f40e122] [cursor=pointer]:
+              - /url: https://homeroom6.doe.state.nj.us/secpublic/secpublic
+  - contentinfo "Main Site Footer" [ref=f40e124]:
+    - generic [ref=f40e128]:
+      - generic [ref=f40e129]: Henry Hudson Regional School District
+      - generic [ref=f40e131]:
+        - link "1 Grand Tour, Highlands, NJ 07732" [ref=f40e135] [cursor=pointer]:
+          - /url: /apps/maps
+          - generic [ref=f40e136]: 1 Grand Tour,
+          - text: Highlands, NJ 07732
+        - generic [ref=f40e137]:
+          - text: "Phone:"
+          - link "(732) 872-1517" [ref=f40e140] [cursor=pointer]:
+            - /url: tel:+17328721517
+        - generic [ref=f40e141]: "Fax: (732) 872-1315"
+      - navigation "Useful Links" [ref=f40e144]:
+        - list [ref=f40e146]:
+          - listitem [ref=f40e147]:
+            - link "Perform Care" [ref=f40e148] [cursor=pointer]:
+              - /url: https://www.performcarenj.org/
+          - listitem [ref=f40e149]:
+            - link "Perform Care Video" [ref=f40e150] [cursor=pointer]:
+              - /url: https://www.nj.gov/dcf/documents/DCF-CSOC-30.mp4
+          - listitem [ref=f40e151]:
+            - link "Online HIB Reporting Form" [ref=f40e152] [cursor=pointer]:
+              - /url: https://reporting.hibster.com/Pages/Home.aspx?id=414
+      - navigation "Social Media Links" [ref=f40e153]:
+        - list [ref=f40e155]:
+          - listitem [ref=f40e156]:
+            - link "Facebook" [ref=f40e157] [cursor=pointer]:
+              - /url: https://www.facebook.com/hhtri.district
+          - listitem [ref=f40e162]:
+            - link "Twitter" [ref=f40e163] [cursor=pointer]:
+              - /url: https://twitter.com/TriDistrict
+          - listitem [ref=f40e167]:
+            - link "Search" [ref=f40e168] [cursor=pointer]:
+              - /url: /apps/search
+      - generic [ref=f40e172]:
+        - link "Edlio Login" [ref=f40e173] [cursor=pointer]:
+          - /url: http://admin.tridistrict.org
+          - generic [ref=f40e174]: Edlio
+          - text: Login
+        - link "Powered by Edlio" [ref=f40e178] [cursor=pointer]:
+          - /url: http://www.edlio.com

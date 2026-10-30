@@ -1,0 +1,1256 @@
+- generic [ref=f35e2]:
+  - table [ref=f35e3]:
+    - rowgroup [ref=f35e4]:
+      - row [ref=f35e5]:
+        - cell [ref=f35e6]
+  - generic [ref=f35e7]: Legal Research Search Results
+  - text: 87 matches returned
+  - table [ref=f35e8]:
+    - rowgroup [ref=f35e9]:
+      - row [ref=f35e10]:
+        - cell [ref=f35e11]:
+          - link "Back to Search" [ref=f35e12] [cursor=pointer]:
+            - /url: ""
+        - cell [ref=f35e13]:
+          - link "Back" [ref=f35e14] [cursor=pointer]:
+            - /url: ""
+  - table [ref=f35e16]:
+    - rowgroup [ref=f35e17]:
+      - row [ref=f35e18]:
+        - columnheader [ref=f35e19]
+        - columnheader "Fiscal Year" [ref=f35e20]
+        - columnheader [ref=f35e21]
+        - columnheader "Decision" [ref=f35e22]
+        - columnheader [ref=f35e23]
+        - columnheader [ref=f35e24]
+        - columnheader "Employer" [ref=f35e25]
+        - columnheader [ref=f35e26]
+        - columnheader "Date" [ref=f35e27]
+        - columnheader [ref=f35e28]
+      - row [ref=f35e29]:
+        - cell [ref=f35e30]:
+          - img "71%" [ref=f35e31]
+        - cell [ref=f35e32]
+        - cell [ref=f35e33]
+        - cell [ref=f35e34]:
+          - link "PERC 2006-099" [ref=f35e35] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC6048525716A00564899/$File/PERC 2006-99.pdf?OpenElement
+        - cell [ref=f35e36]
+        - cell [ref=f35e37]
+        - cell "Old Bridge B/E" [ref=f35e38]
+        - cell [ref=f35e39]
+        - cell "06/29/2006" [ref=f35e40]
+        - cell [ref=f35e41]
+      - row [ref=f35e42]:
+        - cell [ref=f35e43]:
+          - img "64%" [ref=f35e44]
+        - cell [ref=f35e45]
+        - cell [ref=f35e46]
+        - cell [ref=f35e47]:
+          - link "PERC 2008-056" [ref=f35e48] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC6048525740F006FE261/$File/PERC 2008 56.pdf?OpenElement
+        - cell [ref=f35e49]
+        - cell [ref=f35e50]
+        - cell "Closter Boro" [ref=f35e51]
+        - cell [ref=f35e52]
+        - cell "03/27/2008" [ref=f35e53]
+        - cell [ref=f35e54]
+      - row [ref=f35e55]:
+        - cell [ref=f35e56]:
+          - img "63%" [ref=f35e57]
+        - cell [ref=f35e58]
+        - cell [ref=f35e59]
+        - cell [ref=f35e60]:
+          - link "PERC 2013-047" [ref=f35e61] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257ACB00517652/$File/PERC 2013 47.pdf?OpenElement
+        - cell [ref=f35e62]
+        - cell [ref=f35e63]
+        - cell "Clayton Boro" [ref=f35e64]
+        - cell [ref=f35e65]
+        - cell "12/13/2012" [ref=f35e66]
+        - cell [ref=f35e67]
+      - row [ref=f35e68]:
+        - cell [ref=f35e69]:
+          - img "62%" [ref=f35e70]
+        - cell [ref=f35e71]
+        - cell [ref=f35e72]
+        - cell [ref=f35e73]:
+          - link "PERC 2009-051" [ref=f35e74] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C21048525754700548E89/$File/PERC 2009 51.pdf?OpenElement
+        - cell [ref=f35e75]
+        - cell [ref=f35e76]
+        - cell "Edison Tp" [ref=f35e77]
+        - cell [ref=f35e78]
+        - cell "03/26/2009" [ref=f35e79]
+        - cell [ref=f35e80]
+      - row [ref=f35e81]:
+        - cell [ref=f35e82]:
+          - img "62%" [ref=f35e83]
+        - cell [ref=f35e84]
+        - cell [ref=f35e85]
+        - cell [ref=f35e86]:
+          - link "PERC 2003-049" [ref=f35e87] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC60485256D9B007658AD/$File/perc 2003-049.pdf?OpenElement
+        - cell [ref=f35e88]
+        - cell [ref=f35e89]
+        - cell "N Highlands Reg B/E" [ref=f35e90]
+        - cell [ref=f35e91]
+        - cell "01/31/2003" [ref=f35e92]
+        - cell [ref=f35e93]
+      - row [ref=f35e94]:
+        - cell [ref=f35e95]:
+          - img "61%" [ref=f35e96]
+        - cell [ref=f35e97]
+        - cell [ref=f35e98]
+        - cell [ref=f35e99]:
+          - link "PERC 2016-070" [ref=f35e100] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257E8F006DDC10/$File/PERC 2016 70.pdf?OpenElement
+        - cell [ref=f35e101]
+        - cell [ref=f35e102]
+        - cell "New Brunswick Parking Auth" [ref=f35e103]
+        - cell [ref=f35e104]
+        - cell "04/28/2016" [ref=f35e105]
+        - cell [ref=f35e106]
+      - row [ref=f35e107]:
+        - cell [ref=f35e108]:
+          - img "61%" [ref=f35e109]
+        - cell [ref=f35e110]
+        - cell [ref=f35e111]
+        - cell [ref=f35e112]:
+          - link "PERC 2014-043" [ref=f35e113] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257C1500652132/$File/PERC 2014 43.pdf?OpenElement
+        - cell [ref=f35e114]
+        - cell [ref=f35e115]
+        - cell "Hoboken" [ref=f35e116]
+        - cell [ref=f35e117]
+        - cell "12/19/2013" [ref=f35e118]
+        - cell [ref=f35e119]
+      - row [ref=f35e120]:
+        - cell [ref=f35e121]:
+          - img "61%" [ref=f35e122]
+        - cell [ref=f35e123]
+        - cell [ref=f35e124]
+        - cell [ref=f35e125]:
+          - link "PERC 83-075" [ref=f35e126] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/DCECE26BD7FC2BB985256CB4006D7EAF/$File/PERC 83-075.pdf?OpenElement
+        - cell [ref=f35e127]
+        - cell [ref=f35e128]
+        - cell "Atlantic Highlands Boro" [ref=f35e129]
+        - cell [ref=f35e130]
+        - cell "12/02/82" [ref=f35e131]
+        - cell [ref=f35e132]
+      - row [ref=f35e133]:
+        - cell [ref=f35e134]:
+          - img "61%" [ref=f35e135]
+        - cell [ref=f35e136]
+        - cell [ref=f35e137]
+        - cell [ref=f35e138]:
+          - link "PERC 2008-010" [ref=f35e139] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC604852572F0006B29BE/$File/PERC 2008-10.pdf?OpenElement
+        - cell [ref=f35e140]
+        - cell [ref=f35e141]
+        - cell "Mercer Cty and Mercer Cty Sheriff's Office" [ref=f35e142]
+        - cell [ref=f35e143]
+        - cell "08/09/2007" [ref=f35e144]
+        - cell [ref=f35e145]
+      - row [ref=f35e146]:
+        - cell [ref=f35e147]:
+          - img "61%" [ref=f35e148]
+        - cell [ref=f35e149]
+        - cell [ref=f35e150]
+        - cell [ref=f35e151]:
+          - link "PERC 87-028" [ref=f35e152] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/D6D6F485F3C67D4885256CB4006D83CB/$File/PERC 87-028.pdf?OpenElement
+        - cell [ref=f35e153]
+        - cell [ref=f35e154]
+        - cell "Atlantic Highlds B/E" [ref=f35e155]
+        - cell [ref=f35e156]
+        - cell "09/26/86" [ref=f35e157]
+        - cell [ref=f35e158]
+      - row [ref=f35e159]:
+        - cell [ref=f35e160]:
+          - img "60%" [ref=f35e161]
+        - cell [ref=f35e162]
+        - cell [ref=f35e163]
+        - cell [ref=f35e164]:
+          - link "PERC 2006-060" [ref=f35e165] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC60485257118005189EA/$File/PERC 2006-60.pdf?OpenElement
+        - cell [ref=f35e166]
+        - cell [ref=f35e167]
+        - cell "Newark" [ref=f35e168]
+        - cell [ref=f35e169]
+        - cell "02/23/2006" [ref=f35e170]
+        - cell [ref=f35e171]
+      - row [ref=f35e172]:
+        - cell [ref=f35e173]:
+          - img "60%" [ref=f35e174]
+        - cell [ref=f35e175]
+        - cell [ref=f35e176]
+        - cell [ref=f35e177]:
+          - link "PERC 2013-094" [ref=f35e178] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257B7C00578452/$File/PERC 2013 94.pdf?OpenElement
+        - cell [ref=f35e179]
+        - cell [ref=f35e180]
+        - cell "Bedminster Tp" [ref=f35e181]
+        - cell [ref=f35e182]
+        - cell "06/27/2013" [ref=f35e183]
+        - cell [ref=f35e184]
+      - row [ref=f35e185]:
+        - cell [ref=f35e186]:
+          - img "58%" [ref=f35e187]
+        - cell [ref=f35e188]
+        - cell [ref=f35e189]
+        - cell [ref=f35e190]:
+          - link "PERC 2020-061" [ref=f35e191] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C21048525853C006AD2B0/$File/PERC 2020 61.pdf?OpenElement
+        - cell [ref=f35e192]
+        - cell [ref=f35e193]
+        - cell "Carteret Boro" [ref=f35e194]
+        - cell [ref=f35e195]
+        - cell "06/25/2020" [ref=f35e196]
+        - cell [ref=f35e197]
+      - row [ref=f35e198]:
+        - cell [ref=f35e199]:
+          - img "58%" [ref=f35e200]
+        - cell [ref=f35e201]
+        - cell [ref=f35e202]
+        - cell [ref=f35e203]:
+          - link "PERC 2013-057" [ref=f35e204] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257AD3006A85CE/$File/PERC 2013 57.pdf?OpenElement
+        - cell [ref=f35e205]
+        - cell [ref=f35e206]
+        - cell "Summit B/E" [ref=f35e207]
+        - cell [ref=f35e208]
+        - cell "01/31/2013" [ref=f35e209]
+        - cell [ref=f35e210]
+      - row [ref=f35e211]:
+        - cell [ref=f35e212]:
+          - img "58%" [ref=f35e213]
+        - cell [ref=f35e214]
+        - cell [ref=f35e215]
+        - cell [ref=f35e216]:
+          - link "PERC 2006-069" [ref=f35e217] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC6048525712B00718DA3/$File/PERC 2006-69.pdf?OpenElement
+        - cell [ref=f35e218]
+        - cell [ref=f35e219]
+        - cell "Bergenfield B/E" [ref=f35e220]
+        - cell [ref=f35e221]
+        - cell "03/30/2006" [ref=f35e222]
+        - cell [ref=f35e223]
+      - row [ref=f35e224]:
+        - cell [ref=f35e225]:
+          - img "58%" [ref=f35e226]
+        - cell [ref=f35e227]
+        - cell [ref=f35e228]
+        - cell [ref=f35e229]:
+          - link "PERC 83-104" [ref=f35e230] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/0403713D955D1ADC85256CB4006D7ECC/$File/PERC 83-104.pdf?OpenElement
+        - cell [ref=f35e231]
+        - cell [ref=f35e232]
+        - cell "Atlantic Highlands Boro" [ref=f35e233]
+        - cell [ref=f35e234]
+        - cell "02/17/83" [ref=f35e235]
+        - cell [ref=f35e236]
+      - row [ref=f35e237]:
+        - cell [ref=f35e238]:
+          - img "58%" [ref=f35e239]
+        - cell [ref=f35e240]
+        - cell [ref=f35e241]
+        - cell [ref=f35e242]:
+          - link "PERC 91-046" [ref=f35e243] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/3ECBF174C3013F8E85256CB4006D8EF3/$File/PERC 91-046.pdf?OpenElement
+        - cell [ref=f35e244]
+        - cell [ref=f35e245]
+        - cell "Lacey Tp" [ref=f35e246]
+        - cell [ref=f35e247]
+        - cell "10/26/90" [ref=f35e248]
+        - cell [ref=f35e249]
+      - row [ref=f35e250]:
+        - cell [ref=f35e251]:
+          - img "57%" [ref=f35e252]
+        - cell [ref=f35e253]
+        - cell [ref=f35e254]
+        - cell [ref=f35e255]:
+          - link "PERC 2023-041" [ref=f35e256] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C2104852589730070F8FD/$File/PERC 2023 41.pdf?OpenElement
+        - cell [ref=f35e257]
+        - cell [ref=f35e258]
+        - cell "Old Bridge B/E" [ref=f35e259]
+        - cell [ref=f35e260]
+        - cell "03/30/2023" [ref=f35e261]
+        - cell [ref=f35e262]
+      - row [ref=f35e263]:
+        - cell [ref=f35e264]:
+          - img "57%" [ref=f35e265]
+        - cell [ref=f35e266]
+        - cell [ref=f35e267]
+        - cell [ref=f35e268]:
+          - link "PERC 2020-058" [ref=f35e269] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C21048525856C0044769A/$File/PERC 2020 58.pdf?OpenElement
+        - cell [ref=f35e270]
+        - cell [ref=f35e271]
+        - cell "Madison B/E" [ref=f35e272]
+        - cell [ref=f35e273]
+        - cell "05/28/2020" [ref=f35e274]
+        - cell [ref=f35e275]
+      - row [ref=f35e276]:
+        - cell [ref=f35e277]:
+          - img "57%" [ref=f35e278]
+        - cell [ref=f35e279]
+        - cell [ref=f35e280]
+        - cell [ref=f35e281]:
+          - link "PERC 2018-048" [ref=f35e282] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485258213007106B4/$File/PERC 2018 48.pdf?OpenElement
+        - cell [ref=f35e283]
+        - cell [ref=f35e284]
+        - cell "Monroe Tp B/E" [ref=f35e285]
+        - cell [ref=f35e286]
+        - cell "05/31/2018" [ref=f35e287]
+        - cell [ref=f35e288]
+      - row [ref=f35e289]:
+        - cell [ref=f35e290]:
+          - img "57%" [ref=f35e291]
+        - cell [ref=f35e292]
+        - cell [ref=f35e293]
+        - cell [ref=f35e294]:
+          - link "PERC 86-072" [ref=f35e295] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/40CF3BB555C08B1A85256CB4006D835E/$File/PERC 86-072.pdf?OpenElement
+        - cell [ref=f35e296]
+        - cell [ref=f35e297]
+        - cell "Mt Laurel Tp" [ref=f35e298]
+        - cell [ref=f35e299]
+        - cell "11/19/85" [ref=f35e300]
+        - cell [ref=f35e301]
+      - row [ref=f35e302]:
+        - cell [ref=f35e303]:
+          - img "57%" [ref=f35e304]
+        - cell [ref=f35e305]
+        - cell [ref=f35e306]
+        - cell [ref=f35e307]:
+          - link "PERC 86-096" [ref=f35e308] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/F2D63B3725915EED85256CB4006D8376/$File/PERC 86-096.pdf?OpenElement
+        - cell [ref=f35e309]
+        - cell [ref=f35e310]
+        - cell "Newark" [ref=f35e311]
+        - cell [ref=f35e312]
+        - cell "02/20/86" [ref=f35e313]
+        - cell [ref=f35e314]
+      - row [ref=f35e315]:
+        - cell [ref=f35e316]:
+          - img "57%" [ref=f35e317]
+        - cell [ref=f35e318]
+        - cell [ref=f35e319]
+        - cell [ref=f35e320]:
+          - link "PERC 87-133" [ref=f35e321] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/659811EACA6100B985256CB4006D84AA/$File/PERC 87-133.pdf?OpenElement
+        - cell [ref=f35e322]
+        - cell [ref=f35e323]
+        - cell "Maywood Bor" [ref=f35e324]
+        - cell [ref=f35e325]
+        - cell "04/23/87" [ref=f35e326]
+        - cell [ref=f35e327]
+      - row [ref=f35e328]:
+        - cell [ref=f35e329]:
+          - img "57%" [ref=f35e330]
+        - cell [ref=f35e331]
+        - cell [ref=f35e332]
+        - cell [ref=f35e333]:
+          - link "PERC 94-069" [ref=f35e334] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/304DA0807519CBD385256CB4006D907F/$File/PERC 94-069.pdf?OpenElement
+        - cell [ref=f35e335]
+        - cell [ref=f35e336]
+        - cell "Vineland" [ref=f35e337]
+        - cell [ref=f35e338]
+        - cell "12/15/93" [ref=f35e339]
+        - cell [ref=f35e340]
+      - row [ref=f35e341]:
+        - cell [ref=f35e342]:
+          - img "57%" [ref=f35e343]
+        - cell [ref=f35e344]
+        - cell [ref=f35e345]
+        - cell [ref=f35e346]:
+          - link "PERC 93-040" [ref=f35e347] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/CD4DF0634ABBB67885256CB4006D8FE9/$File/PERC 93-040.pdf?OpenElement
+        - cell [ref=f35e348]
+        - cell [ref=f35e349]
+        - cell "Atlantic Highlands B/E" [ref=f35e350]
+        - cell [ref=f35e351]
+        - cell "11/25/92" [ref=f35e352]
+        - cell [ref=f35e353]
+      - row [ref=f35e354]:
+        - cell [ref=f35e355]:
+          - img "57%" [ref=f35e356]
+        - cell [ref=f35e357]
+        - cell [ref=f35e358]
+        - cell [ref=f35e359]:
+          - link "PERC 92-035" [ref=f35e360] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/B192D18A840432A885256CB4006D8F62/$File/PERC 92-035.pdf?OpenElement
+        - cell [ref=f35e361]
+        - cell [ref=f35e362]
+        - cell "Waterford Tp B/E" [ref=f35e363]
+        - cell [ref=f35e364]
+        - cell "10/01/91" [ref=f35e365]
+        - cell [ref=f35e366]
+      - row [ref=f35e367]:
+        - cell [ref=f35e368]:
+          - img "57%" [ref=f35e369]
+        - cell [ref=f35e370]
+        - cell [ref=f35e371]
+        - cell [ref=f35e372]:
+          - link "PERC 87-120" [ref=f35e373] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/27B0F1EC8DC61F7385256CB4006D8427/$File/PERC 87-120.pdf?OpenElement
+        - cell [ref=f35e374]
+        - cell [ref=f35e375]
+        - cell "Lacey Tp" [ref=f35e376]
+        - cell [ref=f35e377]
+        - cell "03/24/87" [ref=f35e378]
+        - cell [ref=f35e379]
+      - row [ref=f35e380]:
+        - cell [ref=f35e381]:
+          - img "56%" [ref=f35e382]
+        - cell [ref=f35e383]
+        - cell [ref=f35e384]
+        - cell [ref=f35e385]:
+          - link "PERC 2024-006" [ref=f35e386] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/EBA180FD9AD1401285258A15006E958F/$File/PERC 2024 6.pdf?OpenElement
+        - cell [ref=f35e387]
+        - cell [ref=f35e388]
+        - cell "Plainsboro Tp" [ref=f35e389]
+        - cell [ref=f35e390]
+        - cell "08/24/2023" [ref=f35e391]
+        - cell [ref=f35e392]
+      - row [ref=f35e393]:
+        - cell [ref=f35e394]:
+          - img "56%" [ref=f35e395]
+        - cell [ref=f35e396]
+        - cell [ref=f35e397]
+        - cell [ref=f35e398]:
+          - link "PERC 2015-028" [ref=f35e399] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C210485257D5F00501B30/$File/PERC 2015 28.pdf?OpenElement
+        - cell [ref=f35e400]
+        - cell [ref=f35e401]
+        - cell "Farmingdale B/E" [ref=f35e402]
+        - cell [ref=f35e403]
+        - cell "10/30/2014" [ref=f35e404]
+        - cell [ref=f35e405]
+      - row [ref=f35e406]:
+        - cell [ref=f35e407]:
+          - img "56%" [ref=f35e408]
+        - cell [ref=f35e409]
+        - cell [ref=f35e410]
+        - cell [ref=f35e411]:
+          - link "PERC 89-050" [ref=f35e412] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/62C028C724C1BC0C85256CB4006D85FA/$File/PERC 89-050.pdf?OpenElement
+        - cell [ref=f35e413]
+        - cell [ref=f35e414]
+        - cell "Union Tp B/E" [ref=f35e415]
+        - cell [ref=f35e416]
+        - cell "10/21/88" [ref=f35e417]
+        - cell [ref=f35e418]
+      - row [ref=f35e419]:
+        - cell [ref=f35e420]:
+          - img "56%" [ref=f35e421]
+        - cell [ref=f35e422]
+        - cell [ref=f35e423]
+        - cell [ref=f35e424]:
+          - link "PERC 92-022" [ref=f35e425] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/5E68C2743DE40E0385256CB4006D8F55/$File/PERC 92-022.pdf?OpenElement
+        - cell [ref=f35e426]
+        - cell [ref=f35e427]
+        - cell "Middlesex Cty" [ref=f35e428]
+        - cell [ref=f35e429]
+        - cell "08/15/91" [ref=f35e430]
+        - cell [ref=f35e431]
+      - row [ref=f35e432]:
+        - cell [ref=f35e433]:
+          - img "56%" [ref=f35e434]
+        - cell [ref=f35e435]
+        - cell [ref=f35e436]
+        - cell [ref=f35e437]:
+          - link "PERC 86-071" [ref=f35e438] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/CC0C1DE370E42B7885256CB4006D835D/$File/PERC 86-071.pdf?OpenElement
+        - cell [ref=f35e439]
+        - cell [ref=f35e440]
+        - cell "Newark" [ref=f35e441]
+        - cell [ref=f35e442]
+        - cell "11/19/85" [ref=f35e443]
+        - cell [ref=f35e444]
+      - row [ref=f35e445]:
+        - cell [ref=f35e446]:
+          - img "56%" [ref=f35e447]
+        - cell [ref=f35e448]
+        - cell [ref=f35e449]
+        - cell [ref=f35e450]:
+          - link "PERC 2000-003" [ref=f35e451] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/4D1939ABF5107EB685256CB4006D797F/$File/PERC 2000-003.pdf?OpenElement
+        - cell [ref=f35e452]
+        - cell [ref=f35e453]
+        - cell "Clinton Tp" [ref=f35e454]
+        - cell [ref=f35e455]
+        - cell "07/30/99" [ref=f35e456]
+        - cell [ref=f35e457]
+      - row [ref=f35e458]:
+        - cell [ref=f35e459]:
+          - img "56%" [ref=f35e460]
+        - cell [ref=f35e461]
+        - cell [ref=f35e462]
+        - cell [ref=f35e463]:
+          - link "PERC 93-071" [ref=f35e464] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/17285E7F14F5F3BD85256CB4006D9008/$File/PERC 93-071.pdf?OpenElement
+        - cell [ref=f35e465]
+        - cell [ref=f35e466]
+        - cell "Perth Amboy" [ref=f35e467]
+        - cell [ref=f35e468]
+        - cell "02/23/93" [ref=f35e469]
+        - cell [ref=f35e470]
+      - row [ref=f35e471]:
+        - cell [ref=f35e472]:
+          - img "56%" [ref=f35e473]
+        - cell [ref=f35e474]
+        - cell [ref=f35e475]
+        - cell [ref=f35e476]:
+          - link "PERC 93-032" [ref=f35e477] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/62CC08296DAB1B9E85256CB4006D8FE1/$File/PERC 93-032.pdf?OpenElement
+        - cell [ref=f35e478]
+        - cell [ref=f35e479]
+        - cell "Newark" [ref=f35e480]
+        - cell [ref=f35e481]
+        - cell "10/23/92" [ref=f35e482]
+        - cell [ref=f35e483]
+      - row [ref=f35e484]:
+        - cell [ref=f35e485]:
+          - img "56%" [ref=f35e486]
+        - cell [ref=f35e487]
+        - cell [ref=f35e488]
+        - cell [ref=f35e489]:
+          - link "PERC 90-012" [ref=f35e490] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/87FB2B6F5DEFC17985256CB4006D8E54/$File/PERC 90-012.pdf?OpenElement
+        - cell [ref=f35e491]
+        - cell [ref=f35e492]
+        - cell "Neptune Tp B/E" [ref=f35e493]
+        - cell [ref=f35e494]
+        - cell "08/18/89" [ref=f35e495]
+        - cell [ref=f35e496]
+      - row [ref=f35e497]:
+        - cell [ref=f35e498]:
+          - img "56%" [ref=f35e499]
+        - cell [ref=f35e500]
+        - cell [ref=f35e501]
+        - cell [ref=f35e502]:
+          - link "PERC 87-093" [ref=f35e503] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/2576C46DE21C3C3C85256CB4006D840C/$File/PERC 87-093.pdf?OpenElement
+        - cell [ref=f35e504]
+        - cell [ref=f35e505]
+        - cell "Mine Hill Tp" [ref=f35e506]
+        - cell [ref=f35e507]
+        - cell "01/16/86" [ref=f35e508]
+        - cell [ref=f35e509]
+      - row [ref=f35e510]:
+        - cell [ref=f35e511]:
+          - img "56%" [ref=f35e512]
+        - cell [ref=f35e513]
+        - cell [ref=f35e514]
+        - cell [ref=f35e515]:
+          - link "PERC 2003-021" [ref=f35e516] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/F32510F87FB1E4E885256CB4006D7824/$File/PERC 2003-021.pdf?OpenElement
+        - cell [ref=f35e517]
+        - cell [ref=f35e518]
+        - cell "Millville" [ref=f35e519]
+        - cell [ref=f35e520]
+        - cell "09/27/2002" [ref=f35e521]
+        - cell [ref=f35e522]
+      - row [ref=f35e523]:
+        - cell [ref=f35e524]:
+          - img "55%" [ref=f35e525]
+        - cell [ref=f35e526]
+        - cell [ref=f35e527]
+        - cell [ref=f35e528]:
+          - link "PERC 2018-051" [ref=f35e529] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C21048525827300548886/$File/PERC 2018 51.pdf?OpenElement
+        - cell [ref=f35e530]
+        - cell [ref=f35e531]
+        - cell "NJ/State (Kean Univ)" [ref=f35e532]
+        - cell [ref=f35e533]
+        - cell "05/31/2018" [ref=f35e534]
+        - cell [ref=f35e535]
+      - row [ref=f35e536]:
+        - cell [ref=f35e537]:
+          - img "55%" [ref=f35e538]
+        - cell [ref=f35e539]
+        - cell [ref=f35e540]
+        - cell [ref=f35e541]:
+          - link "PERC 2010-016" [ref=f35e542] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85257575007C21048525763300645DCE/$File/PERC 2010 16.pdf?OpenElement
+        - cell [ref=f35e543]
+        - cell [ref=f35e544]
+        - cell "Morris Cty Sheriff's Office" [ref=f35e545]
+        - cell [ref=f35e546]
+        - cell "09/24/2009" [ref=f35e547]
+        - cell [ref=f35e548]
+      - row [ref=f35e549]:
+        - cell [ref=f35e550]:
+          - img "55%" [ref=f35e551]
+        - cell [ref=f35e552]
+        - cell [ref=f35e553]
+        - cell [ref=f35e554]:
+          - link "PERC 2006-020" [ref=f35e555] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC6048525707A0061A73E/$File/PERC 2006 020.pdf?OpenElement
+        - cell [ref=f35e556]
+        - cell [ref=f35e557]
+        - cell "Franklin Boro" [ref=f35e558]
+        - cell [ref=f35e559]
+        - cell "09/29/2005" [ref=f35e560]
+        - cell [ref=f35e561]
+      - row [ref=f35e562]:
+        - cell [ref=f35e563]:
+          - img "55%" [ref=f35e564]
+        - cell [ref=f35e565]
+        - cell [ref=f35e566]
+        - cell [ref=f35e567]:
+          - link "PERC 2004-057" [ref=f35e568] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC60485256E3E004DC013/$File/perc 2004-057.pdf?OpenElement
+        - cell [ref=f35e569]
+        - cell [ref=f35e570]
+        - cell "Old Bridge B/E" [ref=f35e571]
+        - cell [ref=f35e572]
+        - cell "02/27/2004" [ref=f35e573]
+        - cell [ref=f35e574]
+      - row [ref=f35e575]:
+        - cell [ref=f35e576]:
+          - img "55%" [ref=f35e577]
+        - cell [ref=f35e578]
+        - cell [ref=f35e579]
+        - cell [ref=f35e580]:
+          - link "PERC 86-093" [ref=f35e581] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/CD18EC6E2C8BFC5585256CB4006D8373/$File/PERC 86-093.pdf?OpenElement
+        - cell [ref=f35e582]
+        - cell [ref=f35e583]
+        - cell "NJ/State" [ref=f35e584]
+        - cell [ref=f35e585]
+        - cell "02/20/86" [ref=f35e586]
+        - cell [ref=f35e587]
+      - row [ref=f35e588]:
+        - cell [ref=f35e589]:
+          - img "55%" [ref=f35e590]
+        - cell [ref=f35e591]
+        - cell [ref=f35e592]
+        - cell [ref=f35e593]:
+          - link "PERC 86-125" [ref=f35e594] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/F7C09F9DB858163C85256CB4006D8395/$File/PERC 86-125.pdf?OpenElement
+        - cell [ref=f35e595]
+        - cell [ref=f35e596]
+        - cell "Lincoln Park B/E" [ref=f35e597]
+        - cell [ref=f35e598]
+        - cell "05/22/86" [ref=f35e599]
+        - cell [ref=f35e600]
+      - row [ref=f35e601]:
+        - cell [ref=f35e602]:
+          - img "55%" [ref=f35e603]
+        - cell [ref=f35e604]
+        - cell [ref=f35e605]
+        - cell [ref=f35e606]:
+          - link "PERC 95-023" [ref=f35e607] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/2DE877177C31099485256CB4006D9341/$File/PERC 95-023.pdf?OpenElement
+        - cell [ref=f35e608]
+        - cell [ref=f35e609]
+        - cell "Hoboken" [ref=f35e610]
+        - cell [ref=f35e611]
+        - cell "09/30/94" [ref=f35e612]
+        - cell [ref=f35e613]
+      - row [ref=f35e614]:
+        - cell [ref=f35e615]:
+          - img "55%" [ref=f35e616]
+        - cell [ref=f35e617]
+        - cell [ref=f35e618]
+        - cell [ref=f35e619]:
+          - link "PERC 98-138" [ref=f35e620] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/DD0C2E8543CCC28385256CB4006D952A/$File/PERC 98-138.pdf?OpenElement
+        - cell [ref=f35e621]
+        - cell [ref=f35e622]
+        - cell "Franklin Bor" [ref=f35e623]
+        - cell [ref=f35e624]
+        - cell [ref=f35e625]
+        - cell [ref=f35e626]
+      - row [ref=f35e627]:
+        - cell [ref=f35e628]:
+          - img "55%" [ref=f35e629]
+        - cell [ref=f35e630]
+        - cell [ref=f35e631]
+        - cell [ref=f35e632]:
+          - link "PERC 98-125" [ref=f35e633] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/2EEEE20D1B9B8CCF85256CB4006D950C/$File/PERC 98-125.pdf?OpenElement
+        - cell [ref=f35e634]
+        - cell [ref=f35e635]
+        - cell "Egg Harbor City" [ref=f35e636]
+        - cell [ref=f35e637]
+        - cell [ref=f35e638]
+        - cell [ref=f35e639]
+      - row [ref=f35e640]:
+        - cell [ref=f35e641]:
+          - img "55%" [ref=f35e642]
+        - cell [ref=f35e643]
+        - cell [ref=f35e644]
+        - cell [ref=f35e645]:
+          - link "PERC 98-029" [ref=f35e646] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/F18DA358537A49D285256CB4006D94AC/$File/PERC 98-029.pdf?OpenElement
+        - cell [ref=f35e647]
+        - cell [ref=f35e648]
+        - cell "Paterson Sch Dist" [ref=f35e649]
+        - cell [ref=f35e650]
+        - cell [ref=f35e651]
+        - cell [ref=f35e652]
+      - row [ref=f35e653]:
+        - cell [ref=f35e654]:
+          - img "55%" [ref=f35e655]
+        - cell [ref=f35e656]
+        - cell [ref=f35e657]
+        - cell [ref=f35e658]:
+          - link "PERC 97-116" [ref=f35e659] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/C6FCD66E3904FA2585256CB4006D9469/$File/PERC 97-116.pdf?OpenElement
+        - cell [ref=f35e660]
+        - cell [ref=f35e661]
+        - cell "Cumberland Cty" [ref=f35e662]
+        - cell [ref=f35e663]
+        - cell [ref=f35e664]
+        - cell [ref=f35e665]
+      - row [ref=f35e666]:
+        - cell [ref=f35e667]:
+          - img "55%" [ref=f35e668]
+        - cell [ref=f35e669]
+        - cell [ref=f35e670]
+        - cell [ref=f35e671]:
+          - link "PERC 94-030" [ref=f35e672] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/9B7E5685D700B36785256CB4006D9058/$File/PERC 94-030.pdf?OpenElement
+        - cell [ref=f35e673]
+        - cell [ref=f35e674]
+        - cell "Jersey City POBA" [ref=f35e675]
+        - cell [ref=f35e676]
+        - cell "09/24/93" [ref=f35e677]
+        - cell [ref=f35e678]
+      - row [ref=f35e679]:
+        - cell [ref=f35e680]:
+          - img "55%" [ref=f35e681]
+        - cell [ref=f35e682]
+        - cell [ref=f35e683]
+        - cell [ref=f35e684]:
+          - link "PERC 93-064" [ref=f35e685] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/44BCFBA5E276E1EE85256CB4006D9001/$File/PERC 93-064.pdf?OpenElement
+        - cell [ref=f35e686]
+        - cell [ref=f35e687]
+        - cell "Florham Park B/E" [ref=f35e688]
+        - cell [ref=f35e689]
+        - cell "01/29/93" [ref=f35e690]
+        - cell [ref=f35e691]
+      - row [ref=f35e692]:
+        - cell [ref=f35e693]:
+          - img "55%" [ref=f35e694]
+        - cell [ref=f35e695]
+        - cell [ref=f35e696]
+        - cell [ref=f35e697]:
+          - link "PERC 92-127" [ref=f35e698] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/652589C5690ACD0085256CB4006D8FBE/$File/PERC 92-127.pdf?OpenElement
+        - cell [ref=f35e699]
+        - cell [ref=f35e700]
+        - cell "Linden" [ref=f35e701]
+        - cell [ref=f35e702]
+        - cell "06/26/92" [ref=f35e703]
+        - cell [ref=f35e704]
+      - row [ref=f35e705]:
+        - cell [ref=f35e706]:
+          - img "55%" [ref=f35e707]
+        - cell [ref=f35e708]
+        - cell [ref=f35e709]
+        - cell [ref=f35e710]:
+          - link "PERC 93-004" [ref=f35e711] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/DDE617CAD84E052D85256CB4006D8FC5/$File/PERC 93-004.pdf?OpenElement
+        - cell [ref=f35e712]
+        - cell [ref=f35e713]
+        - cell "Jackson Tp" [ref=f35e714]
+        - cell [ref=f35e715]
+        - cell "07/17/92" [ref=f35e716]
+        - cell [ref=f35e717]
+      - row [ref=f35e718]:
+        - cell [ref=f35e719]:
+          - img "55%" [ref=f35e720]
+        - cell [ref=f35e721]
+        - cell [ref=f35e722]
+        - cell [ref=f35e723]:
+          - link "PERC 89-002" [ref=f35e724] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/A4CEA74BADFFE99985256CB4006D85CA/$File/PERC 89-002.pdf?OpenElement
+        - cell [ref=f35e725]
+        - cell [ref=f35e726]
+        - cell "Cape May Cty" [ref=f35e727]
+        - cell [ref=f35e728]
+        - cell "07/16/88" [ref=f35e729]
+        - cell [ref=f35e730]
+      - row [ref=f35e731]:
+        - cell [ref=f35e732]:
+          - img "55%" [ref=f35e733]
+        - cell [ref=f35e734]
+        - cell [ref=f35e735]
+        - cell [ref=f35e736]:
+          - link "PERC 87-083" [ref=f35e737] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/7B9AE7C40AD9F80B85256CB4006D8402/$File/PERC 87-083.pdf?OpenElement
+        - cell [ref=f35e738]
+        - cell [ref=f35e739]
+        - cell "Hunterdon Cen HS B/E" [ref=f35e740]
+        - cell [ref=f35e741]
+        - cell "12/23/86" [ref=f35e742]
+        - cell [ref=f35e743]
+      - row [ref=f35e744]:
+        - cell [ref=f35e745]:
+          - img "55%" [ref=f35e746]
+        - cell [ref=f35e747]
+        - cell [ref=f35e748]
+        - cell [ref=f35e749]:
+          - link "PERC 85-097" [ref=f35e750] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/3E3FA689D764957585256CB4006D82FC/$File/PERC 85-097.pdf?OpenElement
+        - cell [ref=f35e751]
+        - cell [ref=f35e752]
+        - cell "Franklin Tp" [ref=f35e753]
+        - cell [ref=f35e754]
+        - cell "03/18/85" [ref=f35e755]
+        - cell [ref=f35e756]
+      - row [ref=f35e757]:
+        - cell [ref=f35e758]:
+          - img "55%" [ref=f35e759]
+        - cell [ref=f35e760]
+        - cell [ref=f35e761]
+        - cell [ref=f35e762]:
+          - link "PERC 86-017" [ref=f35e763] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/B12B607F922D5FC085256CB4006D8327/$File/PERC 86-017.pdf?OpenElement
+        - cell [ref=f35e764]
+        - cell [ref=f35e765]
+        - cell "Paramus Bor" [ref=f35e766]
+        - cell [ref=f35e767]
+        - cell "08/16/85" [ref=f35e768]
+        - cell [ref=f35e769]
+      - row [ref=f35e770]:
+        - cell [ref=f35e771]:
+          - img "55%" [ref=f35e772]
+        - cell [ref=f35e773]
+        - cell [ref=f35e774]
+        - cell [ref=f35e775]:
+          - link "PERC 85-017" [ref=f35e776] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/3BD8B7B4FC02A46585256CB4006D82AC/$File/PERC 85-017.pdf?OpenElement
+        - cell [ref=f35e777]
+        - cell [ref=f35e778]
+        - cell "Wanaque Boro" [ref=f35e779]
+        - cell [ref=f35e780]
+        - cell "08/16/84" [ref=f35e781]
+        - cell [ref=f35e782]
+      - row [ref=f35e783]:
+        - cell [ref=f35e784]:
+          - img "55%" [ref=f35e785]
+        - cell [ref=f35e786]
+        - cell [ref=f35e787]
+        - cell [ref=f35e788]:
+          - link "PERC 85-015" [ref=f35e789] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/C3E8DE731395B92E85256CB4006D82AA/$File/PERC 85-015.pdf?OpenElement
+        - cell [ref=f35e790]
+        - cell [ref=f35e791]
+        - cell "Moonachie Boro" [ref=f35e792]
+        - cell [ref=f35e793]
+        - cell "08/16/84" [ref=f35e794]
+        - cell [ref=f35e795]
+      - row [ref=f35e796]:
+        - cell [ref=f35e797]:
+          - img "55%" [ref=f35e798]
+        - cell [ref=f35e799]
+        - cell [ref=f35e800]
+        - cell [ref=f35e801]:
+          - link "PERC 84-007" [ref=f35e802] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/D140AFA54CD56E7A85256CB4006D7F12/$File/PERC 84-007.pdf?OpenElement
+        - cell [ref=f35e803]
+        - cell [ref=f35e804]
+        - cell "Readington Tp" [ref=f35e805]
+        - cell [ref=f35e806]
+        - cell "08/11/83" [ref=f35e807]
+        - cell [ref=f35e808]
+      - row [ref=f35e809]:
+        - cell [ref=f35e810]:
+          - img "55%" [ref=f35e811]
+        - cell [ref=f35e812]
+        - cell [ref=f35e813]
+        - cell [ref=f35e814]:
+          - link "PERC 2000-050" [ref=f35e815] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/576A2582C3C352BE85256CB4006D79AE/$File/PERC 2000-050.pdf?OpenElement
+        - cell [ref=f35e816]
+        - cell [ref=f35e817]
+        - cell "Egg Harbor Tp B/E" [ref=f35e818]
+        - cell [ref=f35e819]
+        - cell "12/17/99" [ref=f35e820]
+        - cell [ref=f35e821]
+      - row [ref=f35e822]:
+        - cell [ref=f35e823]:
+          - img "55%" [ref=f35e824]
+        - cell [ref=f35e825]
+        - cell [ref=f35e826]
+        - cell [ref=f35e827]:
+          - link "PERC 2000-074" [ref=f35e828] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/7C01FE568452064685256CB4006D79C6/$File/PERC 2000-074.pdf?OpenElement
+        - cell [ref=f35e829]
+        - cell [ref=f35e830]
+        - cell "Plainfield" [ref=f35e831]
+        - cell [ref=f35e832]
+        - cell "03/31/2000" [ref=f35e833]
+        - cell [ref=f35e834]
+      - row [ref=f35e835]:
+        - cell [ref=f35e836]:
+          - img "55%" [ref=f35e837]
+        - cell [ref=f35e838]
+        - cell [ref=f35e839]
+        - cell [ref=f35e840]:
+          - link "PERC 2000-109" [ref=f35e841] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/D6F1B457992ADCBD85256CB4006D78F7/$File/PERC 2000-109.pdf?OpenElement
+        - cell [ref=f35e842]
+        - cell [ref=f35e843]
+        - cell "Wood-Ridge B/E" [ref=f35e844]
+        - cell [ref=f35e845]
+        - cell "06/30/2000" [ref=f35e846]
+        - cell [ref=f35e847]
+      - row [ref=f35e848]:
+        - cell [ref=f35e849]:
+          - img "55%" [ref=f35e850]
+        - cell [ref=f35e851]
+        - cell [ref=f35e852]
+        - cell [ref=f35e853]:
+          - link "PERC 2000-094" [ref=f35e854] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/5D50797A4DEB173A85256CB4006D78E8/$File/PERC 2000-094.pdf?OpenElement
+        - cell [ref=f35e855]
+        - cell [ref=f35e856]
+        - cell "Long Branch" [ref=f35e857]
+        - cell [ref=f35e858]
+        - cell "05/26/2000" [ref=f35e859]
+        - cell [ref=f35e860]
+      - row [ref=f35e861]:
+        - cell [ref=f35e862]:
+          - img "55%" [ref=f35e863]
+        - cell [ref=f35e864]
+        - cell [ref=f35e865]
+        - cell [ref=f35e866]:
+          - link "PERC 2003-015" [ref=f35e867] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/49FB366A0FFCA54585256CB4006D781E/$File/PERC 2003-015.pdf?OpenElement
+        - cell [ref=f35e868]
+        - cell [ref=f35e869]
+        - cell "Princeton Reg B/E" [ref=f35e870]
+        - cell [ref=f35e871]
+        - cell "09/27/2002" [ref=f35e872]
+        - cell [ref=f35e873]
+      - row [ref=f35e874]:
+        - cell [ref=f35e875]:
+          - img "55%" [ref=f35e876]
+        - cell [ref=f35e877]
+        - cell [ref=f35e878]
+        - cell [ref=f35e879]:
+          - link "PERC 2002-062" [ref=f35e880] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/9AA33C43DCC9356B85256CB4006D77FD/$File/PERC 2002-062.pdf?OpenElement
+        - cell [ref=f35e881]
+        - cell [ref=f35e882]
+        - cell "Peapack and Gladstone Boro" [ref=f35e883]
+        - cell [ref=f35e884]
+        - cell "04/26/2002" [ref=f35e885]
+        - cell [ref=f35e886]
+      - row [ref=f35e887]:
+        - cell [ref=f35e888]:
+          - img "55%" [ref=f35e889]
+        - cell [ref=f35e890]
+        - cell [ref=f35e891]
+        - cell [ref=f35e892]:
+          - link "PERC 2002-047" [ref=f35e893] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/6CDD51598FA2EEF085256CB4006D77EE/$File/PERC 2002-047.pdf?OpenElement
+        - cell [ref=f35e894]
+        - cell [ref=f35e895]
+        - cell "Holland Tp B/E" [ref=f35e896]
+        - cell [ref=f35e897]
+        - cell "03/01/2002" [ref=f35e898]
+        - cell [ref=f35e899]
+      - row [ref=f35e900]:
+        - cell [ref=f35e901]:
+          - img "55%" [ref=f35e902]
+        - cell [ref=f35e903]
+        - cell [ref=f35e904]
+        - cell [ref=f35e905]:
+          - link "PERC 2001-071" [ref=f35e906] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/4B18D954D88C5D2C85256CB4006D77B8/$File/PERC 2001-071.pdf?OpenElement
+        - cell [ref=f35e907]
+        - cell [ref=f35e908]
+        - cell "NJ/State" [ref=f35e909]
+        - cell [ref=f35e910]
+        - cell "06/29/2001" [ref=f35e911]
+        - cell [ref=f35e912]
+      - row [ref=f35e913]:
+        - cell [ref=f35e914]:
+          - img "54%" [ref=f35e915]
+        - cell [ref=f35e916]
+        - cell [ref=f35e917]
+        - cell [ref=f35e918]:
+          - link "PERC 97-080" [ref=f35e919] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/8C4E83F570BC70F085256CB4006D9445/$File/PERC 97-080.pdf?OpenElement
+        - cell [ref=f35e920]
+        - cell [ref=f35e921]
+        - cell "Maplewood Tp" [ref=f35e922]
+        - cell [ref=f35e923]
+        - cell [ref=f35e924]
+        - cell [ref=f35e925]
+      - row [ref=f35e926]:
+        - cell [ref=f35e927]:
+          - img "54%" [ref=f35e928]
+        - cell [ref=f35e929]
+        - cell [ref=f35e930]
+        - cell [ref=f35e931]:
+          - link "PERC 2005-081" [ref=f35e932] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC604852570230065029B/$File/PERC 2005 081.pdf?OpenElement
+        - cell [ref=f35e933]
+        - cell [ref=f35e934]
+        - cell "Washington Tp B/E" [ref=f35e935]
+        - cell [ref=f35e936]
+        - cell "06/30/2005" [ref=f35e937]
+        - cell [ref=f35e938]
+      - row [ref=f35e939]:
+        - cell [ref=f35e940]:
+          - img "54%" [ref=f35e941]
+        - cell [ref=f35e942]
+        - cell [ref=f35e943]
+        - cell [ref=f35e944]:
+          - link "PERC 2004-020" [ref=f35e945] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC60485256DC10052278C/$File/perc 2004-020.pdf?OpenElement
+        - cell [ref=f35e946]
+        - cell [ref=f35e947]
+        - cell "Clifton" [ref=f35e948]
+        - cell [ref=f35e949]
+        - cell "10/30/2003" [ref=f35e950]
+        - cell [ref=f35e951]
+      - row [ref=f35e952]:
+        - cell [ref=f35e953]:
+          - img "54%" [ref=f35e954]
+        - cell [ref=f35e955]
+        - cell [ref=f35e956]
+        - cell [ref=f35e957]:
+          - link "PERC 2000-033" [ref=f35e958] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/CBA35EF8D739448C85256CB4006D799D/$File/PERC 2000-033.pdf?OpenElement
+        - cell [ref=f35e959]
+        - cell [ref=f35e960]
+        - cell "Teaneck Tp" [ref=f35e961]
+        - cell [ref=f35e962]
+        - cell "10/29/99" [ref=f35e963]
+        - cell [ref=f35e964]
+      - row [ref=f35e965]:
+        - cell [ref=f35e966]:
+          - img "54%" [ref=f35e967]
+        - cell [ref=f35e968]
+        - cell [ref=f35e969]
+        - cell [ref=f35e970]:
+          - link "PERC 90-104" [ref=f35e971] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/CDEB67AC24CDAFB185256CB4006D8EB0/$File/PERC 90-104.pdf?OpenElement
+        - cell [ref=f35e972]
+        - cell [ref=f35e973]
+        - cell "Ramapo-Ind Hills B/E" [ref=f35e974]
+        - cell [ref=f35e975]
+        - cell "05/15/90" [ref=f35e976]
+        - cell [ref=f35e977]
+      - row [ref=f35e978]:
+        - cell [ref=f35e979]:
+          - img "54%" [ref=f35e980]
+        - cell [ref=f35e981]
+        - cell [ref=f35e982]
+        - cell [ref=f35e983]:
+          - link "PERC 95-015" [ref=f35e984] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/108BB44C89FF1F4785256CB4006D931D/$File/PERC 95-015.pdf?OpenElement
+        - cell [ref=f35e985]
+        - cell [ref=f35e986]
+        - cell "Old Bridge Tp B/E" [ref=f35e987]
+        - cell [ref=f35e988]
+        - cell "08/19/94" [ref=f35e989]
+        - cell [ref=f35e990]
+      - row [ref=f35e991]:
+        - cell [ref=f35e992]:
+          - img "54%" [ref=f35e993]
+        - cell [ref=f35e994]
+        - cell [ref=f35e995]
+        - cell [ref=f35e996]:
+          - link "PERC 90-013" [ref=f35e997] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/809BB7052B9BD07285256CB4006D8E55/$File/PERC 90-013.pdf?OpenElement
+        - cell [ref=f35e998]
+        - cell [ref=f35e999]
+        - cell "Burlington Cty Coll" [ref=f35e1000]
+        - cell [ref=f35e1001]
+        - cell "08/18/89" [ref=f35e1002]
+        - cell [ref=f35e1003]
+      - row [ref=f35e1004]:
+        - cell [ref=f35e1005]:
+          - img "54%" [ref=f35e1006]
+        - cell [ref=f35e1007]
+        - cell [ref=f35e1008]
+        - cell [ref=f35e1009]:
+          - link "PERC 2003-071" [ref=f35e1010] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC60485256CC200705836/$File/perc 2003-071.pdf?OpenElement
+        - cell [ref=f35e1011]
+        - cell [ref=f35e1012]
+        - cell "Guttenberg B/E" [ref=f35e1013]
+        - cell [ref=f35e1014]
+        - cell "04/25/2003" [ref=f35e1015]
+        - cell [ref=f35e1016]
+      - row [ref=f35e1017]:
+        - cell [ref=f35e1018]:
+          - img "54%" [ref=f35e1019]
+        - cell [ref=f35e1020]
+        - cell [ref=f35e1021]
+        - cell [ref=f35e1022]:
+          - link "PERC 2003-066" [ref=f35e1023] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/85256CB4006CC60485256CDF007407B5/$File/perc 2003-066.pdf?OpenElement
+        - cell [ref=f35e1024]
+        - cell [ref=f35e1025]
+        - cell "Passaic B/E" [ref=f35e1026]
+        - cell [ref=f35e1027]
+        - cell "03/28/2003" [ref=f35e1028]
+        - cell [ref=f35e1029]
+      - row [ref=f35e1030]:
+        - cell [ref=f35e1031]:
+          - img "54%" [ref=f35e1032]
+        - cell [ref=f35e1033]
+        - cell [ref=f35e1034]
+        - cell [ref=f35e1035]:
+          - link "PERC 98-097" [ref=f35e1036] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/EC8483EBC6C6728085256CB4006D94F0/$File/PERC 98-097.pdf?OpenElement
+        - cell [ref=f35e1037]
+        - cell [ref=f35e1038]
+        - cell "River Vale B/E" [ref=f35e1039]
+        - cell [ref=f35e1040]
+        - cell [ref=f35e1041]
+        - cell [ref=f35e1042]
+      - row [ref=f35e1043]:
+        - cell [ref=f35e1044]:
+          - img "54%" [ref=f35e1045]
+        - cell [ref=f35e1046]
+        - cell [ref=f35e1047]
+        - cell [ref=f35e1048]:
+          - link "PERC 98-075" [ref=f35e1049] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/346B5CD8BF6BBAD985256CB4006D94DA/$File/PERC 98-075.pdf?OpenElement
+        - cell [ref=f35e1050]
+        - cell [ref=f35e1051]
+        - cell "Englewood B/E" [ref=f35e1052]
+        - cell [ref=f35e1053]
+        - cell [ref=f35e1054]
+        - cell [ref=f35e1055]
+      - row [ref=f35e1056]:
+        - cell [ref=f35e1057]:
+          - img "54%" [ref=f35e1058]
+        - cell [ref=f35e1059]
+        - cell [ref=f35e1060]
+        - cell [ref=f35e1061]:
+          - link "PERC 94-058" [ref=f35e1062] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/26F50EF69A2C673B85256CB4006D9074/$File/PERC 94-058.pdf?OpenElement
+        - cell [ref=f35e1063]
+        - cell [ref=f35e1064]
+        - cell "Manville B/E" [ref=f35e1065]
+        - cell [ref=f35e1066]
+        - cell "11/16/93" [ref=f35e1067]
+        - cell [ref=f35e1068]
+      - row [ref=f35e1069]:
+        - cell [ref=f35e1070]:
+          - img "54%" [ref=f35e1071]
+        - cell [ref=f35e1072]
+        - cell [ref=f35e1073]
+        - cell [ref=f35e1074]:
+          - link "PERC 92-117" [ref=f35e1075] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/7A7560261755067D85256CB4006D8FB4/$File/PERC 92-117.pdf?OpenElement
+        - cell [ref=f35e1076]
+        - cell [ref=f35e1077]
+        - cell "Prospect Park Bor" [ref=f35e1078]
+        - cell [ref=f35e1079]
+        - cell "05/18/92" [ref=f35e1080]
+        - cell [ref=f35e1081]
+      - row [ref=f35e1082]:
+        - cell [ref=f35e1083]:
+          - img "54%" [ref=f35e1084]
+        - cell [ref=f35e1085]
+        - cell [ref=f35e1086]
+        - cell [ref=f35e1087]:
+          - link "PERC 92-129" [ref=f35e1088] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/FBED43C717D0521D85256CB4006D8FC0/$File/PERC 92-129.pdf?OpenElement
+        - cell [ref=f35e1089]
+        - cell [ref=f35e1090]
+        - cell "Union Beach Bor" [ref=f35e1091]
+        - cell [ref=f35e1092]
+        - cell "06/26/92" [ref=f35e1093]
+        - cell [ref=f35e1094]
+      - row [ref=f35e1095]:
+        - cell [ref=f35e1096]:
+          - img "54%" [ref=f35e1097]
+        - cell [ref=f35e1098]
+        - cell [ref=f35e1099]
+        - cell [ref=f35e1100]:
+          - link "PERC 88-058" [ref=f35e1101] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/AF2059155C2882A085256CB4006D8505/$File/PERC 88-058.pdf?OpenElement
+        - cell [ref=f35e1102]
+        - cell [ref=f35e1103]
+        - cell "Upper Saddle Riv B/E" [ref=f35e1104]
+        - cell [ref=f35e1105]
+        - cell "12/22/87" [ref=f35e1106]
+        - cell [ref=f35e1107]
+      - row [ref=f35e1108]:
+        - cell [ref=f35e1109]:
+          - img "54%" [ref=f35e1110]
+        - cell [ref=f35e1111]
+        - cell [ref=f35e1112]
+        - cell [ref=f35e1113]:
+          - link "PERC 86-023" [ref=f35e1114] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/124C980A7DCEA70585256CB4006D832D/$File/PERC 86-023.pdf?OpenElement
+        - cell [ref=f35e1115]
+        - cell [ref=f35e1116]
+        - cell "Orange Tp" [ref=f35e1117]
+        - cell [ref=f35e1118]
+        - cell "08/16/85" [ref=f35e1119]
+        - cell [ref=f35e1120]
+      - row [ref=f35e1121]:
+        - cell [ref=f35e1122]:
+          - img "54%" [ref=f35e1123]
+        - cell [ref=f35e1124]
+        - cell [ref=f35e1125]
+        - cell [ref=f35e1126]:
+          - link "PERC 84-023" [ref=f35e1127] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/AEB853AC84C8FEB585256CB4006D7F22/$File/PERC 84-023.pdf?OpenElement
+        - cell [ref=f35e1128]
+        - cell [ref=f35e1129]
+        - cell "Union Cty" [ref=f35e1130]
+        - cell [ref=f35e1131]
+        - cell "09/16/83" [ref=f35e1132]
+        - cell [ref=f35e1133]
+      - row [ref=f35e1134]:
+        - cell [ref=f35e1135]:
+          - img "54%" [ref=f35e1136]
+        - cell [ref=f35e1137]
+        - cell [ref=f35e1138]
+        - cell [ref=f35e1139]:
+          - link "PERC 83-077" [ref=f35e1140] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/5DC1950743021AEF85256CB4006D7EB1/$File/PERC 83-077.pdf?OpenElement
+        - cell [ref=f35e1141]
+        - cell [ref=f35e1142]
+        - cell "Delran Tp" [ref=f35e1143]
+        - cell [ref=f35e1144]
+        - cell "12/03/82" [ref=f35e1145]
+        - cell [ref=f35e1146]
+      - row [ref=f35e1147]:
+        - cell [ref=f35e1148]:
+          - img "54%" [ref=f35e1149]
+        - cell [ref=f35e1150]
+        - cell [ref=f35e1151]
+        - cell [ref=f35e1152]:
+          - link "PERC 2000-043" [ref=f35e1153] [cursor=pointer]:
+            - /url: /percdecisions.nsf/IssuedDecisions/27F0B01ACCD9095A85256CB4006D79A7/$File/PERC 2000-043.pdf?OpenElement
+        - cell [ref=f35e1154]
+        - cell [ref=f35e1155]
+        - cell "Holmdel Tp B/E" [ref=f35e1156]
+        - cell [ref=f35e1157]
+        - cell "11/16/99" [ref=f35e1158]
+        - cell [ref=f35e1159]
+  - table [ref=f35e1161]:
+    - rowgroup [ref=f35e1162]:
+      - row [ref=f35e1163]:
+        - cell [ref=f35e1164]:
+          - link "Back to Search" [ref=f35e1165] [cursor=pointer]:
+            - /url: ""
+        - cell [ref=f35e1166]:
+          - link "Back" [ref=f35e1167] [cursor=pointer]:
+            - /url: ""

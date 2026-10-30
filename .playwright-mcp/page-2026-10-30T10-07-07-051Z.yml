@@ -1,0 +1,28 @@
+- generic [ref=f64e3]:
+  - generic [ref=f64e4]:
+    - heading "Let's confirm you are human" [level=1] [ref=f64e6]
+    - generic [ref=f64e7]:
+      - paragraph [ref=f64e9]: Complete the security check before continuing. This step verifies that you are not a bot, which helps to protect your account and prevent spam.
+      - button "Begin" [ref=f64e12] [cursor=pointer]
+  - generic [ref=f64e13]:
+    - generic [ref=f64e14]: Select language
+    - combobox "Select language" [ref=f64e15]:
+      - option "العربية"
+      - option "Čeština"
+      - option "Dansk"
+      - option "Deutsch"
+      - option "English" [selected]
+      - option "Español"
+      - option "Français"
+      - option "Bahasa Indonesia"
+      - option "Italiano"
+      - option "日本語"
+      - option "한국어"
+      - option "Nederlands"
+      - option "Polski"
+      - option "Português"
+      - option "Svenska"
+      - option "ไทย"
+      - option "Türkçe"
+      - option "中文"
+    - button "Apply" [ref=f64e16] [cursor=pointer]

@@ -1,0 +1,145 @@
+- generic [active] [ref=f65e1]:
+  - banner "Main Site Header" [ref=f65e2]:
+    - link "Skip to main content" [ref=f65e3] [cursor=pointer]:
+      - /url: "#content_main"
+    - link "Henry Hudson Regional School District" [ref=f65e5] [cursor=pointer]:
+      - /url: /
+    - navigation "Main Site Navigation":
+      - button "Main Menu Toggle" [ref=f65e7] [cursor=pointer]
+      - list [ref=f65e11]:
+        - listitem [ref=f65e12]:
+          - button "About Our District" [ref=f65e13] [cursor=pointer]
+        - listitem [ref=f65e15]:
+          - button "Board of Education" [ref=f65e16] [cursor=pointer]
+        - listitem [ref=f65e18]:
+          - button "District Departments" [ref=f65e19] [cursor=pointer]
+        - listitem [ref=f65e21]:
+          - button "Community" [ref=f65e22] [cursor=pointer]
+        - listitem [ref=f65e24]:
+          - link "Athletics" [ref=f65e25] [cursor=pointer]:
+            - /url: https://hhrs.tridistrict.org/apps/pages/index.jsp?uREC_ID=3760859&type=d&pREC_ID=2440079
+        - listitem [ref=f65e27]:
+          - link "Human Resources" [ref=f65e28] [cursor=pointer]:
+            - /url: https://www.tridistrict.org/apps/pages/index.jsp?uREC_ID=4387358&type=d
+        - listitem [ref=f65e30]:
+          - button "Strategic Planning" [ref=f65e31] [cursor=pointer]
+        - listitem [ref=f65e33]:
+          - button "Contact Us" [ref=f65e34] [cursor=pointer]
+        - listitem [ref=f65e36]:
+          - link "Legal Notices" [ref=f65e37] [cursor=pointer]:
+            - /url: https://www.tridistrict.org/legalnotices
+    - navigation [ref=f65e39]:
+      - list [ref=f65e40]:
+        - listitem [ref=f65e41]:
+          - button "Schools" [ref=f65e42] [cursor=pointer]
+  - main "Main Site Content" [ref=f65e44]:
+    - region "Page hero"
+    - generic [ref=f65e45]:
+      - link "Back to Board of Education" [ref=f65e47] [cursor=pointer]:
+        - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d
+        - text: Board of Education
+      - text: » 2025-2026 Board of Education Agendas & Minutes
+    - heading "2025-2026 Board of Education Agendas & Minutes" [level=1] [ref=f65e48]
+    - generic [ref=f65e49]:
+      - generic [ref=f65e51]:
+        - generic [ref=f65e54] [cursor=pointer]:
+          - paragraph [ref=f65e55]:
+            - strong [ref=f65e56]: 2025-2026 Board of Education Meeting Agendas
+          - img "Expand for content" [ref=f65e57]
+        - generic [ref=f65e61] [cursor=pointer]:
+          - paragraph [ref=f65e62]:
+            - strong [ref=f65e63]: September 17th, 2025 Information for Cell Tower Proposal
+          - img "Expand for content" [ref=f65e64]
+        - generic [ref=f65e68] [cursor=pointer]:
+          - paragraph [ref=f65e69]:
+            - strong [ref=f65e70]: 2025-2026 Board of Education Approved Meeting Minutes
+          - img "Expand for content" [ref=f65e71]
+      - navigation "Navigation for Board of Education section" [ref=f65e75]:
+        - list [ref=f65e76]:
+          - listitem [ref=f65e77]:
+            - link "Board of Education" [ref=f65e79] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2432532
+          - listitem [ref=f65e81]:
+            - link "Board Members" [ref=f65e83] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593225
+          - listitem [ref=f65e85]:
+            - link "Board Committees" [ref=f65e87] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593533
+          - listitem [ref=f65e89]:
+            - link "Board of Education Meeting Information" [ref=f65e91] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593229
+          - listitem [ref=f65e93]:
+            - link "2026-2027 Board of Education Agendas & Minutes" [ref=f65e95] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2749182
+          - listitem [ref=f65e97]:
+            - link "2025-2026 Board of Education Agendas & Minutes" [ref=f65e99] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2675269
+          - listitem [ref=f65e101]:
+            - link "2024-2025 Board of Education Agendas & Minutes" [ref=f65e103] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593279
+          - listitem [ref=f65e105]:
+            - link "Board Meeting Recordings" [ref=f65e107] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2596745
+          - listitem [ref=f65e109]:
+            - link "School Budget Information" [ref=f65e111] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2580048
+          - listitem [ref=f65e113]:
+            - link "Board Policies" [ref=f65e115] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593278
+          - listitem [ref=f65e117]:
+            - link "Board FAQs" [ref=f65e119] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593227
+          - listitem [ref=f65e121]:
+            - link "Archived Board Agendas & Minutes" [ref=f65e123] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593280
+          - listitem [ref=f65e125]:
+            - link "Contracts" [ref=f65e127] [cursor=pointer]:
+              - /url: /apps/pages/index.jsp?uREC_ID=3733528&type=d&pREC_ID=2593281
+          - listitem [ref=f65e129]:
+            - link "OPRA Request Form" [ref=f65e131] [cursor=pointer]:
+              - /url: https://www.tridistrict.org/apps/pages/index.jsp?uREC_ID=3733526&type=d&pREC_ID=2432525
+          - listitem [ref=f65e133]:
+            - link "School Ethics Commission NJDOE - Search Annual Filing" [ref=f65e135] [cursor=pointer]:
+              - /url: https://homeroom6.doe.state.nj.us/secpublic/secpublic
+  - contentinfo "Main Site Footer" [ref=f65e137]:
+    - generic [ref=f65e141]:
+      - generic [ref=f65e142]: Henry Hudson Regional School District
+      - generic [ref=f65e144]:
+        - link "1 Grand Tour, Highlands, NJ 07732" [ref=f65e148] [cursor=pointer]:
+          - /url: /apps/maps
+          - generic [ref=f65e149]: 1 Grand Tour,
+          - text: Highlands, NJ 07732
+        - generic [ref=f65e150]:
+          - text: "Phone:"
+          - link "(732) 872-1517" [ref=f65e153] [cursor=pointer]:
+            - /url: tel:+17328721517
+        - generic [ref=f65e154]: "Fax: (732) 872-1315"
+      - navigation "Useful Links" [ref=f65e157]:
+        - list [ref=f65e159]:
+          - listitem [ref=f65e160]:
+            - link "Perform Care" [ref=f65e161] [cursor=pointer]:
+              - /url: https://www.performcarenj.org/
+          - listitem [ref=f65e162]:
+            - link "Perform Care Video" [ref=f65e163] [cursor=pointer]:
+              - /url: https://www.nj.gov/dcf/documents/DCF-CSOC-30.mp4
+          - listitem [ref=f65e164]:
+            - link "Online HIB Reporting Form" [ref=f65e165] [cursor=pointer]:
+              - /url: https://reporting.hibster.com/Pages/Home.aspx?id=414
+      - navigation "Social Media Links" [ref=f65e166]:
+        - list [ref=f65e168]:
+          - listitem [ref=f65e169]:
+            - link "Facebook" [ref=f65e170] [cursor=pointer]:
+              - /url: https://www.facebook.com/hhtri.district
+          - listitem [ref=f65e175]:
+            - link "Twitter" [ref=f65e176] [cursor=pointer]:
+              - /url: https://twitter.com/TriDistrict
+          - listitem [ref=f65e180]:
+            - link "Search" [ref=f65e181] [cursor=pointer]:
+              - /url: /apps/search
+      - generic [ref=f65e185]:
+        - link "Edlio Login" [ref=f65e186] [cursor=pointer]:
+          - /url: http://admin.tridistrict.org
+          - generic [ref=f65e187]: Edlio
+          - text: Login
+        - link "Powered by Edlio" [ref=f65e191] [cursor=pointer]:
+          - /url: http://www.edlio.com

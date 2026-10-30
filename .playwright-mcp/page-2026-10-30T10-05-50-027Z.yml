@@ -1,0 +1,331 @@
+- generic [active] [ref=f57e1]:
+  - generic [ref=f57e2]:
+    - banner [ref=f57e3]:
+      - navigation [ref=f57e4]:
+        - generic [ref=f57e5]:
+          - link [ref=f57e7] [cursor=pointer]:
+            - /url: /
+          - list [ref=f57e58]:
+            - listitem [ref=f57e59]:
+              - link "About" [ref=f57e60] [cursor=pointer]:
+                - /url: https://free.law/about/
+            - listitem [ref=f57e61]:
+              - link "Sign in / Register" [ref=f57e62] [cursor=pointer]:
+                - /url: /sign-in/?next=/?q%3D%2522Henry%2BHudson%2BRegional%2522%26type%3Do%26page=1
+      - navigation [ref=f57e63]:
+        - generic [ref=f57e64]:
+          - generic:
+            - list [ref=f57e65]:
+              - listitem [ref=f57e66]:
+                - link "Case Law" [ref=f57e67] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f57e69]:
+                - link "RECAP Archive PACER" [ref=f57e70] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f57e72]:
+                - link "Oral Arguments" [ref=f57e73] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f57e75]:
+                - link "Judges" [ref=f57e76] [cursor=pointer]:
+                  - /url: "#"
+              - listitem [ref=f57e78]:
+                - link "Financial Disclosures" [ref=f57e79] [cursor=pointer]:
+                  - /url: "#"
+            - list [ref=f57e81]:
+              - listitem [ref=f57e82]:
+                - link " Join FLP" [ref=f57e83] [cursor=pointer]:
+                  - /url: https://free.law/membership/
+                  - generic [ref=f57e84]: 
+                  - text: Join FLP
+    - generic [ref=f57e85]:
+      - generic [ref=f57e86]:
+        - generic [ref=f57e87]:
+          - heading "Refine Your Query" [level=3] [ref=f57e88]
+          - generic [ref=f57e90]:
+            - link "Jurisdictions All" [ref=f57e92] [cursor=pointer]:
+              - /url: "#"
+              - text: Jurisdictions
+              - generic [ref=f57e93]: All
+            - generic [ref=f57e94]:
+              - generic [ref=f57e95] [cursor=pointer]: "Search Results Order:"
+              - combobox "Search Results Order:" [ref=f57e96]:
+                - option "Relevance" [selected]
+                - option "Newest Cases First"
+                - option "Oldest Cases First"
+                - option "Most Cited First"
+                - option "Least Cited First"
+            - generic [ref=f57e97]:
+              - generic [ref=f57e98] [cursor=pointer]: "Case Name:"
+              - textbox "Case Name:" [ref=f57e99]
+            - generic [ref=f57e100]:
+              - generic [ref=f57e101] [cursor=pointer]: "Judge:"
+              - textbox "Judge:" [ref=f57e102]
+            - generic [ref=f57e103]:
+              - generic [ref=f57e104] [cursor=pointer]: Precedential Status
+              - generic [ref=f57e105]:
+                - checkbox "Published (5)" [checked] [ref=f57e106]
+                - generic [ref=f57e107] [cursor=pointer]: Published (5)
+              - generic [ref=f57e109]:
+                - checkbox "Unpublished (0)" [ref=f57e110]
+                - generic [ref=f57e111] [cursor=pointer]: Unpublished (0)
+              - generic [ref=f57e113]:
+                - checkbox "Errata (0)" [ref=f57e114]
+                - generic [ref=f57e115] [cursor=pointer]: Errata (0)
+              - generic [ref=f57e117]:
+                - checkbox "Separate (0)" [ref=f57e118]
+                - generic [ref=f57e119] [cursor=pointer]: Separate (0)
+              - generic [ref=f57e121]:
+                - checkbox "In-chambers (0)" [ref=f57e122]
+                - generic [ref=f57e123] [cursor=pointer]: In-chambers (0)
+              - generic [ref=f57e125]:
+                - checkbox "Relating-to (0)" [ref=f57e126]
+                - generic [ref=f57e127] [cursor=pointer]: Relating-to (0)
+              - generic [ref=f57e129]:
+                - checkbox "Unknown (0)" [ref=f57e130]
+                - generic [ref=f57e131] [cursor=pointer]: Unknown (0)
+            - generic [ref=f57e133]:
+              - generic [ref=f57e135]:
+                - generic [ref=f57e136] [cursor=pointer]: "Filed After:"
+                - textbox "Filed After:" [ref=f57e137]:
+                  - /placeholder: MM/DD/YYYY
+              - generic [ref=f57e139]:
+                - generic [ref=f57e140] [cursor=pointer]: "Filed Before:"
+                - textbox "Filed Before:" [ref=f57e141]:
+                  - /placeholder: MM/DD/YYYY
+            - generic [ref=f57e142]:
+              - generic [ref=f57e143] [cursor=pointer]: "Citation:"
+              - textbox "Citation:" [ref=f57e144]
+              - paragraph [ref=f57e145]:
+                - link "Look up a specific citation" [ref=f57e146] [cursor=pointer]:
+                  - /url: /c/
+            - generic [ref=f57e147]:
+              - generic [ref=f57e148] [cursor=pointer]: "Neutral Citation:"
+              - textbox "Neutral Citation:" [ref=f57e149]
+            - generic [ref=f57e150]:
+              - generic [ref=f57e151] [cursor=pointer]: "Docket Number:"
+              - textbox "Docket Number:" [ref=f57e152]
+            - generic [ref=f57e153]:
+              - generic [ref=f57e155]:
+                - generic [ref=f57e156] [cursor=pointer]: "Min Cites:"
+                - textbox "Min Cites:" [ref=f57e157]
+              - generic [ref=f57e159]:
+                - generic [ref=f57e160] [cursor=pointer]: "Max Cites:"
+                - textbox "Max Cites:" [ref=f57e161]
+            - paragraph [ref=f57e162]:
+              - button " Search" [ref=f57e163] [cursor=pointer]:
+                - generic [ref=f57e164]: 
+                - text: Search
+          - paragraph [ref=f57e165]:
+            - generic [ref=f57e166] [cursor=pointer]:
+              - generic [ref=f57e167]: 
+              - text: Get Alerts
+        - generic [ref=f57e168]:
+          - heading "Support FLP " [level=3] [ref=f57e169]:
+            - generic [ref=f57e170]:
+              - text: Support FLP
+              - generic [ref=f57e171]: 
+          - paragraph [ref=f57e172]:
+            - text: CourtListener is a project of
+            - link "Free Law Project" [ref=f57e173] [cursor=pointer]:
+              - /url: https://free.law
+            - text: ", a federally-recognized 501(c)(3) non-profit. Members help support our work and get special access to features."
+          - paragraph [ref=f57e174]: Please become a member today.
+          - paragraph [ref=f57e175]:
+            - link "Join Free.law Now" [ref=f57e176] [cursor=pointer]:
+              - /url: https://free.law/membership/
+      - generic [ref=f57e177]:
+        - generic [ref=f57e179]:
+          - text: 
+          - form [ref=f57e180]:
+            - generic [ref=f57e181]:
+              - generic [ref=f57e182] [cursor=pointer]: Search
+              - generic [ref=f57e183]:
+                - button "Keyword search active, click for semantic search" [ref=f57e184] [cursor=pointer]:
+                  - generic [ref=f57e185]: "&"
+                - textbox "Search" [ref=f57e186]:
+                  - /placeholder: Keyword(s) search with operators
+                  - text: "\"Henry Hudson Regional\""
+                - generic "Create new alert" [ref=f57e188] [cursor=pointer]: 
+                - button " Search" [ref=f57e190] [cursor=pointer]:
+                  - generic [ref=f57e191]: 
+                  - text: Search
+              - link "Query Help" [ref=f57e193] [cursor=pointer]:
+                - /url: https://wiki.free.law/c/courtlistener/help/search/advanced-search-and-query-techniques
+        - generic [ref=f57e195]:
+          - heading [level=2] [ref=f57e196]:
+            - text: 5 Opinions
+            - link "" [ref=f57e197] [cursor=pointer]:
+              - /url: /feed/search/?q=%22Henry+Hudson+Regional%22&type=o
+              - generic "Subscribe to a feed of these results" [ref=f57e198]: 
+          - text: 5,098ms
+        - article [ref=f57e199]:
+          - heading [level=3] [ref=f57e200]:
+            - link [ref=f57e201] [cursor=pointer]:
+              - /url: /opinion/7377961/dobbins-v-board-of-education-of-henry-hudson-regional-school/?q=%22Henry+Hudson+Regional%22&type=o
+              - text: Dobbins v. Board of Education of
+              - mark [ref=f57e202]: Henry Hudson Regional
+              - text: School (N.J. 1975)
+          - generic [ref=f57e203]:
+            - generic [ref=f57e204]:
+              - text: "Date Filed:"
+              - time [ref=f57e205]: March 20th, 1975
+            - generic [ref=f57e206]: "Status: Published"
+            - generic [ref=f57e207]: "Citations: 67 N.J. 69, 335 A.2d 23, 1975 N.J. LEXIS 176"
+          - generic [ref=f57e208]:
+            - heading [level=4] [ref=f57e209]:
+              - paragraph [ref=f57e210]: Lead Opinion
+            - paragraph [ref=f57e211]: Per Curiam. The .judgment is affirmed substantially for the reasons expressed by the Appellate Division in its majority opinion. 133 N. J. Super. 13. …
+          - generic [ref=f57e212]:
+            - heading [level=4] [ref=f57e213]:
+              - paragraph [ref=f57e214]: Dissent
+            - paragraph [ref=f57e215]: Conford, P. J. A. D., Temporarily Assigned (dissenting). In 2ny view this is purely, as recognized by the dissenter in the Appellate Division, a case of liability of a school board for breach of its well-recognized duty “to exercise reasonable supervisory care for the safety of - students.” Titus v. Lindberg, 49 N. J. 66, 73 (1967); and see Jackson v. Hankinson and Bd. of Ed. of New Shrewsbury, 51 N. J. 230, 233 (1968). The fact that the locus of the injury resulting from such breach of duty happens …
+        - article [ref=f57e216]:
+          - heading [level=3] [ref=f57e217]:
+            - link [ref=f57e218] [cursor=pointer]:
+              - /url: /opinion/7395538/dobbins-v-board-of-education-of-henry-hudson-regional-high-school/?q=%22Henry+Hudson+Regional%22&type=o
+              - text: Dobbins v. Board of Education of
+              - mark [ref=f57e219]: Henry Hudson Regional
+              - text: High School (N.J. Super. Ct. App. Div. 1974)
+          - generic [ref=f57e220]:
+            - generic [ref=f57e221]:
+              - text: "Date Filed:"
+              - time [ref=f57e222]: May 24th, 1974
+            - generic [ref=f57e223]: "Status: Published"
+            - generic [ref=f57e224]: "Citations: 133 N.J. Super. 13, 335 A.2d 58, 1974 N.J. Super. LEXIS 427"
+          - generic [ref=f57e225]:
+            - heading [level=4] [ref=f57e226]:
+              - paragraph [ref=f57e227]: Lead Opinion
+            - paragraph [ref=f57e228]:
+              - text: …Dobbins (Charlene), a 16-year-old junior at
+              - mark [ref=f57e229]: Henry Hudson Regional
+              - text: High School, was injured when she fell during …
+          - generic [ref=f57e230]:
+            - heading [level=4] [ref=f57e231]:
+              - paragraph [ref=f57e232]: Dissent
+            - paragraph [ref=f57e233]: Fritz, J. A. D. (dissenting). Since the issue upon which the majority rests its reversal of the trial court is a narrow legal one, I restrain from supplementing the facts as they are viewed and commented upon by my brethren.1 The only issue *23of real moment in which we are in apparent disagreement is whether the immunity then provided by N. J. S. A. 18A :20-35 was available to defendant Board. As narrow as this issue appears, and as succinctly as it may be stated, it requires a search for legislative …
+        - article [ref=f57e234]:
+          - heading [level=3] [ref=f57e235]:
+            - link "In the Matter of the Verified Petition for the Proposed Creation of a PK-12 All-Purpose Regional School District (N.J. 2025)" [ref=f57e236] [cursor=pointer]:
+              - /url: /opinion/10797662/in-the-matter-of-the-verified-petition-for-the-proposed-creation-of-a-pk-12/?q=%22Henry+Hudson+Regional%22&type=o
+          - generic [ref=f57e237]:
+            - generic [ref=f57e238]:
+              - text: "Date Filed:"
+              - time [ref=f57e239]: December 8th, 2025
+            - generic [ref=f57e240]: "Status: Published"
+            - generic [ref=f57e241]: "Docket Number: A-68-24"
+          - generic [ref=f57e242]:
+            - heading [level=4] [ref=f57e243]:
+              - paragraph [ref=f57e244]: Combined Opinion
+            - paragraph [ref=f57e245]:
+              - text: …Borough of Atlantic Highlands as well as
+              - mark [ref=f57e246]: Henry Hudson Regional
+              - text: High School in a proposed all-purpose regional …
+          - generic [ref=f57e247]:
+            - heading [level=4] [ref=f57e248]:
+              - paragraph [ref=f57e249]: Combined Opinion
+            - paragraph [ref=f57e250]:
+              - text: …Borough of Atlantic Highlands as well as
+              - mark [ref=f57e251]: Henry Hudson Regional
+              - text: High School in a proposed all-purpose regional …
+        - article [ref=f57e252]:
+          - heading [level=3] [ref=f57e253]:
+            - link "In the Matter of the Verified Petition for the Proposed Creation of a Pk-12 All-Purpose Regional School District by the Borough of Seabright, Etc. (N.J. Super. Ct. App. Div. 2024)" [ref=f57e254] [cursor=pointer]:
+              - /url: /opinion/10283749/in-the-matter-of-the-verified-petition-for-the-proposed-creation-of-a-pk-12/?q=%22Henry+Hudson+Regional%22&type=o
+          - generic [ref=f57e255]:
+            - generic [ref=f57e256]:
+              - text: "Date Filed:"
+              - time [ref=f57e257]: November 26th, 2024
+            - generic [ref=f57e258]: "Status: Published"
+            - generic [ref=f57e259]: "Docket Number: A-0716-23"
+          - paragraph [ref=f57e261]:
+            - text: … APPELLATE DIVISION
+            - mark [ref=f57e262]: HENRY HUDSON REGIONAL
+            - text: SCHOOL DISTRICT, ATLANTIC HIGHLANDS SCHOOL …
+        - article [ref=f57e263]:
+          - heading [level=3] [ref=f57e264]:
+            - link "Tp. of Washington v. CENT. BERGEN COMMUNITY MENTAL HEALTH CENTER, INC. (N.J. Super. Ct. App. Div. 1978)" [ref=f57e265] [cursor=pointer]:
+              - /url: /opinion/2389400/tp-of-washington-v-cent-bergen-community-mental-health-center-inc/?q=%22Henry+Hudson+Regional%22&type=o
+          - generic [ref=f57e266]:
+            - generic [ref=f57e267]:
+              - text: "Date Filed:"
+              - time [ref=f57e268]: January 4th, 1978
+            - generic [ref=f57e269]: "Status: Published"
+            - generic [ref=f57e270]: "Citations: 383 A.2d 1194, 156 N.J. Super. 388"
+          - link "Cited by 19 opinions" [ref=f57e274] [cursor=pointer]:
+            - /url: /?q=cites%3A(2389400)
+          - paragraph [ref=f57e276]:
+            - text: …Tax., 51 N.J. 291, 298 (1968); Dobbins v.
+            - mark [ref=f57e277]: Henry Hudson Regional
+            - text: High School Bd. of Ed., 133 N.J. Super. …
+        - generic [ref=f57e278]:
+          - strong [ref=f57e279]:
+            - generic [ref=f57e280]: 
+            - text: Quick Tip!
+          - text: CourtListener has
+          - link "every free opinion and order available in PACER" [ref=f57e281] [cursor=pointer]:
+            - /url: https://free.law/2017/08/15/we-have-all-free-pacer/
+          - text: and gets the latest ones every night.
+    - generic [ref=f57e282]:
+      - generic [ref=f57e283]:
+        - paragraph [ref=f57e284]: Newsletter
+        - paragraph [ref=f57e285]: Sign up to receive the Free Law Project newsletter with tips and announcements.
+      - link " Subscribe" [ref=f57e287] [cursor=pointer]:
+        - /url: https://donate.free.law/np/clients/freelawproject/subscribe.jsp?forwardedFromSecureDomain=1&subscription=9
+        - generic [ref=f57e288]: 
+        - text: Subscribe
+    - contentinfo [ref=f57e289]:
+      - generic [ref=f57e291]:
+        - generic [ref=f57e292]:
+          - generic [ref=f57e293]:
+            - link "About" [ref=f57e295] [cursor=pointer]:
+              - /url: https://free.law/about/
+            - link "Help" [ref=f57e297] [cursor=pointer]:
+              - /url: /help/
+            - link "Donate" [ref=f57e299] [cursor=pointer]:
+              - /url: https://donate.free.law/forms/supportflp
+          - generic [ref=f57e300]:
+            - link "About Our Data" [ref=f57e302] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/courtlistener/help/data-coverage
+            - link "APIs & Bulk Data" [ref=f57e304] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/courtlistener/help/api
+            - generic [ref=f57e305]:
+              - link "Feeds" [ref=f57e306] [cursor=pointer]:
+                - /url: https://wiki.free.law/c/courtlistener/help/general/using-atom-and-rss-feeds-for-the-latest-updates
+              - text: "&"
+              - link "Podcasts" [ref=f57e307] [cursor=pointer]:
+                - /url: https://wiki.free.law/c/courtlistener/help/general/custom-podcasts-of-oral-argument-audio-recordings
+              - generic [ref=f57e308]: 
+        - generic [ref=f57e309]:
+          - generic [ref=f57e310]:
+            - link "Blog Posts" [ref=f57e312] [cursor=pointer]:
+              - /url: https://free.law
+            - link "Contact" [ref=f57e314] [cursor=pointer]:
+              - /url: /contact/
+            - link "Data Services" [ref=f57e316] [cursor=pointer]:
+              - /url: https://free.law/data-consulting/
+            - link "Contribute" [ref=f57e318] [cursor=pointer]:
+              - /url: https://free.law/volunteer
+          - generic [ref=f57e319]:
+            - link "Terms & Privacy" [ref=f57e321] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/terms/courtlistener/courtlistenercom-terms-of-service-and-policies
+            - link "Removal" [ref=f57e323] [cursor=pointer]:
+              - /url: https://wiki.free.law/c/terms/courtlistener/courtlistenercom-content-removal-policy
+            - link "Vulnerability Policies" [ref=f57e325] [cursor=pointer]:
+              - /url: https://free.law/vulnerability-disclosure-policy/
+      - link [ref=f57e327] [cursor=pointer]:
+        - /url: https://donate.free.law/forms/supportflp
+        - img "Donate to support our work" [ref=f57e328]
+      - paragraph [ref=f57e330]:
+        - text: CourtListener is sponsored by the non-profit
+        - link "Free Law Project" [ref=f57e331] [cursor=pointer]:
+          - /url: https://free.law
+        - text: .
+  - generic [ref=f57e332]:
+    - link "LinkedIn - Free Law Project (opens in a new tab)" [ref=f57e333] [cursor=pointer]:
+      - /url: https://www.linkedin.com/company/free-law-project/
+    - link "Bluesky - Free Law Project (opens in a new tab)" [ref=f57e337] [cursor=pointer]:
+      - /url: https://bsky.app/profile/free.law
+    - link "GitHub repository (opens in a new tab)" [ref=f57e340] [cursor=pointer]:
+      - /url: https://github.com/freelawproject/courtlistener
+    - link "Subscribe to the Free Law Project newsletter (opens in a new tab)" [ref=f57e344] [cursor=pointer]:
+      - /url: https://donate.free.law/np/clients/freelawproject/subscribe.jsp?subscription=9

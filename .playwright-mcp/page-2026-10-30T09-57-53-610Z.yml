@@ -1,0 +1,349 @@
+- generic [active] [ref=f24e1]:
+  - generic [ref=f24e2]:
+    - main [ref=f24e3]:
+      - generic [ref=f24e5]:
+        - generic [ref=f24e8]:
+          - generic [ref=f24e9]:
+            - button "Menu" [ref=f24e10] [cursor=pointer]
+            - link [ref=f24e13] [cursor=pointer]:
+              - /url: /home
+              - img "Citizen Portal" [ref=f24e15]
+          - link "Sign in" [ref=f24e17] [cursor=pointer]:
+            - /url: /auth/login?redirectTo=%2Farticles%2F8393438%2FNew-Jersey%2FSchool-Districts%2FHenry-Hudson-Regional-School-District%2FHenry-Hudson-board-says-regionalization-work-limited-by-litigation-Dept-of-Education-letter-allows-formula-talks
+        - generic [ref=f24e21]:
+          - button "Search scope" [ref=f24e22]:
+            - generic [ref=f24e26]: All
+          - textbox "Ask anything about your government..." [ref=f24e29]
+          - button "Search" [ref=f24e30]
+        - navigation "Your pages" [ref=f24e35]:
+          - link [ref=f24e36] [cursor=pointer]:
+            - /url: /home
+            - strong [ref=f24e37]: Front Page
+          - link [ref=f24e38] [cursor=pointer]:
+            - /url: /feed/2979/federal
+            - strong [ref=f24e39]: National
+          - link [ref=f24e40] [cursor=pointer]:
+            - /url: /following
+            - strong [ref=f24e41]: Following
+          - link [ref=f24e42] [cursor=pointer]:
+            - /url: /favorites
+            - strong [ref=f24e43]: Favorites
+        - generic [ref=f24e45]:
+          - generic [ref=f24e48]:
+            - link "Daily News One paper per town Claim your town’s paper Learn more →" [ref=f24e51] [cursor=pointer]:
+              - /url: https://ads.citizenportal.ai/www/delivery/cl.php?bannerid=99&zoneid=10&sig=b865af524e40f33d5d84f87af7f13def61a5608abe8a8927403c39d12f57dbcd&dest=https%3A%2F%2Fdaily-news.ai%2F%3Fcpad%3Ddn1v2claim%26utm_source%3Dcitizenportal%26utm_medium%3Drevive%26utm_campaign%3Ddaily-news%26utm_content%3Ddn1-v2-claim
+              - generic [ref=f24e52]:
+                - generic [ref=f24e53]: Daily News
+                - generic [ref=f24e54]: One paper per town
+              - generic [ref=f24e55]: Claim your town’s paper
+              - generic [ref=f24e56]: Learn more →
+            - generic [ref=f24e58]:
+              - generic [ref=f24e59]:
+                - navigation "Breadcrumb" [ref=f24e60]:
+                  - link "New Jersey" [ref=f24e61] [cursor=pointer]:
+                    - /url: /feed/2293
+                  - text: /
+                  - link "School Districts" [ref=f24e62] [cursor=pointer]:
+                    - /url: /feed/13244
+                  - text: /
+                  - link "Henry Hudson Regional School District" [ref=f24e63] [cursor=pointer]:
+                    - /url: /feed/118932
+                - heading "Henry Hudson board says regionalization work limited by litigation; Dept. of Education letter allows formula talks" [level=1] [ref=f24e64]
+                - paragraph [ref=f24e65]: Jul 16, 2025
+                - generic [ref=f24e66]:
+                  - navigation "Jump to a section" [ref=f24e67]:
+                    - link "Full story" [ref=f24e68] [cursor=pointer]:
+                      - /url: "#what-happened"
+                  - toolbar "Article actions" [ref=f24e69]:
+                    - button "Favorite" [ref=f24e70] [cursor=pointer]
+                    - button "Follow" [ref=f24e74] [cursor=pointer]
+                    - button "Share" [ref=f24e78] [cursor=pointer]
+                - region "Summary" [ref=f24e86]:
+                  - paragraph [ref=f24e87]: Board members and the board attorney told residents the district may discuss a funding formula with Sea Bright following a Department of Education letter, but an existing settlement and pending Supreme Court review limit formal board action.
+                - navigation "Hot topics in this story" [ref=f24e88]:
+                  - generic [ref=f24e89]:
+                    - link "Municipal Court Operations" [ref=f24e90] [cursor=pointer]:
+                      - /url: /municipal-court-operations
+                    - link "Pothole and Street Repair" [ref=f24e91] [cursor=pointer]:
+                      - /url: /pothole-and-street-repair
+                    - link "Stormwater Fees" [ref=f24e92] [cursor=pointer]:
+                      - /url: /stormwater-fees
+                    - link "Homeless Services Funding" [ref=f24e93] [cursor=pointer]:
+                      - /url: /homeless-services-funding
+                    - link "Historic Preservation Districts" [ref=f24e94] [cursor=pointer]:
+                      - /url: /historic-preservation-districts
+                    - link "Tiny Homes" [ref=f24e95] [cursor=pointer]:
+                      - /url: /tiny-homes
+                  - generic [ref=f24e96]:
+                    - button "Previous topics" [ref=f24e97] [cursor=pointer]
+                    - button "Next topics" [ref=f24e100] [cursor=pointer]
+                - generic [ref=f24e103]:
+                  - heading "The full story" [level=2] [ref=f24e105]
+                  - paragraph [ref=f24e106]: The Henry Hudson Regional PK-12 Board of Education told residents on July 16 that the district can discuss a funding formula with Sea Bright but cannot take formal action while the matter is being litigated.
+                - region "Keep reading" [ref=f24e107]:
+                  - region [ref=f24e108]:
+                    - generic [ref=f24e109]: Free account
+                    - heading "Sign up to keep reading." [level=2] [ref=f24e110]
+                    - paragraph [ref=f24e111]: Your free Citizen Portal account lets you follow what your city council, county, and school board discussed and decided.
+                    - generic [ref=f24e112]:
+                      - button "Continue with Google" [ref=f24e113] [cursor=pointer]
+                      - generic [ref=f24e119]: or
+                      - generic [ref=f24e122]:
+                        - generic [ref=f24e123]: Email address
+                        - textbox "Email address" [ref=f24e124]:
+                          - /placeholder: Your email
+                        - button "Create free account" [ref=f24e125] [cursor=pointer]: Create free account →
+                    - link "Already have an account? Sign in" [ref=f24e126] [cursor=pointer]:
+                      - /url: /auth/login?redirectTo=%2Farticles%2F8393438%2FNew-Jersey%2FSchool-Districts%2FHenry-Hudson-Regional-School-District%2FHenry-Hudson-board-says-regionalization-work-limited-by-litigation-Dept-of-Education-letter-allows-formula-talks
+              - complementary "Officials and related stories" [ref=f24e127]:
+                - generic [ref=f24e128]:
+                  - region "Daily News" [ref=f24e129]:
+                    - heading "Run Middletown’s daily paper." [level=3] [ref=f24e130]: Run Middletown’sdaily paper.
+                    - paragraph [ref=f24e131]: Turn what you know about Middletown into local news your neighbors read every day. Research tools track every public meeting for you. Plans from $200 a month, or buy it outright.
+                    - link "Be your town’s editor-in-chief" [ref=f24e132] [cursor=pointer]:
+                      - /url: /go?k=article%3Adaily-news%3Apitch%3Aa&to=https%3A%2F%2Fdaily-news.ai%2F%3Futm_source%3Dcitizenportal%26utm_medium%3Darticle_rail%26utm_campaign%3Ddaily-news%26utm_content%3Dsidebar-a%26utm_term%3D8393438%26area%3D07716
+                    - generic [ref=f24e133]:
+                      - 'link "See one in action: Upriver News →" [ref=f24e134] [cursor=pointer]':
+                        - /url: /go?k=article%3Adaily-news%3Aexample&to=https%3A%2F%2Fdaily-news.ai%2Fupriver-news%2F3%3Futm_source%3Dcitizenportal%26utm_medium%3Darticle_rail%26utm_campaign%3Ddaily-news%26utm_content%3Dsidebar-a_example%26utm_term%3D8393438
+                      - button "Know someone who should run it? →" [ref=f24e135] [cursor=pointer]
+                    - generic [ref=f24e138]:
+                      - generic [ref=f24e139]: Daily News
+                      - generic [ref=f24e140]: daily-news.ai
+                  - region [ref=f24e141]:
+                    - heading "Also happening" [level=2] [ref=f24e143]
+                    - link "Municipal Court Operations" [ref=f24e146] [cursor=pointer]:
+                      - /url: /municipal-court-operations
+                    - paragraph [ref=f24e147]:
+                      - text: Being decided in
+                      - strong [ref=f24e148]: 347 places
+                      - text: across the country
+                    - list [ref=f24e149]:
+                      - listitem [ref=f24e150]:
+                        - generic [ref=f24e151]: Pensacola, Florida
+                        - generic [ref=f24e152]: Oct 27
+                      - listitem [ref=f24e153]:
+                        - generic [ref=f24e154]: Bedford, Texas
+                        - generic [ref=f24e155]: Oct 27
+                      - listitem [ref=f24e156]:
+                        - generic [ref=f24e157]: West Peoria, Illinois
+                        - generic [ref=f24e158]: Oct 27
+                    - link "See all 347 on the map →" [ref=f24e159] [cursor=pointer]:
+                      - /url: /municipal-court-operations
+                  - region "Daily Crossword" [ref=f24e160]:
+                    - button "Play today's crossword" [ref=f24e213] [cursor=pointer]
+                  - generic [ref=f24e214]:
+                    - generic [ref=f24e215]: Officials
+                    - generic [ref=f24e216]:
+                      - generic [ref=f24e217]: In this story
+                      - generic [ref=f24e218]:
+                        - generic [ref=f24e219]: RC
+                        - generic [ref=f24e220]:
+                          - text: Richard Colangelo
+                          - generic [ref=f24e221]: Board President
+                      - generic [ref=f24e222]:
+                        - generic [ref=f24e223]: MT
+                        - generic [ref=f24e224]:
+                          - text: Ms. Thomas
+                          - generic [ref=f24e225]: Board member; Chair, Facilities & Finance Committee
+                      - generic [ref=f24e226]:
+                        - generic [ref=f24e227]: AM
+                        - generic [ref=f24e228]:
+                          - text: Aron Mandel
+                          - generic [ref=f24e229]: Board Attorney
+                      - generic [ref=f24e230]:
+                        - generic [ref=f24e231]: DT
+                        - generic [ref=f24e232]:
+                          - text: Dr. Tara Beams
+                          - generic [ref=f24e233]: Superintendent
+                    - generic [ref=f24e234]:
+                      - link "All your representatives →" [ref=f24e235] [cursor=pointer]:
+                        - /url: /my-representatives
+                      - generic [ref=f24e236]: Messages are sent through CivIQ.
+              - region [ref=f24e238]:
+                - heading "More on this" [level=2] [ref=f24e240]
+                - list [ref=f24e241]:
+                  - listitem [ref=f24e242]:
+                    - link [ref=f24e243] [cursor=pointer]:
+                      - /url: /articles/8393437/henry-hudson-board-approves-24m-in-bills-multiple-contracts-and-large-masonry-change-orders
+                      - heading "Henry Hudson board approves $2.4M in bills, multiple contracts and large masonry change orders" [level=3] [ref=f24e245]
+                      - paragraph [ref=f24e246]: At its July 16 meeting the board approved bills and claims totalling $2,402,435.30, transportation bids, a bus lease, painting quotes, two Madina Restoration change orders totaling about $114,109, and authorized submission of an NJDOE water-infrastructure grant application.
+                  - listitem [ref=f24e247]:
+                    - link [ref=f24e248] [cursor=pointer]:
+                      - /url: /articles/8393436/henry-hudson-board-recognizes-retirees-approves-hires-and-unused-sick-time-payouts
+                      - heading "Henry Hudson board recognizes retirees, approves hires and unused sick-time payouts" [level=3] [ref=f24e250]
+                      - paragraph [ref=f24e251]: The board recognized three retirees, approved a package of hires and transfers (including a Pre-K teacher coach at $90,000 and a guidance counselor at $82,035), and authorized unused sick-time payouts to two retirees totaling $17,100.
+          - generic [ref=f24e252]:
+            - generic [ref=f24e253]:
+              - generic [ref=f24e254]:
+                - img "Citizen Portal" [ref=f24e255]
+                - generic [ref=f24e256]: See government, clearly.
+                - generic [ref=f24e257]:
+                  - link "Follow us on LinkedIn" [ref=f24e258] [cursor=pointer]:
+                    - /url: https://www.linkedin.com/company/citizen-portal-ai/
+                  - link "Follow us on TikTok" [ref=f24e259] [cursor=pointer]:
+                    - /url: https://www.tiktok.com/@citizenportalai_official
+                  - link "Follow us on Instagram" [ref=f24e260] [cursor=pointer]:
+                    - /url: https://www.instagram.com/citizenportalai_official
+                  - link "Follow us on YouTube" [ref=f24e261] [cursor=pointer]:
+                    - /url: https://www.youtube.com/@CitizenPortalAI_Official
+                  - link "Follow us on Twitter" [ref=f24e262] [cursor=pointer]:
+                    - /url: https://twitter.com/citizenportalai?s=21&t=_oBJIc1v_8Ojwz2e4hEayA
+                  - link "Follow us on Facebook" [ref=f24e263] [cursor=pointer]:
+                    - /url: https://www.facebook.com/profile.php?id=100093227401453&mibextid=LQQJ4d
+                  - link "Follow us on Mastodon" [ref=f24e264] [cursor=pointer]:
+                    - /url: https://mastodon.social/@citizenportal_ai
+              - generic [ref=f24e265]:
+                - heading "Platform" [level=6] [ref=f24e266]
+                - link "About us" [ref=f24e267] [cursor=pointer]:
+                  - /url: /about-us
+                - link "For cities" [ref=f24e268] [cursor=pointer]:
+                  - /url: /solutions/government
+                - link "Topics" [ref=f24e269] [cursor=pointer]:
+                  - /url: /topics
+                - link "News" [ref=f24e270] [cursor=pointer]:
+                  - /url: /news
+                - link "Diminished Fourth Estate" [ref=f24e271] [cursor=pointer]:
+                  - /url: https://fourthestate.citizenportal.ai
+              - generic [ref=f24e272]:
+                - heading "Support" [level=6] [ref=f24e273]
+                - link "Help center" [ref=f24e274] [cursor=pointer]:
+                  - /url: /help
+                - button "Contact us" [ref=f24e275] [cursor=pointer]
+                - button "Report an issue" [ref=f24e276] [cursor=pointer]
+              - generic [ref=f24e277]:
+                - heading "Community" [level=6] [ref=f24e278]
+                - link "Affiliate program" [ref=f24e279] [cursor=pointer]:
+                  - /url: /affiliate
+                - link "Support CP" [ref=f24e280] [cursor=pointer]:
+                  - /url: /back-our-mission
+                - link "Volunteer" [ref=f24e281] [cursor=pointer]:
+                  - /url: /volunteer
+              - generic [ref=f24e282]:
+                - heading "Legal" [level=6] [ref=f24e283]
+                - link "Privacy" [ref=f24e284] [cursor=pointer]:
+                  - /url: /privacy
+                - link "Terms" [ref=f24e285] [cursor=pointer]:
+                  - /url: /terms
+            - generic [ref=f24e286]:
+              - heading "Find your state" [level=6] [ref=f24e287]
+              - generic [ref=f24e288]:
+                - link "AL" [ref=f24e289] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AL
+                - link "AK" [ref=f24e290] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AK
+                - link "AR" [ref=f24e291] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AR
+                - link "AZ" [ref=f24e292] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AZ
+                - link "CA" [ref=f24e293] [cursor=pointer]:
+                  - /url: /SummaryBrowse/CA
+                - link "CO" [ref=f24e294] [cursor=pointer]:
+                  - /url: /SummaryBrowse/CO
+                - link "CT" [ref=f24e295] [cursor=pointer]:
+                  - /url: /SummaryBrowse/CT
+                - link "DE" [ref=f24e296] [cursor=pointer]:
+                  - /url: /SummaryBrowse/DE
+                - link "DC" [ref=f24e297] [cursor=pointer]:
+                  - /url: /SummaryBrowse/DC
+                - link "FL" [ref=f24e298] [cursor=pointer]:
+                  - /url: /SummaryBrowse/FL
+                - link "GA" [ref=f24e299] [cursor=pointer]:
+                  - /url: /SummaryBrowse/GA
+                - link "HI" [ref=f24e300] [cursor=pointer]:
+                  - /url: /SummaryBrowse/HI
+                - link "IA" [ref=f24e301] [cursor=pointer]:
+                  - /url: /SummaryBrowse/IA
+                - link "ID" [ref=f24e302] [cursor=pointer]:
+                  - /url: /SummaryBrowse/ID
+                - link "IL" [ref=f24e303] [cursor=pointer]:
+                  - /url: /SummaryBrowse/IL
+                - link "IN" [ref=f24e304] [cursor=pointer]:
+                  - /url: /SummaryBrowse/IN
+                - link "KS" [ref=f24e305] [cursor=pointer]:
+                  - /url: /SummaryBrowse/KS
+                - link "KY" [ref=f24e306] [cursor=pointer]:
+                  - /url: /SummaryBrowse/KY
+                - link "LA" [ref=f24e307] [cursor=pointer]:
+                  - /url: /SummaryBrowse/LA
+                - link "MA" [ref=f24e308] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MA
+                - link "MD" [ref=f24e309] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MD
+                - link "ME" [ref=f24e310] [cursor=pointer]:
+                  - /url: /SummaryBrowse/ME
+                - link "MI" [ref=f24e311] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MI
+                - link "MN" [ref=f24e312] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MN
+                - link "MO" [ref=f24e313] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MO
+                - link "MS" [ref=f24e314] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MS
+                - link "MT" [ref=f24e315] [cursor=pointer]:
+                  - /url: /SummaryBrowse/MT
+                - link "NE" [ref=f24e316] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NE
+                - link "NH" [ref=f24e317] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NH
+                - link "NJ" [ref=f24e318] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NJ
+                - link "NM" [ref=f24e319] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NM
+                - link "NV" [ref=f24e320] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NV
+                - link "NY" [ref=f24e321] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NY
+                - link "NC" [ref=f24e322] [cursor=pointer]:
+                  - /url: /SummaryBrowse/NC
+                - link "ND" [ref=f24e323] [cursor=pointer]:
+                  - /url: /SummaryBrowse/ND
+                - link "OH" [ref=f24e324] [cursor=pointer]:
+                  - /url: /SummaryBrowse/OH
+                - link "OK" [ref=f24e325] [cursor=pointer]:
+                  - /url: /SummaryBrowse/OK
+                - link "OR" [ref=f24e326] [cursor=pointer]:
+                  - /url: /SummaryBrowse/OR
+                - link "PA" [ref=f24e327] [cursor=pointer]:
+                  - /url: /SummaryBrowse/PA
+                - link "RI" [ref=f24e328] [cursor=pointer]:
+                  - /url: /SummaryBrowse/RI
+                - link "SC" [ref=f24e329] [cursor=pointer]:
+                  - /url: /SummaryBrowse/SC
+                - link "SD" [ref=f24e330] [cursor=pointer]:
+                  - /url: /SummaryBrowse/SD
+                - link "TN" [ref=f24e331] [cursor=pointer]:
+                  - /url: /SummaryBrowse/TN
+                - link "TX" [ref=f24e332] [cursor=pointer]:
+                  - /url: /SummaryBrowse/TX
+                - link "UT" [ref=f24e333] [cursor=pointer]:
+                  - /url: /SummaryBrowse/UT
+                - link "VA" [ref=f24e334] [cursor=pointer]:
+                  - /url: /SummaryBrowse/VA
+                - link "VT" [ref=f24e335] [cursor=pointer]:
+                  - /url: /SummaryBrowse/VT
+                - link "WA" [ref=f24e336] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WA
+                - link "WI" [ref=f24e337] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WI
+                - link "WV" [ref=f24e338] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WV
+                - link "WY" [ref=f24e339] [cursor=pointer]:
+                  - /url: /SummaryBrowse/WY
+                - link "PR" [ref=f24e340] [cursor=pointer]:
+                  - /url: /SummaryBrowse/PR
+                - link "GU" [ref=f24e341] [cursor=pointer]:
+                  - /url: /SummaryBrowse/GU
+                - link "AS" [ref=f24e342] [cursor=pointer]:
+                  - /url: /SummaryBrowse/AS
+                - link "VI" [ref=f24e343] [cursor=pointer]:
+                  - /url: /SummaryBrowse/VI
+            - generic [ref=f24e344]: © 2026 Citizen Portal. Meeting records and summaries sourced from the public record.
+    - region "Notifications alt+T"
+  - dialog "Cookie consent" [ref=f24e345]:
+    - generic [ref=f24e346]:
+      - paragraph [ref=f24e347]: We use cookies to analyze site usage and improve your experience.
+      - generic [ref=f24e348]:
+        - paragraph [ref=f24e349]: You can change your preference any time.
+        - generic [ref=f24e350]:
+          - button "Deny" [ref=f24e351] [cursor=pointer]
+          - button "Accept" [ref=f24e352] [cursor=pointer]

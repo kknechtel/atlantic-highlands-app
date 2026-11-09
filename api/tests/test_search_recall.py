@@ -80,3 +80,21 @@ def test_fill_missing_never_overwrites(monkeypatch):
     assert title_extractor.fill_missing(doc) == ["doc_date", "department"]
     assert (doc.title, doc.doc_date) == ("Kept title", "2026-10-28")
     assert title_extractor.fill_missing(doc) == []  # nothing left to fill
+
+
+def test_voyage_request_pins_dimension(monkeypatch):
+    # Vectors must stay 1024-dim to fit the vector(1024) columns.
+    import sys
+    from types import SimpleNamespace
+    from services import embeddings
+    sent = {}
+
+    def fake_post(url, headers, json, timeout):
+        sent.update(json)
+        return SimpleNamespace(ok=True, json=lambda: {"data": [{"embedding": [0.0] * 1024}], "usage": {}})
+
+    monkeypatch.setattr(embeddings, "api_key", lambda name: "k")
+    monkeypatch.setitem(sys.modules, "requests", SimpleNamespace(post=fake_post))
+    assert len(embeddings.embed_query("police budget")) == 1024
+    assert sent["output_dimension"] == embeddings.EMBEDDING_DIM == 1024
+    assert sent["input_type"] == "query"

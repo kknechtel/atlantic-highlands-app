@@ -15,7 +15,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overf
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-EMBEDDING_DIM = 1024  # voyage-3
+EMBEDDING_DIM = 1024  # voyage-4-lite output_dimension
 
 
 def get_db():

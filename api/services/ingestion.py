@@ -126,6 +126,12 @@ def _set_chunk_embeddings(db: Session, pairs: list[tuple]) -> None:
     """), params)
 
 
+def _doc_embed_text(doc) -> str:
+    """Document-level vector input: title + filename + notes + first 32K of body."""
+    return " ".join(filter(None, [doc.title or "", doc.filename, doc.notes or "",
+                                  (doc.extracted_text or "")[:32000]]))
+
+
 def ingest_document(db: Session, doc: Document, force: bool = False) -> dict:
     """Chunk + embed one document. Returns a small summary dict."""
     if not doc.extracted_text or len(doc.extracted_text) < 100:
@@ -166,10 +172,7 @@ def ingest_document(db: Session, doc: Document, force: bool = False) -> dict:
     _set_chunk_embeddings(db, [(r.id, v) for r, v in zip(rows, vecs)])
     _refresh_chunk_fts(db, [r.id for r in rows])
 
-    # Document-level vector uses filename + notes + first 32K of body.
-    doc_text = " ".join(filter(None, [doc.title or "", doc.filename, doc.notes or "",
-                                      doc.extracted_text[:32000]]))
-    _set_doc_embedding(db, doc.id, embed_document(doc_text))
+    _set_doc_embedding(db, doc.id, embed_document(_doc_embed_text(doc)))
     _refresh_doc_fts(db, doc.id)
 
     db.commit()
@@ -228,3 +231,27 @@ def reembed_missing(db: Session, limit: int = 2000) -> int:
     db.commit()
     log.info("reembed_missing: %d/%d chunks embedded", len(pairs), len(rows))
     return len(pairs)
+
+
+def reembed_missing_docs(db: Session, limit: int = 500) -> int:
+    """Embed ingested documents (ones with chunks) whose vector is NULL."""
+    # Truncate in SQL: loading full extracted_text for hundreds of docs is
+    # a real memory hit on the 4 GB prod box.
+    docs = db.execute(text("""
+        SELECT id, title, filename, notes, left(extracted_text, 32000) AS extracted_text
+        FROM documents d
+        WHERE embedding IS NULL
+          AND EXISTS (SELECT 1 FROM document_chunks c WHERE c.document_id = d.id)
+        ORDER BY created_at DESC LIMIT :n
+    """), {"n": limit}).fetchall()
+    if not docs:
+        return 0
+    vecs = embed_documents_batch([_doc_embed_text(d) for d in docs])
+    done = 0
+    for d, v in zip(docs, vecs):
+        if v is not None:
+            _set_doc_embedding(db, d.id, v)
+            done += 1
+    db.commit()
+    log.info("reembed_missing_docs: %d/%d documents embedded", done, len(docs))
+    return done

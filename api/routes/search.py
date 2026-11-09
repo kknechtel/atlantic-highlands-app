@@ -8,7 +8,7 @@ Pipeline:
   3. Hybrid retrieval (semantic embedding + keyword tsvector) at the chunk
      level — every page of every document is searchable, not just the first
      50 KB of `extracted_text`
-  4. Rerank top 30 with Voyage rerank-2 (when key available)
+  4. Rerank top 30 with Voyage rerank-2.5-lite (when key available)
   5. Recency boost — newer fiscal years rank higher with light decay
   6. Literal-match dedup (preserves the old stemming-collision fix:
      "highander" no longer drags in 685 docs that just contain "Highlands")
@@ -322,7 +322,7 @@ def rank_chunks(
         logger.warning("hybrid chunk search failed: %s", exc)
         chunks = []
 
-    # ── 4. Voyage rerank-2 on top-30 (when key + enough results)
+    # ── 4. Voyage rerank on top-30 (when key + enough results)
     if chunks and len(chunks) > 3 and rerank and reranker.is_available():
         try:
             # Rerank sees the chunk's doc header too (title · town · body · date).

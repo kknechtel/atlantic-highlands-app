@@ -98,9 +98,10 @@ async def main() -> int:
         totals = await process_pending(limit=limit)
         logger.info("Document processing done: %s", totals)
         from database import SessionLocal
-        from services.ingestion import reembed_missing
+        from services.ingestion import reembed_missing, reembed_missing_docs
         with SessionLocal() as db:
             reembed_missing(db)
+            reembed_missing_docs(db)
     except Exception as exc:
         logger.exception("document processing step failed: %s", exc)
 

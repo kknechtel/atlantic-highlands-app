@@ -1,7 +1,7 @@
 """
 Embedding generation for hybrid RAG.
 
-Voyage AI voyage-3 (1024 dims) when VOYAGE_API_KEY is set. Without a key,
+Voyage AI voyage-4-lite (1024 dims) when VOYAGE_API_KEY is set. Without a key,
 nothing is embedded: vectors stay NULL (ingestion.reembed_missing fills them
 once a key exists) and search runs keyword-only. There is deliberately no
 fake fallback vector: the old hash vector made semantic search return random
@@ -14,12 +14,14 @@ from config import api_key
 
 log = logging.getLogger(__name__)
 
-# voyage-3 is 1024-dim (matches database.py:EMBEDDING_DIM and the
-# vector(1024) columns). voyage-3-lite is 512-dim — DO NOT use without
-# also changing the column type, or every UPDATE rejects with
-# "expected 1024 dimensions, not 512".
-EMBEDDING_MODEL = "voyage-3"
+# voyage-4-lite: $0.02/1M tokens (voyage-3 was $0.06) and 200M free tokens
+# per account. output_dimension is pinned to match database.py:EMBEDDING_DIM
+# and the vector(1024) columns. Vectors from different model families are
+# not comparable: changing EMBEDDING_MODEL means re-embedding everything
+# (scripts/reembed_chunks.py --all).
+EMBEDDING_MODEL = "voyage-4-lite"
 EMBEDDING_DIM = 1024
+EMBEDDING_RATE_PER_M = 0.02
 
 
 def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[float]]:
@@ -29,7 +31,8 @@ def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[f
     resp = requests.post(
         "https://api.voyageai.com/v1/embeddings",
         headers={"Authorization": f"Bearer {api_key('VOYAGE_API_KEY')}", "Content-Type": "application/json"},
-        json={"model": EMBEDDING_MODEL, "input": texts, "input_type": input_type},
+        json={"model": EMBEDDING_MODEL, "input": texts, "input_type": input_type,
+              "output_dimension": EMBEDDING_DIM},
         timeout=30,
     )
     if not resp.ok:
@@ -46,10 +49,8 @@ def _voyage_embed(texts: list[str], input_type: str = "document") -> list[list[f
             from services.usage import record_usage
             sess = SessionLocal()
             try:
-                # voyage-3 is $0.06/1M; voyage-3-lite is $0.02/1M. Use a
-                # tighter rate than the catch-all in usage.py for accuracy.
-                rate = 0.06 if EMBEDDING_MODEL == "voyage-3" else 0.02
-                cost = (total_tokens * rate) / 1_000_000
+                # List price; ignores the free-token allowance.
+                cost = (total_tokens * EMBEDDING_RATE_PER_M) / 1_000_000
                 record_usage(
                     sess, source="embeddings", model=EMBEDDING_MODEL,
                     input_tokens=total_tokens, output_tokens=0,

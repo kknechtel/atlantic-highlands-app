@@ -35,6 +35,9 @@ _RATES: dict[str, tuple[float, float]] = {
     "gemini-2.0-flash": (0.10, 0.40),
     "voyage-3-lite": (0.02, 0.0),  # embedding-only — output rate N/A
     "voyage-3": (0.06, 0.0),
+    "voyage-4-lite": (0.02, 0.0),
+    "rerank-2": (0.05, 0.0),
+    "rerank-2.5-lite": (0.02, 0.0),
     "tesseract": (0.0, 0.0),       # local, free
     "pdfplumber": (0.0, 0.0),
 }

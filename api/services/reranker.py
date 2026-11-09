@@ -1,12 +1,12 @@
 """
-Voyage rerank-2 wrapper.
+Voyage rerank-2.5-lite wrapper.
 
 Takes the top N results from hybrid search (semantic + keyword) and reorders
 them with a cross-encoder reranker — much higher quality than the weighted
 sum of cosine + BM25 because the reranker sees the query and doc together.
 
-Cost: ~$0.05 per 1k queries at typical batch sizes (top_n=30, ~200-char
-passages). The function returns the original list unchanged on any failure
+Cost: rerank-2.5-lite is $0.02/1M tokens (rerank-2 was $0.05). A top-30
+call with 3000-char passages is ~20k tokens, so roughly $0.0005 per search. The function returns the original list unchanged on any failure
 so callers don't need to special-case the "no key" or "API down" paths.
 
 Voyage rerank docs: https://docs.voyageai.com/docs/reranker
@@ -17,9 +17,10 @@ from config import api_key
 
 log = logging.getLogger(__name__)
 
-RERANK_MODEL = "rerank-2"
-# rerank-2 supports up to 16k tokens per doc; we cap at ~3k chars (~750 tokens)
-# per item so a top_n=30 call stays well under the 320k total-tokens cap.
+RERANK_MODEL = "rerank-2.5-lite"
+RERANK_RATE_PER_M = 0.02
+# Cap each passage at ~3k chars (~750 tokens): plenty to judge relevance,
+# and Voyage bills for every token sent.
 MAX_DOC_CHARS = 3000
 
 
@@ -67,9 +68,8 @@ def rerank(query: str, documents: list[str], top_k: int | None = None) -> list[t
                 from services.usage import record_usage
                 sess = SessionLocal()
                 try:
-                    # rerank-2: $0.05/1M tokens (as of 2025-Q4 pricing). Keep
-                    # in sync with embeddings.py if Voyage adjusts rates.
-                    cost = (total_tokens * 0.05) / 1_000_000
+                    # List price; ignores the free-token allowance.
+                    cost = (total_tokens * RERANK_RATE_PER_M) / 1_000_000
                     record_usage(
                         sess, source="rerank", model=RERANK_MODEL,
                         input_tokens=total_tokens, output_tokens=0,
